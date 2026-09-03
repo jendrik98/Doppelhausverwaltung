@@ -1,0 +1,37 @@
+{
+  "name": "Mietverwaltung",
+  "short_name": "Mietverwaltung",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#0f172a",
+  "lang": "de-DE",
+  "description": "Geprüfte private Haus- und Mietverwaltung mit Arbeitsbereichen, zeitanteiliger Abrechnung und vollständigen Eingabewegen",
+  "id": "./",
+  "scope": "./",
+  "orientation": "portrait-primary",
+  "shortcuts": [
+    {
+      "name": "Abrechnung",
+      "short_name": "Abrechnung",
+      "url": "./#billing"
+    },
+    {
+      "name": "Assistent",
+      "short_name": "Assistent",
+      "url": "./#assistant"
+    }
+  ],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
