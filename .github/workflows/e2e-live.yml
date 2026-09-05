@@ -1,0 +1,76 @@
+name: Live E2E – Mietverwaltung
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'index.html'
+      - 'style.css'
+      - 'app.js'
+      - 'service-worker.js'
+      - 'manifest.webmanifest'
+      - 'legal-rules.json'
+      - 'tests/**'
+      - 'playwright.config.js'
+      - 'package.json'
+      - '.github/workflows/e2e-live.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      E2E_BASE_URL: https://jendrik98.github.io/Doppelhausverwaltung/
+      EXPECTED_APP_VERSION: '16.0.0'
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: E2E-Abhängigkeiten installieren
+        run: npm install
+
+      - name: Chromium installieren
+        run: npx playwright install --with-deps chromium
+
+      - name: Auf V16-Live-Deployment warten
+        shell: bash
+        run: |
+          set -e
+          echo "Warte auf ${E2E_BASE_URL}app.js?v=1600 …"
+          for i in {1..60}; do
+            BODY="$(curl -fsSL --max-time 15 "${E2E_BASE_URL}app.js?v=1600" || true)"
+            if grep -Fq "APP_VERSION=\"${EXPECTED_APP_VERSION}\"" <<<"$BODY"; then
+              echo "Live-Version ${EXPECTED_APP_VERSION} ist verfügbar."
+              exit 0
+            fi
+            echo "Noch nicht aktuell ($i/60), neuer Versuch in 10 s …"
+            sleep 10
+          done
+          echo "Die erwartete Live-Version wurde innerhalb von 10 Minuten nicht gefunden."
+          exit 1
+
+      - name: Echter Browser-E2E-Test
+        run: npx playwright test
+
+      - name: Playwright-Bericht sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
