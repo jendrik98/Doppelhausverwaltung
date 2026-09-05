@@ -1,0 +1,127 @@
+{
+  "schema": "mietverwaltung-legal-pack-v1",
+  "version": "2026.09.05-3",
+  "effectiveDate": "2026-09-05",
+  "jurisdiction": "Deutschland / NRW",
+  "sources": [
+    {
+      "name": "§ 556 BGB",
+      "url": "https://www.gesetze-im-internet.de/bgb/__556.html",
+      "purpose": "Betriebskosten, Abrechnung, Frist, Belegeinsicht"
+    },
+    {
+      "name": "§ 556a BGB",
+      "url": "https://www.gesetze-im-internet.de/bgb/__556a.html",
+      "purpose": "Abrechnungsmaßstab"
+    },
+    {
+      "name": "§ 556b BGB",
+      "url": "https://www.gesetze-im-internet.de/bgb/__556b.html",
+      "purpose": "Regelfälligkeit der Miete"
+    },
+    {
+      "name": "§ 560 BGB",
+      "url": "https://www.gesetze-im-internet.de/bgb/__560.html",
+      "purpose": "Anpassung von Vorauszahlungen"
+    },
+    {
+      "name": "BetrKV",
+      "url": "https://www.gesetze-im-internet.de/betrkv/",
+      "purpose": "Umlagefähige Betriebskosten"
+    }
+  ],
+  "categories": {
+    "propertyTax": {
+      "label": "Grundsteuer B",
+      "billable": true,
+      "basis": "§ 2 Nr. 1 BetrKV",
+      "defaultRule": "area"
+    },
+    "rainwater": {
+      "label": "Niederschlagswasser",
+      "billable": true,
+      "basis": "§ 2 Nr. 3 BetrKV",
+      "defaultRule": "area"
+    },
+    "street": {
+      "label": "Straßenreinigung / Winterdienst",
+      "billable": true,
+      "basis": "§ 2 Nr. 8 BetrKV",
+      "defaultRule": "area"
+    },
+    "waste": {
+      "label": "Abfall",
+      "billable": true,
+      "basis": "§ 2 Nr. 8 BetrKV",
+      "defaultRule": "area"
+    },
+    "insurance": {
+      "label": "Gebäudeversicherung",
+      "billable": true,
+      "basis": "§ 2 BetrKV",
+      "defaultRule": "area"
+    },
+    "chimney": {
+      "label": "Schornsteinfeger",
+      "billable": true,
+      "basis": "§ 2 BetrKV",
+      "defaultRule": "area"
+    },
+    "water": {
+      "label": "Kaltwasser / Kanal",
+      "billable": true,
+      "basis": "§ 2 Nr. 2/3 BetrKV",
+      "defaultRule": "consumption"
+    },
+    "garden": {
+      "label": "Gartenpflege",
+      "billable": true,
+      "basis": "§ 2 BetrKV",
+      "defaultRule": "area"
+    },
+    "cleaning": {
+      "label": "Gebäudereinigung",
+      "billable": true,
+      "basis": "§ 2 BetrKV",
+      "defaultRule": "area"
+    },
+    "other": {
+      "label": "Sonstige Betriebskosten",
+      "billable": "check",
+      "basis": "§ 2 Nr. 17 BetrKV",
+      "defaultRule": "area"
+    },
+    "admin": {
+      "label": "Verwaltungskosten",
+      "billable": false,
+      "basis": "§ 1 Abs. 2 Nr. 1 BetrKV",
+      "defaultRule": "owner"
+    },
+    "repair": {
+      "label": "Instandhaltung / Reparatur",
+      "billable": false,
+      "basis": "§ 1 Abs. 2 Nr. 2 BetrKV",
+      "defaultRule": "owner"
+    },
+    "internet": {
+      "label": "Internet Eigennutzung",
+      "billable": false,
+      "basis": "private Kosten",
+      "defaultRule": "owner"
+    },
+    "broadcasting": {
+      "label": "Rundfunkbeitrag",
+      "billable": false,
+      "basis": "private Kosten",
+      "defaultRule": "owner"
+    },
+    "financing": {
+      "label": "Hausfinanzierung",
+      "billable": false,
+      "basis": "keine Betriebskosten",
+      "defaultRule": "owner"
+    }
+  },
+  "verifiedAt": "2026-09-05",
+  "verificationNote": "Smart-Engine-Prüfstand: §§ 556, 556a, 556b, 560 BGB sowie BetrKV über gesetze-im-internet.de"
+}
