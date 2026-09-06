@@ -1,0 +1,271 @@
+name: Apply V17 legal billing fixes
+
+on:
+  push:
+    paths:
+      - ".github/workflows/apply-v17-legal-billing-fixes.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rechts- und Abrechnungslogik patchen
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          p = Path("app.js")
+          text = p.read_text(encoding="utf-8")
+
+          def replace_once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: erwartet 1 Treffer, gefunden {count}")
+              text = text.replace(old, new, 1)
+
+          marker = 'function currentPeriodYear(){const d=new Date();return d.getMonth()>=3?d.getFullYear():d.getFullYear()-1}'
+          insert = marker + r'''
+          function preferredBillingYear(){
+            const d=new Date(),m=d.getMonth();
+            return m>=3&&m<=5?d.getFullYear()-1:currentPeriodYear()
+          }
+          function billingSelectableYears(s=state){
+            const years=new Set([preferredBillingYear(),currentPeriodYear()]);
+            for(const snap of s.billingSnapshots||[])if(Number.isInteger(Number(snap.periodYear)))years.add(Number(snap.periodYear));
+            for(const sett of s.waterSettlements||[])if(Number.isInteger(Number(sett.periodYear)))years.add(Number(sett.periodYear));
+            for(const pos of s.costPositions||[]){
+              const d=String(pos.serviceStart||pos.serviceEnd||"").slice(0,10);
+              if(/^\d{4}-\d{2}-\d{2}$/.test(d)){
+                const [yy,mm]=d.split("-").map(Number);
+                years.add(mm>=4?yy:yy-1)
+              }
+            }
+            const takeover=billingTakeoverDate(s);
+            if(/^\d{4}-\d{2}-\d{2}$/.test(takeover)){
+              const [yy,mm]=takeover.split("-").map(Number),first=mm>=4?yy:yy-1,last=currentPeriodYear();
+              for(let y=first;y<=last&&y<first+60;y++)if(billingPeriodInfo(s,y).active)years.add(y)
+            }else years.add(currentPeriodYear()-1);
+            return [...years].filter(y=>Number.isInteger(y)&&y>1900&&billingPeriodInfo(s,y).active).sort((a,b)=>b-a)
+          }
+          function selectedBillingYear(s=state){
+            const options=billingSelectableYears(s),saved=Number(sessionStorage.getItem("billingSelectedYear")),preferred=preferredBillingYear();
+            if(options.includes(saved))return saved;
+            if(options.includes(preferred))return preferred;
+            return options[0]??currentPeriodYear()
+          }'''
+          replace_once(marker, insert, "Periodenauswahl-Helfer")
+
+          billing_marker = 'function billingAnalysis(state,periodYear){return centralBillingAnalysis(state,periodYear)}'
+          actual_helpers = r'''
+          function paymentAdvanceForLease(payment,lease){
+            if(!payment||payment.direction!=="income"||!lease)return{recognized:false,amount:0};
+            if(payment.leaseId&&lease.id&&payment.leaseId!==lease.id)return{recognized:false,amount:0};
+            const amount=Number(payment.amount||0),rent=Number(lease.rent||0),advance=Number(lease.advance||0);
+            if(!Number.isFinite(amount)||amount<0)return{recognized:false,amount:0};
+            const label=normalizeLabelText(payment.label||""),tenant=normalizeLabelText(lease.tenantName||"");
+            const looksRent=/\bmiete\b|mietzahlung|monatsmiete/.test(label)||(tenant&&label.includes(tenant));
+            const looksAdvance=/betriebskosten|nebenkosten|vorauszahlung|\bbk\b|abschlag/.test(label);
+            if(payment.advanceAmount!==undefined&&payment.advanceAmount!==null&&payment.advanceAmount!==""){
+              const explicit=Number(payment.advanceAmount);
+              return {recognized:looksRent||looksAdvance||!!payment.leaseId,amount:Number.isFinite(explicit)?Math.max(0,explicit):0}
+            }
+            if(looksAdvance&&!looksRent&&advance>0&&amount<=advance*1.5+0.01)return{recognized:true,amount:Math.max(0,amount)};
+            if(!looksRent)return{recognized:false,amount:0};
+            return {recognized:true,amount:Math.max(0,Math.min(advance,amount-rent))}
+          }
+          function actualAdvanceEvidenceInPeriod(s,lease,periodYear){
+            if(!lease)return{amount:0,recognizedPayments:0};
+            const bp=billingPeriodInfo(s,periodYear);if(!bp.active)return{amount:0,recognizedPayments:0};
+            const start=lease.start&&lease.start>bp.start?lease.start:bp.start,end=lease.end&&lease.end<bp.end?lease.end:bp.end;
+            let amount=0,recognizedPayments=0;
+            for(const payment of s.payments||[]){
+              const date=String(payment.date||"").slice(0,10);
+              if(!date||date<start||date>end)continue;
+              const part=paymentAdvanceForLease(payment,lease);
+              if(!part.recognized)continue;
+              recognizedPayments++;
+              amount+=Number(part.amount||0)
+            }
+            return {amount,recognizedPayments}
+          }
+          function actualAdvanceInPeriod(s,lease,periodYear){return actualAdvanceEvidenceInPeriod(s,lease,periodYear).amount}
+          '''
+          replace_once(billing_marker, actual_helpers + "\n" + billing_marker, "Ist-Vorauszahlungs-Helfer")
+
+          replace_once(
+              '  const lease=s.leases[0],advances=monthlyAdvanceInPeriod(s,lease,periodYear);\n  return {events,unresolved,tenantCosts,advances,result:tenantCosts-advances,lease,period:bp}',
+              '  const lease=s.leases[0],advanceEvidence=actualAdvanceEvidenceInPeriod(s,lease,periodYear),advances=advanceEvidence.amount;\n  return {events,unresolved,tenantCosts,advances,advanceEvidence,result:tenantCosts-advances,lease,period:bp}',
+              "Zentrale Ist-Vorauszahlungen"
+          )
+
+          replace_once(
+              '  const advanceOK=lease?Number(analysis.advances)>=0:false;\n  const noErrors=readiness.every(x=>x.ok);',
+              '  const periodEnded=!!analysis.period?.end&&smartToday()>analysis.period.end;\n  const advanceOK=lease?(Number(lease.advance||0)<=0||Number(analysis.advanceEvidence?.recognizedPayments||0)>0):false;\n  const noErrors=readiness.every(x=>x.ok);',
+              "Abschlusszeitpunkt"
+          )
+          replace_once(
+              '    {id:"period",label:"Abrechnungsperiode und Mietvertrag vorhanden",ok:!!lease},',
+              '    {id:"period",label:"Abrechnungsperiode und Mietvertrag vorhanden",ok:!!lease},\n    {id:"periodComplete",label:"Abrechnungsperiode vollständig beendet",ok:periodEnded},',
+              "Periodenende-Check"
+          )
+
+          replace_once(
+              '  const y=currentPeriodYear(),closure=billingClosureChecklist(state,y),a=closure.analysis,snap=(state.billingSnapshots||[]).find(s=>Number(s.periodYear)===Number(y)),ctx=billingPeriodContext(state,y);',
+              '  const y=selectedBillingYear(state),yearOptions=billingSelectableYears(state),closure=billingClosureChecklist(state,y),a=closure.analysis,snap=(state.billingSnapshots||[]).find(s=>Number(s.periodYear)===Number(y)),ctx=billingPeriodContext(state,y);',
+              "Berechnungsansicht Jahr"
+          )
+          replace_once(
+              '  const routeFor={period:["data","property"],costs:["data","positions"],assignment:["data","positions"],water:["rental","water"],advance:["rental","lease"],readiness:["more","smart"]};',
+              '  const routeFor={period:["data","property"],periodComplete:["rental","billing"],costs:["data","positions"],assignment:["data","positions"],water:["rental","water"],advance:["rental","lease"],readiness:["more","smart"]};',
+              "Periodenroute"
+          )
+          old_header = '<p class="muted">${esc(ctx.message)}</p></div><span class="pill ${closure.ok?"good":"warn"}">${closure.ok?"Abschlussbereit":"Noch offen"}</span>'
+          new_header = '<p class="muted">${esc(ctx.message)}</p><label style="display:block;margin-top:10px"><span class="muted">Abrechnungsperiode</span><select id="billingYearSelect" aria-label="Abrechnungsperiode">${yearOptions.map(yy=>`<option value="${yy}" ${yy===y?"selected":""}>${esc(billingPeriodLabel(state,yy))}</option>`).join("")}</select></label></div><span class="pill ${closure.ok?"good":"warn"}">${closure.ok?"Abschlussbereit":"Noch offen"}</span>'
+          replace_once(old_header, new_header, "Perioden-Dropdown")
+          replace_once(
+              '  document.querySelectorAll("[data-closure]").forEach(b=>b.onclick=()=>{const r=routeFor[b.dataset.closure];if(r)go(r[0],r[1])});',
+              '  if($("billingYearSelect"))$("billingYearSelect").onchange=e=>{sessionStorage.setItem("billingSelectedYear",String(Number(e.target.value)));calculationView()};\n  document.querySelectorAll("[data-closure]").forEach(b=>b.onclick=()=>{const r=routeFor[b.dataset.closure];if(r)go(r[0],r[1])});',
+              "Perioden-Dropdown Handler"
+          )
+
+          replace_once(
+              'function createBillingSnapshot(state,periodYear){\n  const analysis=billingAnalysis(state,periodYear);',
+              'function createBillingSnapshot(state,periodYear){\n  const analysis=billingAnalysis(state,periodYear),waterConsumption=settlementConsumption(state,settlementByPeriod(state,periodYear));',
+              "Snapshot Wasserbasis"
+          )
+          replace_once(
+              '    lease:structuredClone(analysis.lease||null),events:structuredClone(analysis.events),\n    unresolved:structuredClone(analysis.unresolved),tenantCosts:Number(analysis.tenantCosts||0),',
+              '    lease:structuredClone(analysis.lease||null),events:structuredClone(analysis.events),\n    waterConsumption:structuredClone(waterConsumption||null),allocationBases:{totalArea:Number(state.property?.totalArea||0),rentalArea:Number(unitByType(state,"rental")?.area||0)},\n    unresolved:structuredClone(analysis.unresolved),tenantCosts:Number(analysis.tenantCosts||0),',
+              "Snapshot Umlagebasen"
+          )
+
+          rule_end = '  return e.decision?.rule||"individuell"\n}'
+          rule_helper = r'''
+          function formatBillingRuleDetails(e,{property={},units=[],waterConsumption=null,allocationBases=null}={}){
+            const share=Number(e.tenantShare||0),fmt=(v,d=0)=>Number(v||0).toLocaleString("de-DE",{minimumFractionDigits:d,maximumFractionDigits:d});
+            if(e.decision?.rule==="consumption"){
+              const house=Number(waterConsumption?.house??e.details?.quantity),tenant=Number(waterConsumption?.tenant??(Number.isFinite(house)?house*share:NaN));
+              if(Number.isFinite(house)&&house>0&&Number.isFinite(tenant))return `Verbrauch ${fmt(tenant,3)} m³ von ${fmt(house,3)} m³ (${percent(share)})`
+            }
+            if(e.decision?.rule==="area"){
+              const total=Number((allocationBases?.totalArea??property?.totalArea)||0),rental=Number((allocationBases?.rentalArea??units.find(u=>u.type==="rental")?.area)||0);
+              if(total>0&&rental>=0)return `Wohnfläche ${fmt(rental,0)} m² von ${fmt(total,0)} m² (${percent(share)})`
+            }
+            return formatRuleForReport(e)
+          }'''
+          replace_once(rule_end, rule_end + "\n" + rule_helper, "Detaillierte Umlageschlüssel")
+
+          replace_once(
+              '  const jsPDF=await loadJSPDF(),a=snapshot||billingAnalysis(state,year),lease=snapshot?.lease||state.leases?.[0],recipient=billingRecipient(lease),sender=snapshot?.correspondence||state.correspondence||{},property=snapshot?.property||state.property;',
+              '  const jsPDF=await loadJSPDF(),a=snapshot||billingAnalysis(state,year),lease=snapshot?.lease||state.leases?.[0],recipient=billingRecipient(lease),sender=snapshot?.correspondence||state.correspondence||{},property=snapshot?.property||state.property,units=snapshot?.units||state.units||[],waterConsumption=snapshot?.waterConsumption||settlementConsumption(state,settlementByPeriod(state,year)),reportCtx={property,units,waterConsumption,allocationBases:snapshot?.allocationBases||null};',
+              "PDF Kontext"
+          )
+          replace_once(
+              '  for(const l of splitAddressLines(sender.landlordAddress||property.address||"")){txt(l,M,y,9);y+=4}\n  y=18;',
+              '  for(const l of splitAddressLines(sender.landlordAddress||property.address||"")){txt(l,M,y,9);y+=4}\n  if(sender.contact){txt(sender.contact,M,y,8);y+=4}\n  y=18;',
+              "PDF Kontakt"
+          )
+          replace_once(
+              '    txt(label,M,y,8);txt(euroPdf(e.amount),112,y,8);txt(formatRuleForReport(e),140,y,7);doc.text(euroPdf(e.tenantAmount),W-M,y,{align:"right"});y+=5',
+              '    txt(label,M,y,8);txt(euroPdf(e.amount),112,y,8);txt(formatBillingRuleDetails(e,reportCtx),140,y,6);doc.text(euroPdf(e.tenantAmount),W-M,y,{align:"right"});y+=5',
+              "PDF detaillierter Schlüssel"
+          )
+          replace_once(
+              '  txt("Abzüglich Vorauszahlungen",M,y,10);doc.text("− "+euroPdf(a.advances),W-M,y,{align:"right"});y+=6;',
+              '  txt("Abzüglich geleistete Vorauszahlungen",M,y,10);doc.text("− "+euroPdf(a.advances),W-M,y,{align:"right"});y+=6;',
+              "PDF Ist-Vorauszahlungen"
+          )
+          replace_once(
+              '  txt("Die zugrunde liegenden Kostenpositionen und Verteilungsmaßstäbe sind oben einzeln dargestellt.",M,y,8);y+=5;\n  txt("Belege können bei Bedarf anhand der in der App hinterlegten Herkunftsnachweise nachvollzogen werden.",M,y,8);y+=10;',
+              '  txt("Die zugrunde liegenden Kostenpositionen und Verteilungsmaßstäbe sind oben einzeln dargestellt.",M,y,8);y+=5;\n  txt("Belegeinsicht wird auf Verlangen ermöglicht (§ 556 Abs. 4 BGB).",M,y,8);y+=5;\n  txt("Die zugehörigen Herkunftsnachweise sind in der App dokumentiert.",M,y,8);y+=5;\n  if(sender.contact){txt(`Kontakt für Rückfragen: ${sender.contact}`,M,y,8);y+=5}y+=5;',
+              "PDF Belegeinsicht"
+          )
+
+          dst_marker = 'results.push(assert("12 Monate Vorauszahlung DST-sicher",Math.abs(monthlyAdvanceInPeriod(dstState,dstState.leases[0],2027)-1800)<0.01));'
+          dst_add = dst_marker + '''
+            const paidAdvanceState=createEmptyState();paidAdvanceState.property.billingTakeoverDate="2027-04-01";paidAdvanceState.leases=[{id:"paid-lease",start:"2027-04-01",end:"",rent:500,advance:150,tenantName:"Ist-Test"}];paidAdvanceState.payments=[];for(let i=0;i<12;i++){const d=new Date(Date.UTC(2027,3+i,3)),date=d.toISOString().slice(0,10);paidAdvanceState.payments.push({date,direction:"income",amount:i===5?500:650,label:"Miete Ist-Test"})}results.push(assert("Ist-Vorauszahlungen statt Vertragssoll",Math.abs(actualAdvanceInPeriod(paidAdvanceState,paidAdvanceState.leases[0],2027)-1650)<0.01));'''
+          replace_once(dst_marker, dst_add, "Ist-Vorauszahlung Regressionstest")
+
+          p.write_text(text, encoding="utf-8")
+
+          sw = Path("service-worker.js")
+          sw_text = sw.read_text(encoding="utf-8")
+          old_cache = 'const CACHE="mietverwaltung-v17-0-2-dst1";'
+          if sw_text.count(old_cache) != 1:
+              raise SystemExit(f"Service-Worker Cache-Marker: erwartet 1 Treffer, gefunden {sw_text.count(old_cache)}")
+          sw.write_text(sw_text.replace(old_cache, 'const CACHE="mietverwaltung-v17-0-2-legal1";', 1), encoding="utf-8")
+
+          t = Path("tests/v17-billing-15y.spec.js")
+          tt = t.read_text(encoding="utf-8")
+          old = 'await page.clock.setFixedTime(new Date(`${year}-07-15T12:00:00+02:00`));'
+          if tt.count(old) != 1:
+              raise SystemExit(f"15J openBillingYear: erwartet 1 Treffer, gefunden {tt.count(old)}")
+          tt = tt.replace(old, 'await page.clock.setFixedTime(new Date(`${year + 1}-06-15T12:00:00+02:00`));', 1)
+          if tt.count("new Date('2027-07-15T12:00:00+02:00')") != 1:
+              raise SystemExit("15J Startzeit-Marker nicht eindeutig")
+          tt = tt.replace("new Date('2027-07-15T12:00:00+02:00')", "new Date('2028-06-15T12:00:00+02:00')", 1)
+          if tt.count("new Date('2041-07-15T12:00:00+02:00')") != 1:
+              raise SystemExit("15J Restore-Zeit-Marker nicht eindeutig")
+          tt = tt.replace("new Date('2041-07-15T12:00:00+02:00')", "new Date('2042-06-15T12:00:00+02:00')", 1)
+          t.write_text(tt, encoding="utf-8")
+
+          lt = Path("tests/v17-legal-professional.spec.js")
+          ltxt = lt.read_text(encoding="utf-8")
+          content_anchor = '''test('V17 Inhaltsrichtigkeit: tatsächlich geleistete BK-Vorauszahlungen bestimmen den Saldo', async ({ browser }) => {'''
+          pdf_anchor = '''test('V17 Dokumentstandard: finale PDF ist formell vollständig und professionell nachvollziehbar', async ({ browser }) => {'''
+          if content_anchor not in ltxt or pdf_anchor not in ltxt:
+              raise SystemExit("Rechtsaudit-Testanker fehlen")
+          before, rest = ltxt.split(content_anchor, 1)
+          content_block, pdf_rest = rest.split(pdf_anchor, 1)
+          if content_block.count("new Date('2027-07-15T12:00:00+02:00')") != 1:
+              raise SystemExit("Rechtsaudit Inhaltszeit-Marker nicht eindeutig")
+          content_block = content_block.replace("new Date('2027-07-15T12:00:00+02:00')", "new Date('2028-06-15T12:00:00+02:00')", 1)
+          if pdf_rest.count("new Date('2041-07-15T12:00:00+02:00')") != 1:
+              raise SystemExit("Rechtsaudit PDF-Zeit-Marker nicht eindeutig")
+          pdf_rest = pdf_rest.replace("new Date('2041-07-15T12:00:00+02:00')", "new Date('2042-06-15T12:00:00+02:00')", 1)
+          lt.write_text(before + content_anchor + content_block + pdf_anchor + pdf_rest, encoding="utf-8")
+
+          print("V17 Rechts-/Abrechnungsfix angewendet.")
+          PY
+
+      - name: Syntax und Fix-Marker prüfen
+        shell: bash
+        run: |
+          node --check app.js
+          node --check service-worker.js
+          node --check tests/v17-billing-15y.spec.js
+          node --check tests/v17-legal-professional.spec.js
+          grep -F 'function actualAdvanceInPeriod' app.js
+          grep -F 'Abrechnungsperiode vollständig beendet' app.js
+          grep -F 'Belegeinsicht wird auf Verlangen ermöglicht' app.js
+          grep -F 'mietverwaltung-v17-0-2-legal1' service-worker.js
+
+      - name: Änderungen committen
+        shell: bash
+        run: |
+          if git diff --quiet -- app.js service-worker.js tests/v17-billing-15y.spec.js tests/v17-legal-professional.spec.js; then
+            echo "Keine Änderung nötig – Fix ist bereits vorhanden."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js service-worker.js tests/v17-billing-15y.spec.js tests/v17-legal-professional.spec.js
+          git commit -m "Fix legal billing finalization, advances and PDF transparency"
+          git push
+
+      - name: 19er Live-E2E-Audit starten
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run e2e-live.yml --ref main
