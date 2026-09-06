@@ -926,8 +926,14 @@ function v18CategoryForecast(s,year,def){
   }
   const prior=periodCategoryTotals(s,year-1).find(x=>x.category===def.category),pp=billingPeriodInfo(s,year-1);
   if(prior?.total>0&&pp.active&&pp.days>0){
-    const scale=cp.days>0?cp.days/pp.days:1,amount=Number(prior.tenant||0)*scale;
-    return {...def,status:"estimated",amount,knownTotal:0,detail:`Aus ${billingPeriodLabel(s,year-1)} auf die aktuelle Periodenlänge hochgerechnet.`}
+    const currentFull=cp.active&&!cp.isTakeoverPeriod&&cp.days===cp.nominalDays;
+    const priorFull=pp.active&&!pp.isTakeoverPeriod&&pp.days===pp.nominalDays;
+    const scale=currentFull&&priorFull?1:(cp.days>0?cp.days/pp.days:1);
+    const amount=Number(prior.tenant||0)*scale;
+    const detail=currentFull&&priorFull
+      ?`Aus ${billingPeriodLabel(s,year-1)} als Jahresvergleich übernommen.`
+      :`Aus ${billingPeriodLabel(s,year-1)} zeitanteilig auf die aktuelle Teilperiode hochgerechnet.`;
+    return {...def,status:"estimated",amount,knownTotal:0,detail}
   }
   return {...def,status:"open",amount:0,knownTotal:0,detail:"Noch kein aktueller oder ausreichend vergleichbarer historischer Wert vorhanden."}
 }
@@ -1669,6 +1675,7 @@ function runSelfTests(){
   results.push(assert("März bleibt trotz Sommerzeit 31 Kalendertage",daysInclusive("2027-03-01","2027-03-31")===31));
   const dstState=createEmptyState();dstState.property.billingTakeoverDate="2027-04-01";dstState.leases=[{id:"dst-lease",start:"2027-04-01",end:"",rent:500,advance:150,tenantName:"DST-Test"}];
   results.push(assert("12 Monate Vorauszahlung DST-sicher",Math.abs(monthlyAdvanceInPeriod(dstState,dstState.leases[0],2027)-1800)<0.01));
+  const v18Leap=createEmptyState();v18Leap.property={...v18Leap.property,totalArea:200,billingTakeoverDate:"2026-04-01"};v18Leap.units=[{id:"o",type:"owner",area:100,occupancy:[]},{id:"r",type:"rental",area:100,occupancy:[]}];v18Leap.costPositions=[positionDefaults({id:"ins-leap",label:"Gebäudeversicherung",category:"insurance",amount:1000,serviceStart:"2026-04-01",serviceEnd:"2027-03-31",assignment:"house",agreement:"area",confirmed:true})];const leapForecast=v18CategoryForecast(v18Leap,2027,{category:"insurance",label:"Gebäudeversicherung",route:"data",sub:"positions"});results.push(assert("V18 Volljahresprognose ignoriert Schaltjahr-Differenz",Math.abs(leapForecast.amount-500)<0.01));
   const v18Partial=createEmptyState();v18Partial.property={...v18Partial.property,totalArea:200,billingTakeoverDate:"2026-09-01"};v18Partial.units=[{id:"o",type:"owner",area:100,occupancy:[]},{id:"r",type:"rental",area:100,occupancy:[]}];v18Partial.leases=[{id:"l",start:"2026-09-01",end:"",rent:400,advance:125,tenantName:"V18"}];results.push(assert("V18 Teilperiode plant 7 BK-Vorauszahlungen",Math.abs(monthlyAdvanceInPeriod(v18Partial,v18Partial.leases[0],2026)-875)<0.01));
   const paidAdvanceState=createEmptyState();paidAdvanceState.property.billingTakeoverDate="2027-04-01";paidAdvanceState.leases=[{id:"paid-lease",start:"2027-04-01",end:"",rent:500,advance:150,tenantName:"Ist-Test"}];paidAdvanceState.payments=[];for(let i=0;i<12;i++){const d=new Date(Date.UTC(2027,3+i,3)),date=d.toISOString().slice(0,10);paidAdvanceState.payments.push({date,direction:"income",amount:i===5?500:650,label:"Miete Ist-Test"})}results.push(assert("Ist-Vorauszahlungen statt Vertragssoll",Math.abs(actualAdvanceInPeriod(paidAdvanceState,paidAdvanceState.leases[0],2027)-1650)<0.01));
   const s=createEmptyState();s.property.totalArea=200;s.units=[{type:"owner",area:100,occupancy:[{from:"2025-01-01",to:"",count:2}]},{type:"rental",area:100,occupancy:[{from:"2025-01-01",to:"",count:2}]}];s.leases=[{id:"lease-test",start:"2025-07-01",end:"",rent:500,advance:150,tenantName:"Testperson"}];
