@@ -2,10 +2,10 @@ const { test, expect } = require('@playwright/test');
 const { runtimeGuard, openApp } = require('./helpers');
 
 test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, request }) => {
-  const expected = process.env.EXPECTED_APP_VERSION || '16.0.1';
+  const expected = process.env.EXPECTED_APP_VERSION || '16.0.2';
   const guard = runtimeGuard(page);
 
-  const app = await request.get('./app.js?v=1601');
+  const app = await request.get('./app.js?v=1602');
   expect(app.ok()).toBeTruthy();
   expect(await app.text()).toContain(`APP_VERSION="${expected}"`);
 

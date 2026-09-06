@@ -13,7 +13,7 @@ test('@external Dokument-OCR lädt im echten Browser und beendet sich kontrollie
   await expect(page.locator('#saveDocumentBtn')).toBeEnabled();
   await page.locator('#saveDocumentBtn').click();
 
-  await expect(page.getByText('E2E OCR Test')).toBeVisible();
+  await expect(page.getByText('E2E OCR Test', { exact: true })).toBeVisible();
   await expect.poll(async () => {
     const body = await page.locator('body').innerText();
     if (/Analysefehler/.test(body)) return 'error';

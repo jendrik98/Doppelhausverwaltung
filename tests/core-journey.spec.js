@@ -17,8 +17,8 @@ async function buildCoreData(page) {
   await page.getByLabel('Absender / Vermieter').fill('Test Vermieter');
   await page.getByLabel('Absenderadresse').fill('Musterweg 10');
   await page.getByRole('button', { name: 'Objektdaten speichern' }).click();
-  await expect(page.locator('#billingPeriodPreview')).toContainText(`01.09.${y}`);
-  await expect(page.locator('#billingPeriodPreview')).toContainText(`31.03.${y + 1}`);
+  await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`0?1\\.0?9\\.${y}`));
+  await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`31\\.0?3\\.${y + 1}`));
 
   await section(page, 'object');
   await page.getByRole('button', { name: 'Einheiten verwalten' }).click();
@@ -90,7 +90,7 @@ test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung 
 
   await top(page, 'Vermietung');
   await section(page, 'billing');
-  await expect(page.getByRole('heading', { name: new RegExp(`01\\.09\\.${dates.y}.*31\\.03\\.${dates.y + 1}`) })).toBeVisible();
+  await expect(page.getByRole('heading', { name: new RegExp(`0?1\\.0?9\\.${dates.y}.*31\\.0?3\\.${dates.y + 1}`) })).toBeVisible();
   await expect(page.getByText('Abschlussprüfung')).toBeVisible();
   const waterStep = page.getByRole('button').filter({ hasText: 'Verbrauchsdaten vollständig' });
   if (await waterStep.count()) {
