@@ -46,7 +46,7 @@ async function addUnit(page, data) {
   await page.getByLabel('Nutzung').selectOption(data.type);
   await page.getByLabel('Wohnfläche (m²)').fill(String(data.area));
   await page.getByLabel('Baujahr dieses Gebäudeteils').fill(String(data.year));
-  await page.getByLabel('Gebäudeteil').fill(data.part);
+  await page.getByLabel('Gebäudeteil', { exact: true }).fill(data.part);
   await page.getByLabel('Aktuelle Personenzahl').fill(String(data.persons));
   await page.getByLabel('Personenzahl gültig ab').fill(data.from);
   await page.getByRole('button', { name: 'Speichern', exact: true }).click();
