@@ -52,6 +52,20 @@ function contextOptions() {
   };
 }
 
+async function openBillingYear(page, year) {
+  await page.clock.setFixedTime(new Date(`${year}-07-15T12:00:00+02:00`));
+
+  // Wichtig: Hash-Navigation allein lädt den extern in IndexedDB geschriebenen
+  // State nicht neu in den RAM der App. Deshalb zuerst Zielroute setzen und
+  // anschließend einen echten Dokument-Reload ausführen.
+  if (!page.url().endsWith('#rental/billing')) {
+    await page.goto('./#rental/billing', { waitUntil: 'domcontentloaded' });
+  }
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#app')).not.toBeEmpty();
+  await page.waitForTimeout(450);
+}
+
 function buildRealBillingHistory(base) {
   const s = structuredClone(base);
   const startYear = 2027;
@@ -312,18 +326,27 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   const built = buildRealBillingHistory(base);
   await writeState(page, built.state);
 
+  // Beweise zunächst, dass der komplette Seed wirklich persistent gespeichert wurde.
+  const persistedSeed = await readState(page);
+  expect(persistedSeed.property.name).toBe('V17 15-Jahre-Abrechnungshaus');
+  expect(persistedSeed.waterSettlements).toHaveLength(15);
+  expect(persistedSeed.costPositions).toHaveLength(30);
+  expect(persistedSeed.payments).toHaveLength(210);
+
   // 15 Perioden werden nacheinander durch den echten UI-Abschlussweg eingefroren.
+  // Jeder Durchlauf lädt den gespeicherten IndexedDB-State neu in die Anwendung.
   for (const e of built.expected) {
-    await page.clock.setFixedTime(new Date(`${e.y}-07-15T12:00:00+02:00`));
-    await page.goto('./#rental/billing', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#app')).not.toBeEmpty();
-    await page.waitForTimeout(350);
+    await openBillingYear(page, e.y);
 
     const body = page.locator('#workspaceBody');
     await expect(body).toContainText('Abschlussprüfung');
 
     const freeze = page.getByRole('button', { name: 'Final prüfen & einfrieren' });
-    await expect(freeze, `Periode ${e.y}/${e.y + 1} muss vollständig abschließbar sein`).toBeEnabled();
+    if (await freeze.isDisabled()) {
+      const ui = (await body.innerText()).replace(/\s+/g, ' ').slice(0, 1800);
+      throw new Error(`Periode ${e.y}/${e.y + 1} ist nicht abschließbar. Sichtbare Abschlussprüfung: ${ui}`);
+    }
+    await expect(freeze).toBeEnabled();
 
     await freeze.click();
     const modal = page.locator('#modal');
@@ -367,9 +390,7 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   expect(new Set(finalState.billingSnapshots.map(x => x.integrityHash)).size).toBe(15);
 
   // Der letzte eingefrorene Stand muss als echtes PDF exportierbar sein.
-  await page.clock.setFixedTime(new Date('2041-07-15T12:00:00+02:00'));
-  await page.goto('./#rental/billing', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(350);
+  await openBillingYear(page, 2041);
   await expect(page.getByText('Abrechnung eingefroren')).toBeVisible();
 
   const pdfPromise = page.waitForEvent('download');
