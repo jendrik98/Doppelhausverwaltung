@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 25
     env:
       E2E_BASE_URL: https://jendrik98.github.io/Doppelhausverwaltung/
-      EXPECTED_APP_VERSION: '16.0.0'
+      EXPECTED_APP_VERSION: '16.0.1'
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v4
@@ -45,13 +45,13 @@ jobs:
       - name: Chromium installieren
         run: npx playwright install --with-deps chromium
 
-      - name: Auf V16-Live-Deployment warten
+      - name: Auf aktuelles Live-Deployment warten
         shell: bash
         run: |
           set -e
-          echo "Warte auf ${E2E_BASE_URL}app.js?v=1600 …"
+          echo "Warte auf ${E2E_BASE_URL}app.js?v=1601 …"
           for i in {1..60}; do
-            BODY="$(curl -fsSL --max-time 15 "${E2E_BASE_URL}app.js?v=1600" || true)"
+            BODY="$(curl -fsSL --max-time 15 "${E2E_BASE_URL}app.js?v=1601" || true)"
             if grep -Fq "APP_VERSION=\"${EXPECTED_APP_VERSION}\"" <<<"$BODY"; then
               echo "Live-Version ${EXPECTED_APP_VERSION} ist verfügbar."
               exit 0
