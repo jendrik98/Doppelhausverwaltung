@@ -55,7 +55,7 @@ async function buildCoreData(page) {
   await section(page, 'costs');
   await page.getByRole('button', { name: 'Kostenpositionen' }).click();
   await expect(page.getByRole('heading', { name: 'Kommunalabgaben Test' })).toBeVisible();
-  await expect(page.getByText('gesamtes Haus')).toBeVisible();
+  await expect(page.getByText(/gesamtes Haus · Wohnfläche/)).toBeVisible();
   await expect(page.getByText('Wohnfläche')).toBeVisible();
 
   return { y, takeover, predecessor, end };

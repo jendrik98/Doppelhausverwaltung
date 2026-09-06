@@ -50,7 +50,7 @@ async function addUnit(page, data) {
   await page.getByLabel('Aktuelle Personenzahl').fill(String(data.persons));
   await page.getByLabel('Personenzahl gültig ab').fill(data.from);
   await page.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(page.getByRole('heading', { name: data.name })).toBeVisible();
+  await expect(page.getByText(data.name, { exact: true }).first()).toBeVisible();
 }
 
 module.exports = { runtimeGuard, openApp, top, section, currentPeriodYear, addUnit };
