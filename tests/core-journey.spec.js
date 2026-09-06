@@ -70,14 +70,14 @@ test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung 
   await page.getByRole('button', { name: 'Zahlungen & Kontoimport' }).click();
   await page.getByRole('button', { name: 'Buchung hinzufügen' }).click();
   await page.getByLabel('Datum').fill(`${dates.y}-11-15`);
-  await page.getByLabel('Art').selectOption('outflow');
+  await page.getByLabel('Art', { exact: true }).selectOption('outflow');
   await page.getByLabel('Bezeichnung').fill('Kommunalabgaben Test');
   await page.getByLabel('Betrag €').fill('90');
   await page.getByRole('button', { name: 'Speichern', exact: true }).click();
   await expect(page.getByText('Kommunalabgaben Test')).toBeVisible();
 
   await page.getByRole('button', { name: 'Buchung hinzufügen' }).click();
-  await page.getByLabel('Art').selectOption('income');
+  await page.getByLabel('Art', { exact: true }).selectOption('income');
   await page.getByLabel('Bezeichnung').fill('Miete Testperson');
   await page.getByLabel('Betrag €').fill('650');
   await page.getByRole('button', { name: 'Speichern', exact: true }).click();
