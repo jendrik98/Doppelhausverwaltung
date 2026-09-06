@@ -18,7 +18,7 @@ const SERVICE_WORKER_REGISTRATION=("serviceWorker" in navigator)
 function createEmptyState(){
   return {
     schemaVersion:SCHEMA_VERSION,
-    meta:{appVersion:"17.1.0",createdAt:new Date().toISOString(),migratedFrom:null,revision:0,lastSavedAt:null,lastBackupAt:null,lastIntegrityCheckAt:null,errorLog:[],v17:{integrated:true,profileSchema:3,waterModule:3,utilityProfile:{coldWater:"landlord",heating:"tenant",hotWater:"tenant",electricity:"tenant",gas:"tenant"}}},
+    meta:{appVersion:"18.0.0",createdAt:new Date().toISOString(),migratedFrom:null,revision:0,lastSavedAt:null,lastBackupAt:null,lastIntegrityCheckAt:null,errorLog:[],v17:{integrated:true,profileSchema:3,waterModule:3,utilityProfile:{coldWater:"landlord",heating:"tenant",hotWater:"tenant",electricity:"tenant",gas:"tenant"}}},
     property:{name:"",address:"",totalArea:0,year:""},
     correspondence:{landlordName:"",landlordAddress:"",iban:"",paymentReference:"",contact:""},
     units:[],
@@ -62,7 +62,7 @@ function normalizeState(s){
   out.finance={...base.finance,...(s?.finance||{})};
   for(const k of ["units","leases","sources","costPositions","meters","waterSettlements","containers","water","tasks","billingWorkflows","billingSnapshots","payments","audit"])out[k]=Array.isArray(s?.[k])?s[k]:[];
   out.schemaVersion=SCHEMA_VERSION;
-  out.meta={...base.meta,...(s?.meta||{}),appVersion:"17.1.0"};
+  out.meta={...base.meta,...(s?.meta||{}),appVersion:"18.0.0"};
   out.meta.v17={...base.meta.v17,...(s?.meta?.v17||{}),integrated:true,profileSchema:3,waterModule:3,utilityProfile:{coldWater:"landlord",heating:"tenant",hotWater:"tenant",electricity:"tenant",gas:"tenant"}};
   out.meta.revision=Number(out.meta.revision||0);
   out.meta.errorLog=Array.isArray(out.meta.errorLog)?out.meta.errorLog:[];
@@ -336,7 +336,7 @@ function replaceAssessmentPositions(state,source,positions){
 
 
 /* ===== integrity.js ===== */
-const APP_VERSION="17.1.0";
+const APP_VERSION="18.0.0";
 const MAX_ERROR_LOG=100;
 let LAST_STABLE_STATE=null;
 
