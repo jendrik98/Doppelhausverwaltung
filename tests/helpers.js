@@ -42,15 +42,25 @@ async function currentPeriodYear(page) {
 
 async function addUnit(page, data) {
   await page.getByRole('button', { name: 'Einheit hinzufügen' }).click();
-  await page.getByLabel('Bezeichnung').fill(data.name);
-  await page.getByLabel('Nutzung').selectOption(data.type);
-  await page.getByLabel('Wohnfläche (m²)').fill(String(data.area));
-  await page.getByLabel('Baujahr dieses Gebäudeteils').fill(String(data.year));
-  await page.getByLabel('Gebäudeteil', { exact: true }).fill(data.part);
-  await page.getByLabel('Aktuelle Personenzahl').fill(String(data.persons));
-  await page.getByLabel('Personenzahl gültig ab').fill(data.from);
-  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(page.getByText(data.name, { exact: true }).first()).toBeVisible();
+
+  const modal = page.locator('#modal');
+  await expect(modal).toBeVisible();
+
+  await modal.getByLabel('Bezeichnung').fill(data.name);
+  await modal.getByLabel('Nutzung').selectOption(data.type);
+  await modal.getByLabel('Wohnfläche (m²)').fill(String(data.area));
+  await modal.getByLabel('Baujahr dieses Gebäudeteils').fill(String(data.year));
+  await modal.getByLabel('Gebäudeteil', { exact: true }).fill(data.part);
+  await modal.getByLabel('Aktuelle Personenzahl').fill(String(data.persons));
+  await modal.getByLabel('Personenzahl gültig ab').fill(data.from);
+
+  await expect(modal.getByLabel('Bezeichnung')).toHaveValue(data.name);
+  await expect(modal.getByLabel('Wohnfläche (m²)')).toHaveValue(String(data.area));
+
+  await modal.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await expect(modal).toHaveClass(/hidden/);
+
+  await expect(page.locator('#workspaceBody').getByText(data.name, { exact: true }).first()).toBeVisible();
 }
 
 module.exports = { runtimeGuard, openApp, top, section, currentPeriodYear, addUnit };

@@ -17,8 +17,8 @@ async function buildCoreData(page) {
   await page.getByLabel('Absender / Vermieter').fill('Test Vermieter');
   await page.getByLabel('Absenderadresse').fill('Musterweg 10');
   await page.getByRole('button', { name: 'Objektdaten speichern' }).click();
-  await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`0?1\.0?9\.${y}`));
-  await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`31\.0?3\.${y + 1}`));
+  await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`0?1\\.0?9\\.${y}`));
+  await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`31\\.0?3\\.${y + 1}`));
 
   await section(page, 'object');
   await page.getByRole('button', { name: 'Einheiten verwalten' }).click();
@@ -60,6 +60,32 @@ async function buildCoreData(page) {
   return { y, takeover, predecessor, end };
 }
 
+async function addPayment(page, { date, direction, label, amount }) {
+  await page.getByRole('button', { name: 'Buchung hinzufügen' }).click();
+
+  const modal = page.locator('#modal');
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
+
+  const dateInput = modal.locator('input[name="date"]');
+  const directionSelect = modal.locator('select[name="direction"]');
+  const labelInput = modal.locator('input[name="label"]');
+  const amountInput = modal.locator('input[name="amount"]');
+
+  await dateInput.fill(date);
+  await directionSelect.selectOption(direction);
+  await labelInput.fill(label);
+  await amountInput.fill(String(amount));
+
+  await expect(dateInput).toHaveValue(date);
+  await expect(directionSelect).toHaveValue(direction);
+  await expect(labelInput).toHaveValue(label);
+  await expect(amountInput).toHaveValue(String(amount));
+
+  await modal.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await expect(modal).toHaveClass(/hidden/);
+}
+
 test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung → Persistenz', async ({ page }) => {
   const guard = runtimeGuard(page);
   await openApp(page);
@@ -68,20 +94,32 @@ test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung 
   await top(page, 'Finanzen');
   await section(page, 'payments');
   await page.getByRole('button', { name: 'Zahlungen & Kontoimport' }).click();
-  await page.getByRole('button', { name: 'Buchung hinzufügen' }).click();
-  await page.getByLabel('Datum').fill(`${dates.y}-11-15`);
-  await page.locator('select[name="direction"]').selectOption('outflow');
-  await page.getByLabel('Bezeichnung').fill('Kommunalabgaben Test');
-  await page.getByLabel('Betrag €').fill('90');
-  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(page.locator('#workspaceBody').getByText('Kommunalabgaben Test', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Buchung hinzufügen' }).click();
-  await page.locator('select[name="direction"]').selectOption('income');
-  await page.getByLabel('Bezeichnung').fill('Miete Testperson');
-  await page.getByLabel('Betrag €').fill('650');
-  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(page.getByText(/Mietzahlung wahrscheinlich/)).toBeVisible();
+  await addPayment(page, {
+    date: `${dates.y}-11-15`,
+    direction: 'outflow',
+    label: 'Kommunalabgaben Test',
+    amount: 90
+  });
+
+  const outflowBooking = page.locator('#workspaceBody .item').filter({ hasText: 'Kommunalabgaben Test' }).first();
+  await expect(outflowBooking).toBeVisible();
+  await expect(outflowBooking).toContainText('90,00 €');
+
+  await addPayment(page, {
+    date: `${dates.y}-11-15`,
+    direction: 'income',
+    label: 'Miete Testperson',
+    amount: 650
+  });
+
+  const rentBooking = page.locator('#workspaceBody .item').filter({ hasText: 'Miete Testperson' }).first();
+  await expect(rentBooking).toBeVisible();
+  await expect(rentBooking).toContainText('650,00 €');
+  await expect(rentBooking).toContainText('Mietzahlung wahrscheinlich');
+
+  const rentCountCard = page.locator('#workspaceBody article.card').filter({ hasText: 'erkannte Mietzahlungen' });
+  await expect(rentCountCard).toContainText('1');
 
   await section(page, 'payments');
   await page.getByRole('button', { name: 'Zahlungen zuordnen' }).click();
@@ -89,7 +127,7 @@ test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung 
 
   await top(page, 'Vermietung');
   await section(page, 'billing');
-  await expect(page.getByRole('heading', { name: new RegExp(`0?1\.0?9\.${dates.y}.*31\.0?3\.${dates.y + 1}`) })).toBeVisible();
+  await expect(page.getByRole('heading', { name: new RegExp(`0?1\\.0?9\\.${dates.y}.*31\\.0?3\\.${dates.y + 1}`) })).toBeVisible();
   await expect(page.getByText('Abschlussprüfung')).toBeVisible();
   const waterStep = page.getByRole('button').filter({ hasText: 'Verbrauchsdaten vollständig' });
   if (await waterStep.count()) {
