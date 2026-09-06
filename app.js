@@ -247,7 +247,7 @@ function matchMeterFromOCR(s,text,preferredMeterId=""){
 function meterCandidateHistoryScore(meter,date,value){
   if(!meter||value==null)return 0;const prev=(meter.readings||[]).filter(r=>r.date<=date).sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];if(!prev)return 0;
   const diff=Number(value)-Number(prev.value);if(diff<0)return-.42;let score=diff<1?.12:diff<50?.20:diff<250?.08:-.24;
-  const trend=meterTrend(meter),last=trend.segments?.at(-1);if(last&&prev.date<date){const days=Math.max(1,Math.floor((new Date(date+"T00:00:00")-new Date(prev.date+"T00:00:00"))/86400000)),expected=Math.max(.001,last.perDay*days),ratio=diff/expected;if(ratio>=.25&&ratio<=4)score+=.14;else if(ratio>12)score-=.18}return score
+  const trend=meterTrend(meter),last=trend.segments?.at(-1);if(last&&prev.date<date){const days=Math.max(1,calendarDayDiff(prev.date,date)),expected=Math.max(.001,last.perDay*days),ratio=diff/expected;if(ratio>=.25&&ratio<=4)score+=.14;else if(ratio>12)score-=.18}return score
 }
 function rankMeterCandidates(s,meterId,date,candidates){
   const meter=meterById(s,meterId),groups=new Map();
@@ -576,7 +576,7 @@ function tokenSimilarity(a,b){
 }
 function daysDistance(a,b){
   if(!a||!b)return 9999;
-  return Math.abs((new Date(a+"T00:00:00")-new Date(b+"T00:00:00"))/86400000)
+  const d=calendarDayDiff(a,b);return Number.isFinite(d)?Math.abs(d):9999
 }
 function dueDatesForPosition(state,p){
   const s=(state.sources||[]).find(x=>x.id===p.sourceId);
@@ -899,7 +899,7 @@ function billingDeadlineInsights(state){
   for(let y=cy-4;y<cy;y++){
     const lease=state.leases?.[0];if(!lease||!activeLeaseInMonth(lease,`${y+1}-03`))continue;
     if(periodEnd(y)>=today||snapshotFor(state,y))continue;
-    const deadline=periodDeadlineISO(y),days=Math.ceil((new Date(deadline+"T00:00:00")-new Date(today+"T00:00:00"))/86400000);
+    const deadline=periodDeadlineISO(y),days=calendarDayDiff(today,deadline);
     if(days<0)out.push({id:`deadline-${y}`,severity:"bad",title:`Abrechnung ${billingPeriodLabel(state,y)} ohne gespeicherten Abschluss`,detail:`Die reguläre 12-Monats-Frist endete am ${new Date(deadline+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"calculation"});
     else if(days<=120)out.push({id:`deadline-${y}`,severity:days<=30?"bad":"warn",title:`Abrechnung ${billingPeriodLabel(state,y)} abschließen`,detail:`Noch ${days} Tage bis zum regulären Fristende ${new Date(deadline+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"calculation"})
   }
@@ -1035,10 +1035,10 @@ function smartTaskSuggestions(state){
     if(d<today)continue;const title=`${s.name} – Fälligkeit`;const k=`${normalizeLabelText(title)}|${d}`;if(!existing.has(k))out.push({title,due:d,lead:14,reason:"Fälligkeit aus Kostenquelle"})
   }
   for(const m of state.meters||[]){
-    const last=latestMeterReading(m),age=last?Math.floor((Date.now()-new Date(last.date+"T00:00:00"))/86400000):999;
+    const last=latestMeterReading(m),age=last?Math.max(0,calendarDayDiff(last.date,smartToday())):999;
     if(age>90){const due=new Date();due.setDate(due.getDate()+7);const title=`${m.name} ablesen`;const ds=due.toISOString().slice(0,10),k=`${normalizeLabelText(title)}|${ds}`;if(!existing.has(k))out.push({title,due:ds,lead:2,reason:last?`Letzte Ablesung vor ${age} Tagen`:"Noch keine Ablesung"})}
   }
-  const backupAge=state.meta?.lastBackupAt?Math.floor((Date.now()-new Date(state.meta.lastBackupAt))/86400000):999;
+  const backupAge=state.meta?.lastBackupAt?Math.max(0,calendarDayDiff(String(state.meta.lastBackupAt).slice(0,10),smartToday())):999;
   if(backupAge>30){const due=new Date();due.setDate(due.getDate()+3);out.push({title:"Verschlüsselte Datensicherung erstellen",due:due.toISOString().slice(0,10),lead:1,reason:"Datensicherung ist nicht aktuell"})}
   return out.slice(0,12)
 }
@@ -1054,7 +1054,7 @@ function smartInsights(state){
   for(const a of smartDataAnomalies(state))out.push(a);
   const adv=advanceAdjustmentSuggestion(state);if(adv?.material)out.push({id:"advance",severity:"info",title:"Betriebskostenvorauszahlung prüfen",detail:`Aktuell ${euro(adv.current)} / Monat · rechnerischer Richtwert aus letzter Abrechnung ${euro(adv.recommended)} / Monat.`,why:"§ 560 Abs. 4 BGB; nur rechnerischer Vorschlag",confidence:80,route:"rental",sub:"calculation"});
   if(proj.missingCategories.length&&proj.confidence>=55)out.push({id:"projection",severity:"info",title:"Abrechnungsprognose nutzt Vorjahreswerte",detail:`Für ${proj.missingCategories.map(x=>categoryLabel(x.category)).join(", ")} fehlen noch aktuelle Werte. Prognose: ${euro(Math.abs(proj.projectedResult))} ${proj.projectedResult>=0?"Nachzahlung":"Guthaben"}.`,why:"Bekannte Kosten + fehlende Vorjahreskategorien",confidence:proj.confidence,route:"rental",sub:"calculation"});
-  const age=state.meta?.lastBackupAt?Math.floor((Date.now()-new Date(state.meta.lastBackupAt))/86400000):9999;if(age>30)out.push({id:"backup",severity:"warn",title:state.meta?.lastBackupAt?"Datensicherung älter als 30 Tage":"Noch keine verschlüsselte Datensicherung",detail:"Eine aktuelle Vollsicherung schützt Daten und Dokumente bei Geräteverlust.",why:"Datensicherheit",confidence:100,route:"more",sub:"backup"});
+  const age=state.meta?.lastBackupAt?Math.max(0,calendarDayDiff(String(state.meta.lastBackupAt).slice(0,10),smartToday())):9999;if(age>30)out.push({id:"backup",severity:"warn",title:state.meta?.lastBackupAt?"Datensicherung älter als 30 Tage":"Noch keine verschlüsselte Datensicherung",detail:"Eine aktuelle Vollsicherung schützt Daten und Dokumente bei Geräteverlust.",why:"Datensicherheit",confidence:100,route:"more",sub:"backup"});
   const rank={bad:0,warn:1,info:2,good:3};return out.sort((a,b)=>(rank[a.severity]??9)-(rank[b.severity]??9)||Number(b.confidence||0)-Number(a.confidence||0))
 }
 
@@ -1080,7 +1080,7 @@ function smartAnswer(state,query){
   if(/kosten|steiger|teuer|entwicklung/.test(q)){const al=costTrendAlerts(state,y);return {title:"Kostenentwicklung",answer:al.length?al.map(x=>x.text).join(" "):"Es gibt derzeit keine belastbare Kostenveränderung ab 15 % gegenüber der Vorperiode.",route:"owner",sub:"analytics"}}
   if(/zahlung|zuord|bezahlt|rechnung/.test(q)){const p=smartPaymentPlan(state);return {title:"Zahlungszuordnung",answer:p.length?`${p.length} offene Ausgabe(n) haben plausible Treffer. Der beste Treffer liegt bei ${p[0].suggestions[0].score} % und bezieht sich auf „${p[0].suggestions[0].target.label||p[0].suggestions[0].target.name}“.`:"Aktuell gibt es keine unzugeordnete Ausgabe mit einem ausreichend starken Treffer.",route:"owner",sub:"reconciliation"}}
   if(/dokument|beleg|bescheid|post/.test(q)){const d=state.documentsCache||[],n=d.filter(x=>documentWorkflowState(x)==="new").length,r=d.filter(x=>documentWorkflowState(x)==="review").length;return {title:"Dokumente",answer:`Dokumenten-Inbox: ${n} neu, ${r} zu prüfen, ${d.filter(x=>documentWorkflowState(x)==="done").length} erledigt.`,route:"data",sub:"documents"}}
-  if(/backup|sicherung/.test(q)){const age=state.meta?.lastBackupAt?Math.floor((Date.now()-new Date(state.meta.lastBackupAt))/86400000):null;return {title:"Datensicherung",answer:age==null?"Es ist noch keine verschlüsselte Vollsicherung dokumentiert.":`Die letzte verschlüsselte Vollsicherung ist ${age} Tag(e) alt.`,route:"more",sub:"backup"}}
+  if(/backup|sicherung/.test(q)){const age=state.meta?.lastBackupAt?Math.max(0,calendarDayDiff(String(state.meta.lastBackupAt).slice(0,10),smartToday())):null;return {title:"Datensicherung",answer:age==null?"Es ist noch keine verschlüsselte Vollsicherung dokumentiert.":`Die letzte verschlüsselte Vollsicherung ist ${age} Tag(e) alt.`,route:"more",sub:"backup"}}
   if(/frist|recht|rechtsstand/.test(q)){const dl=billingDeadlineInsights(state);return {title:"Fristen & Rechtsstand",answer:`Hinterlegter Rechtsstand: ${ACTIVE_LEGAL_PACK?.effectiveDate||LAW_DATE}. ${dl.length?dl.map(x=>x.detail).join(" "):"Aktuell erkennt die App keine unmittelbar bevorstehende offene Abrechnungsfrist."}`,route:"more",sub:"legal"}}
   if(/vorauszahlung|abschlag/.test(q)){const a=advanceAdjustmentSuggestion(state);return {title:"Betriebskostenvorauszahlung",answer:a?`${a.basis} Aktuell ${euro(a.current)}, rechnerischer Richtwert ${euro(a.recommended)} pro Monat.`:"Für einen belastbaren rechnerischen Vorschlag wird zunächst eine abgeschlossene Abrechnung benötigt.",route:"rental",sub:"calculation"}}
   return {title:"Gesamtstatus",answer:smartSummaryText(state),route:ins[0]?.route||"home",sub:ins[0]?.sub||""}
@@ -1192,11 +1192,25 @@ function billingPeriodContext(s,year){
 }
 
 
-function overlapDays(aStart,aEnd,bStart,bEnd){
-  const a1=new Date(aStart+"T00:00:00"),a2=new Date(aEnd+"T23:59:59"),b1=new Date(bStart+"T00:00:00"),b2=new Date(bEnd+"T23:59:59");
-  const s=a1>b1?a1:b1,e=a2<b2?a2:b2;if(s>e)return 0;return Math.floor((e-s)/86400000)+1
+function dateOnlyUtcValue(v){
+  const m=String(v||"").slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m)return NaN;
+  return Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]))
 }
-function daysInclusive(start,end){return Math.floor((new Date(end+"T23:59:59")-new Date(start+"T00:00:00"))/86400000)+1}
+function calendarDayDiff(start,end){
+  const a=dateOnlyUtcValue(start),b=dateOnlyUtcValue(end);
+  if(!Number.isFinite(a)||!Number.isFinite(b))return NaN;
+  return Math.round((b-a)/86400000)
+}
+function overlapDays(aStart,aEnd,bStart,bEnd){
+  const s=aStart>bStart?aStart:bStart,e=aEnd<bEnd?aEnd:bEnd;
+  if(!s||!e||s>e)return 0;
+  return daysInclusive(s,e)
+}
+function daysInclusive(start,end){
+  const d=calendarDayDiff(start,end);
+  return Number.isFinite(d)&&d>=0?d+1:0
+}
 
 function unitByType(state,type){return state.units.find(u=>u.type===type)}
 function currentPersons(unit,date=new Date().toISOString().slice(0,10)){
@@ -1229,11 +1243,14 @@ function personShareForPeriod(state,start,end){
 
 function monthlyAdvanceInPeriod(s,lease,periodYear){
   if(!lease)return 0;const bp=billingPeriodInfo(s,periodYear);if(!bp.active)return 0;
-  const ps=new Date(bp.start+"T00:00:00"),pe=new Date(bp.end+"T00:00:00"),ls=lease.start?new Date(lease.start+"T00:00:00"):ps,le=lease.end?new Date(lease.end+"T00:00:00"):pe;
-  let total=0;
-  for(let d=new Date(ps.getFullYear(),ps.getMonth(),1);d<=pe;d=new Date(d.getFullYear(),d.getMonth()+1,1)){
-    const ms=new Date(d.getFullYear(),d.getMonth(),1),me=new Date(d.getFullYear(),d.getMonth()+1,0),start=ls>ms?ls:ms,end=le<me?le:me;
-    if(start<=end){const active=Math.floor((end-start)/86400000)+1,days=me.getDate();total+=Number(lease.advance||0)*(active/days)}
+  const ps=bp.start,pe=bp.end,ls=lease.start||ps,le=lease.end||pe;
+  let total=0,[y,m]=ps.slice(0,7).split("-").map(Number);
+  const endMonth=pe.slice(0,7),pad=n=>String(n).padStart(2,"0");
+  while(`${y}-${pad(m)}`<=endMonth){
+    const days=new Date(Date.UTC(y,m,0)).getUTCDate();
+    const ms=`${y}-${pad(m)}-01`,me=`${y}-${pad(m)}-${pad(days)}`,start=ls>ms?ls:ms,end=le<me?le:me;
+    if(start<=end){const active=daysInclusive(start,end);total+=Number(lease.advance||0)*(active/days)}
+    m++;if(m===13){m=1;y++}
   }
   return total
 }
@@ -1482,6 +1499,9 @@ function runSelfTests(){
   results.push(assert("Standardperiode startet 01.04.",periodStart(2025)==="2025-04-01"));
   results.push(assert("Standardperiode endet 31.03.",periodEnd(2025)==="2026-03-31"));
   results.push(assert("Schaltjahr 2028",daysInclusive("2028-01-01","2028-12-31")===366));
+  results.push(assert("März bleibt trotz Sommerzeit 31 Kalendertage",daysInclusive("2027-03-01","2027-03-31")===31));
+  const dstState=createEmptyState();dstState.property.billingTakeoverDate="2027-04-01";dstState.leases=[{id:"dst-lease",start:"2027-04-01",end:"",rent:500,advance:150,tenantName:"DST-Test"}];
+  results.push(assert("12 Monate Vorauszahlung DST-sicher",Math.abs(monthlyAdvanceInPeriod(dstState,dstState.leases[0],2027)-1800)<0.01));
   const s=createEmptyState();s.property.totalArea=200;s.units=[{type:"owner",area:100,occupancy:[{from:"2025-01-01",to:"",count:2}]},{type:"rental",area:100,occupancy:[{from:"2025-01-01",to:"",count:2}]}];s.leases=[{id:"lease-test",start:"2025-07-01",end:"",rent:500,advance:150,tenantName:"Testperson"}];
   results.push(assert("Wohnfläche 50/50",Math.abs(shares(s,"2025-07-01").area-.5)<1e-9));results.push(assert("Personen 50/50",Math.abs(shares(s,"2025-07-01").persons-.5)<1e-9));
   s.property.billingTakeoverDate="2025-07-01";s.property.predecessorBillingEnd="2025-06-30";const bp=billingPeriodInfo(s,2025),next=billingPeriodInfo(s,2026);
@@ -1651,7 +1671,7 @@ function taskList(){
   for(const t of state.tasks||[])push(t);
   return out.sort((a,b)=>(a.due||"").localeCompare(b.due||""))
 }
-function daysUntil(d){return Math.ceil((new Date(d+"T00:00:00")-new Date(new Date().toDateString()))/86400000)}
+function daysUntil(d){const x=calendarDayDiff(smartToday(),d);return Number.isFinite(x)?x:0}
 function taskHTML(t){
   const d=daysUntil(t.due),cls=d<0?"bad":d<=Number(t.lead||30)?"warn":"good",origin=t.origin==="source"?"aus Fälligkeit":t.origin==="billing"?"Abrechnungsfrist":t.origin==="smart"?"vorgeschlagen":"eigene Erinnerung";
   return `<div class="task premium-task"><div><h4>${esc(t.title)}</h4><small>${dateDE(t.due)} · ${esc(origin)}</small></div><span class="pill ${cls}">${d<0?`${Math.abs(d)} Tage überfällig`:d===0?"heute":`in ${d} Tagen`}</span></div>`
@@ -2837,7 +2857,7 @@ function auditView(){
   $("workspaceBody").innerHTML=state.audit.length?state.audit.map(x=>`<div class="item"><h3>${esc(x.action)}</h3><p>${esc(x.detail)}</p><small>${new Date(x.at).toLocaleString("de-DE")}</small></div>`).join(""):`<div class="card muted">Noch keine Änderungen protokolliert.</div>`
 }
 function legalView(){
-  const effective=ACTIVE_LEGAL_PACK?.effectiveDate||LAW_DATE,age=Math.floor((new Date()-new Date(effective+"T00:00:00"))/86400000),sources=ACTIVE_LEGAL_PACK?.sources||LEGAL_SOURCES;
+  const effective=ACTIVE_LEGAL_PACK?.effectiveDate||LAW_DATE,age=Math.max(0,calendarDayDiff(effective,smartToday())),sources=ACTIVE_LEGAL_PACK?.sources||LEGAL_SOURCES;
   $("workspaceBody").innerHTML=`<div class="${age<=90?"legal-ok":"legal-warn"}"><strong>Rechtsstand ${esc(effective)}</strong><br>${age<=90?"Aktueller Prüfstand hinterlegt.":`Letzte Prüfung vor ${age} Tagen.`}</div><div class="card"><h3>Amtliche Quellen</h3>${sources.map(s=>`<p><a href="${s.url}" target="_blank" rel="noopener">${esc(s.name)}</a>${s.purpose?`<br><small>${esc(s.purpose)}</small>`:""}</p>`).join("")}<button id="reloadRules" class="secondary">Rechtsstand neu laden</button></div>`;
   $("reloadRules").onclick=async()=>{await loadLegalPack();legalView()}
 }
