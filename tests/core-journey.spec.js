@@ -72,14 +72,21 @@ async function addPayment(page, { date, direction, label, amount }) {
   const labelInput = modal.locator('input[name="label"]');
   const amountInput = modal.locator('input[name="amount"]');
 
-  await dateInput.fill(date);
-  await directionSelect.selectOption(direction);
-  await labelInput.fill(label);
-  await amountInput.fill(String(amount));
+  // modal() setzt den Fokus absichtlich leicht verzögert auf das erste Feld.
+  // Erst danach mit dem Ausfüllen beginnen, damit kein Fokuswechsel mitten
+  // in einer Playwright-fill()-Aktion liegt.
+  await expect(dateInput).toBeFocused();
 
+  await dateInput.fill(date);
   await expect(dateInput).toHaveValue(date);
+
+  await directionSelect.selectOption(direction);
   await expect(directionSelect).toHaveValue(direction);
+
+  await labelInput.fill(label);
   await expect(labelInput).toHaveValue(label);
+
+  await amountInput.fill(String(amount));
   await expect(amountInput).toHaveValue(String(amount));
 
   await modal.getByRole('button', { name: 'Speichern', exact: true }).click();
