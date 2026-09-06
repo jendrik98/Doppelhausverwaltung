@@ -1,0 +1,45 @@
+name: Stabilize E2E payment form
+
+on:
+  push:
+    paths:
+      - ".github/workflows/stabilize-e2e-payment-form.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Payment-Test synchronisieren
+        shell: bash
+        run: |
+          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwID0gUGF0aCgidGVzdHMvY29yZS1qb3VybmV5LnNwZWMuanMiKQp0ZXh0ID0gcC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikKCm9sZCA9ICcnJyAgY29uc3QgZGF0ZUlucHV0ID0gbW9kYWwubG9jYXRvcignaW5wdXRbbmFtZT0iZGF0ZSJdJyk7CiAgY29uc3QgZGlyZWN0aW9uU2VsZWN0ID0gbW9kYWwubG9jYXRvcignc2VsZWN0W25hbWU9ImRpcmVjdGlvbiJdJyk7CiAgY29uc3QgbGFiZWxJbnB1dCA9IG1vZGFsLmxvY2F0b3IoJ2lucHV0W25hbWU9ImxhYmVsIl0nKTsKICBjb25zdCBhbW91bnRJbnB1dCA9IG1vZGFsLmxvY2F0b3IoJ2lucHV0W25hbWU9ImFtb3VudCJdJyk7CgogIGF3YWl0IGRhdGVJbnB1dC5maWxsKGRhdGUpOwogIGF3YWl0IGRpcmVjdGlvblNlbGVjdC5zZWxlY3RPcHRpb24oZGlyZWN0aW9uKTsKICBhd2FpdCBsYWJlbElucHV0LmZpbGwobGFiZWwpOwogIGF3YWl0IGFtb3VudElucHV0LmZpbGwoU3RyaW5nKGFtb3VudCkpOwoKICBhd2FpdCBleHBlY3QoZGF0ZUlucHV0KS50b0hhdmVWYWx1ZShkYXRlKTsKICBhd2FpdCBleHBlY3QoZGlyZWN0aW9uU2VsZWN0KS50b0hhdmVWYWx1ZShkaXJlY3Rpb24pOwogIGF3YWl0IGV4cGVjdChsYWJlbElucHV0KS50b0hhdmVWYWx1ZShsYWJlbCk7CiAgYXdhaXQgZXhwZWN0KGFtb3VudElucHV0KS50b0hhdmVWYWx1ZShTdHJpbmcoYW1vdW50KSk7JycnCgpuZXcgPSAnJycgIGNvbnN0IGRhdGVJbnB1dCA9IG1vZGFsLmxvY2F0b3IoJ2lucHV0W25hbWU9ImRhdGUiXScpOwogIGNvbnN0IGRpcmVjdGlvblNlbGVjdCA9IG1vZGFsLmxvY2F0b3IoJ3NlbGVjdFtuYW1lPSJkaXJlY3Rpb24iXScpOwogIGNvbnN0IGxhYmVsSW5wdXQgPSBtb2RhbC5sb2NhdG9yKCdpbnB1dFtuYW1lPSJsYWJlbCJdJyk7CiAgY29uc3QgYW1vdW50SW5wdXQgPSBtb2RhbC5sb2NhdG9yKCdpbnB1dFtuYW1lPSJhbW91bnQiXScpOwoKICAvLyBtb2RhbCgpIHNldHp0IGRlbiBGb2t1cyBhYnNpY2h0bGljaCBsZWljaHQgdmVyesO2Z2VydCBhdWYgZGFzIGVyc3RlIEZlbGQuCiAgLy8gRXJzdCBkYW5hY2ggbWl0IGRlbSBBdXNmw7xsbGVuIGJlZ2lubmVuLCBkYW1pdCBrZWluIEZva3Vzd2VjaHNlbCBtaXR0ZW4KICAvLyBpbiBlaW5lciBQbGF5d3JpZ2h0LWZpbGwoKS1Ba3Rpb24gbGllZ3QuCiAgYXdhaXQgZXhwZWN0KGRhdGVJbnB1dCkudG9CZUZvY3VzZWQoKTsKCiAgYXdhaXQgZGF0ZUlucHV0LmZpbGwoZGF0ZSk7CiAgYXdhaXQgZXhwZWN0KGRhdGVJbnB1dCkudG9IYXZlVmFsdWUoZGF0ZSk7CgogIGF3YWl0IGRpcmVjdGlvblNlbGVjdC5zZWxlY3RPcHRpb24oZGlyZWN0aW9uKTsKICBhd2FpdCBleHBlY3QoZGlyZWN0aW9uU2VsZWN0KS50b0hhdmVWYWx1ZShkaXJlY3Rpb24pOwoKICBhd2FpdCBsYWJlbElucHV0LmZpbGwobGFiZWwpOwogIGF3YWl0IGV4cGVjdChsYWJlbElucHV0KS50b0hhdmVWYWx1ZShsYWJlbCk7CgogIGF3YWl0IGFtb3VudElucHV0LmZpbGwoU3RyaW5nKGFtb3VudCkpOwogIGF3YWl0IGV4cGVjdChhbW91bnRJbnB1dCkudG9IYXZlVmFsdWUoU3RyaW5nKGFtb3VudCkpOycnJwoKY291bnQgPSB0ZXh0LmNvdW50KG9sZCkKaWYgY291bnQgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJhZGRQYXltZW50LVNlcXVlbno6IGVyd2FydGV0IDEgVHJlZmZlciwgZ2VmdW5kZW4ge2NvdW50fSIpCgpwLndyaXRlX3RleHQodGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKSwgZW5jb2Rpbmc9InV0Zi04IikKcHJpbnQoImFkZFBheW1lbnQgRTJFLVJhY2Ugc3RhYmlsaXNpZXJ0LiIpCg==' | base64 -d > /tmp/payment_flake_fix.py
+          python /tmp/payment_flake_fix.py
+
+      - name: Testdatei prüfen
+        shell: bash
+        run: |
+          node --check tests/core-journey.spec.js
+          grep -F 'await expect(dateInput).toBeFocused();' tests/core-journey.spec.js
+          grep -F 'await expect(labelInput).toHaveValue(label);' tests/core-journey.spec.js
+
+      - name: Änderungen committen
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Der Payment-Test ist bereits stabilisiert."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/core-journey.spec.js
+          git commit -m "Stabilize payment modal E2E input"
+          git push
