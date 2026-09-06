@@ -15,7 +15,7 @@ test('verschlüsselte Vollsicherung kann in frischem Browser wiederhergestellt w
   await section(page, 'object');
   await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
   await page.getByLabel('Objektname').fill('Backup E2E Objekt');
-  await page.getByLabel('Adresse').fill('Backupweg 1');
+  await page.getByLabel('Adresse', { exact: true }).fill('Backupweg 1');
   await page.getByLabel('Gesamtwohnfläche m²').fill('200');
   await page.getByRole('button', { name: 'Objektdaten speichern' }).click();
 

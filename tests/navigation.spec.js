@@ -28,10 +28,11 @@ test('iPhone-Navigation, Unterseiten, Zurück/Vorwärts, Suche und Schnellaktion
   await expect(page).toHaveURL(/#rental\/water$/);
 
   await page.getByRole('button', { name: 'Schnell hinzufügen' }).click();
+  const quickDialog = page.locator('#quickOverlay');
   for (const label of ['Dokument', 'Zählerstand', 'Zahlung', 'Mietvertrag', 'Kostenquelle', 'Erinnerung']) {
-    await expect(page.getByText(label, { exact: true })).toBeVisible();
+    await expect(quickDialog.getByRole('button', { name: new RegExp(`^${label}\\b`) })).toBeVisible();
   }
-  await page.getByRole('button', { name: 'Schließen' }).click();
+  await quickDialog.getByRole('button', { name: 'Schließen' }).click();
   guard.assertClean();
 });
 
@@ -39,7 +40,7 @@ test('Dialog warnt bei ungespeicherten Änderungen und stellt Fokus wieder her',
   await openApp(page);
   const quick = page.getByRole('button', { name: 'Schnell hinzufügen' });
   await quick.click();
-  await page.getByText('Zahlung', { exact: true }).click();
+  await page.locator('#quickOverlay').getByRole('button', { name: /^Zahlung\b/ }).click();
   await expect(page.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
   await page.getByLabel('Bezeichnung').fill('Nicht speichern');
 

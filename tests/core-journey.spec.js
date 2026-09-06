@@ -9,7 +9,7 @@ async function buildCoreData(page) {
   await section(page, 'object');
   await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
   await page.getByLabel('Objektname').fill('E2E Premium Testobjekt');
-  await page.getByLabel('Adresse').fill('Musterweg 10, 12345 Beispielstadt');
+  await page.getByLabel('Adresse', { exact: true }).fill('Musterweg 10, 12345 Beispielstadt');
   await page.getByLabel('Gesamtwohnfläche m²').fill('200');
   await page.getByLabel('Baujahr Stammgebäude').fill('1965');
   await page.getByLabel('Abrechnung übernommen am').fill(takeover);
