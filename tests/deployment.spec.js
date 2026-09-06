@@ -3,12 +3,19 @@ const { runtimeGuard, openApp } = require('./helpers');
 
 test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, request }) => {
   const guard = runtimeGuard(page);
-  const core = await request.get('./app.js?v=1602');
+  const core = await request.get('./app.js?v=1710');
   expect(core.ok()).toBeTruthy();
-  expect(await core.text()).toContain('APP_VERSION="16.0.2"');
-  const v17 = await request.get('./v17-upgrade.js?v=1700');
-  expect(v17.ok()).toBeTruthy();
-  expect(await v17.text()).toContain('const V="17.0.0"');
+  const coreText = await core.text();
+  expect(coreText).toContain('APP_VERSION="17.1.0"');
+  expect(coreText).toContain('function v17RentLedgerCard');
+  expect(coreText).toContain('function actualAdvanceInPeriod');
+  const index = await request.get('./index.html');
+  expect(index.ok()).toBeTruthy();
+  const indexText = await index.text();
+  expect(indexText).toContain('app.js?v=1710');
+  expect(indexText).not.toContain('v17-upgrade.js');
+  expect(indexText).not.toContain('v17-hotfix.js');
+  expect(indexText).not.toContain('v17-water.js');
   for (const path of ['./style.css','./manifest.webmanifest','./legal-rules.json','./service-worker.js','./icon-192.png','./icon-512.png']) {
     const r=await request.get(path); expect(r.ok(),`${path} muss erreichbar sein`).toBeTruthy();
   }
