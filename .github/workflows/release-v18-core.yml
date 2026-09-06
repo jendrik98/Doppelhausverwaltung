@@ -1,0 +1,59 @@
+name: Release V18.0.0 core
+
+on:
+  push:
+    paths:
+      - ".github/workflows/release-v18-core.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: V18.0.0 Versionsstand setzen
+        shell: bash
+        run: |
+          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpkZWYgcmVwbGFjZV9leGFjdChwYXRoLCBvbGQsIG5ldywgZXhwZWN0ZWQsIGxhYmVsKToKICAgIHA9UGF0aChwYXRoKQogICAgdGV4dD1wLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQogICAgbj10ZXh0LmNvdW50KG9sZCkKICAgIGlmIG4hPWV4cGVjdGVkOgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJ7bGFiZWx9OiBlcndhcnRldCB7ZXhwZWN0ZWR9IFRyZWZmZXIsIGdlZnVuZGVuIHtufSIpCiAgICBwLndyaXRlX3RleHQodGV4dC5yZXBsYWNlKG9sZCxuZXcpLGVuY29kaW5nPSJ1dGYtOCIpCgojIGFwcC5qczogbnVyIHNpY2h0YmFyZS90ZWNobmlzY2hlIFZlcnNpb25zd2VydGUuIEludGVybmUgdjE3LUtvbXBhdGliaWxpdMOkdHNzdHJ1a3R1ciBibGVpYnQgZXJoYWx0ZW4uCnJlcGxhY2VfZXhhY3QoImFwcC5qcyIsJ2FwcFZlcnNpb246IjE3LjEuMCInLCdhcHBWZXJzaW9uOiIxOC4wLjAiJywyLCJhcHAuanMgbWV0YSBhcHBWZXJzaW9uIikKcmVwbGFjZV9leGFjdCgiYXBwLmpzIiwnY29uc3QgQVBQX1ZFUlNJT049IjE3LjEuMCI7JywnY29uc3QgQVBQX1ZFUlNJT049IjE4LjAuMCI7JywxLCJhcHAuanMgQVBQX1ZFUlNJT04iKQoKIyBpbmRleC5odG1sOiBvZmZpemllbGxlcyBCYWRnZSArIENhY2hlLUJ1c3RpbmcgZsO8ciBkZW4gbmV1ZW4gS2Vybi4KcmVwbGFjZV9leGFjdCgiaW5kZXguaHRtbCIsJ2lkPSJ2MTdCYWRnZSIgY2xhc3M9InBpbGwgZ29vZCI+VjE3PC9zcGFuPicsJ2lkPSJ2MTdCYWRnZSIgY2xhc3M9InBpbGwgZ29vZCI+VjE4PC9zcGFuPicsMSwiaW5kZXguaHRtbCBCYWRnZSIpCnJlcGxhY2VfZXhhY3QoImluZGV4Lmh0bWwiLCdhcHAuanM/dj0xNzEwJywnYXBwLmpzP3Y9MTgwMCcsMSwiaW5kZXguaHRtbCBBc3NldC1WZXJzaW9uIikKCiMgU2VydmljZSBXb3JrZXI6IGZpbmFsZXIgUmVsZWFzZS1DYWNoZS4KcmVwbGFjZV9leGFjdCgic2VydmljZS13b3JrZXIuanMiLCdjb25zdCBDQUNIRT0ibWlldHZlcndhbHR1bmctdjE4LWFzc2lzdGFudC1wcmV2aWV3LTIiOycsJ2NvbnN0IENBQ0hFPSJtaWV0dmVyd2FsdHVuZy12MTgtMC0wLWNvcmUiOycsMSwic2VydmljZS13b3JrZXIgQ2FjaGUiKQpyZXBsYWNlX2V4YWN0KCJzZXJ2aWNlLXdvcmtlci5qcyIsJy4vYXBwLmpzP3Y9MTcxMCcsJy4vYXBwLmpzP3Y9MTgwMCcsMSwic2VydmljZS13b3JrZXIgQXNzZXQtVmVyc2lvbiIpCgojIERlcGxveW1lbnQtVGVzdCBhdWYgZGVuIG9mZml6aWVsbGVuIFJlbGVhc2UgdW1zdGVsbGVuLgpyZXBsYWNlX2V4YWN0KCJ0ZXN0cy9kZXBsb3ltZW50LnNwZWMuanMiLCIuL2FwcC5qcz92PTE3MTAiLCIuL2FwcC5qcz92PTE4MDAiLDEsImRlcGxveW1lbnQgcmVxdWVzdCBBc3NldC1WZXJzaW9uIikKcmVwbGFjZV9leGFjdCgidGVzdHMvZGVwbG95bWVudC5zcGVjLmpzIiwnQVBQX1ZFUlNJT049IjE3LjEuMCInLCdBUFBfVkVSU0lPTj0iMTguMC4wIicsMSwiZGVwbG95bWVudCBBUFBfVkVSU0lPTiIpCnJlcGxhY2VfZXhhY3QoInRlc3RzL2RlcGxveW1lbnQuc3BlYy5qcyIsImFwcC5qcz92PTE3MTAiLCJhcHAuanM/dj0xODAwIiwxLCJkZXBsb3ltZW50IGluZGV4IEFzc2V0LVZlcnNpb24iKQpyZXBsYWNlX2V4YWN0KCJ0ZXN0cy9kZXBsb3ltZW50LnNwZWMuanMiLCJ0b0hhdmVUZXh0KCdWMTcnKSIsInRvSGF2ZVRleHQoJ1YxOCcpIiwzLCJkZXBsb3ltZW50IEJhZGdlIikKCnByaW50KCJWMTguMC4wIFJlbGVhc2UtQnVtcCBhbmdld2VuZGV0LiIpCg==' | base64 -d > /tmp/release_v18.py
+          python /tmp/release_v18.py
+
+      - name: Release technisch prüfen
+        shell: bash
+        run: |
+          node --check app.js
+          node --check service-worker.js
+          node --check tests/deployment.spec.js
+
+          grep -F 'const APP_VERSION="18.0.0";' app.js
+          test "$(grep -o 'appVersion:"18.0.0"' app.js | wc -l)" -eq 2
+          grep -F 'app.js?v=1800' index.html
+          grep -F '>V18</span>' index.html
+          grep -F 'mietverwaltung-v18-0-0-core' service-worker.js
+          grep -F './app.js?v=1800' service-worker.js
+          grep -F 'APP_VERSION="18.0.0"' tests/deployment.spec.js
+          grep -F "toHaveText('V18')" tests/deployment.spec.js
+
+          if grep -Fq 'mietverwaltung-v18-assistant-preview' service-worker.js; then
+            echo "Preview-Cache ist noch vorhanden."
+            exit 1
+          fi
+
+      - name: Release committen
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "V18.0.0 ist bereits gesetzt."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js index.html service-worker.js tests/deployment.spec.js
+          git commit -m "Release V18.0.0"
+          git push
