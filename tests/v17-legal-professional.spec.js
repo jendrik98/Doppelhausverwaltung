@@ -514,7 +514,7 @@ test('V17 Inhaltsrichtigkeit: tatsächlich geleistete BK-Vorauszahlungen bestimm
   const page = await context.newPage();
   const guard = runtimeGuard(page);
 
-  await page.clock.setFixedTime(new Date('2027-07-15T12:00:00+02:00'));
+  await page.clock.setFixedTime(new Date('2028-06-15T12:00:00+02:00'));
   const built = await seed(page, { startYear: 2027, years: 1, missingAdvanceYear: 2027 });
   await openCurrentBilling(page);
   await freezeVisibleBilling(page);
@@ -563,7 +563,7 @@ test('V17 Dokumentstandard: finale PDF ist formell vollständig und professionel
   const page = await context.newPage();
   const guard = runtimeGuard(page);
 
-  await page.clock.setFixedTime(new Date('2041-07-15T12:00:00+02:00'));
+  await page.clock.setFixedTime(new Date('2042-06-15T12:00:00+02:00'));
   const built = await seed(page, {
     startYear: 2041,
     years: 1,

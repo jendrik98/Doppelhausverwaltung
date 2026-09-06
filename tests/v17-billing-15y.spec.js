@@ -53,7 +53,7 @@ function contextOptions() {
 }
 
 async function openBillingYear(page, year) {
-  await page.clock.setFixedTime(new Date(`${year}-07-15T12:00:00+02:00`));
+  await page.clock.setFixedTime(new Date(`${year + 1}-06-15T12:00:00+02:00`));
 
   // Wichtig: Hash-Navigation allein lädt den extern in IndexedDB geschriebenen
   // State nicht neu in den RAM der App. Deshalb zuerst Zielroute setzen und
@@ -315,7 +315,7 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   const guard = runtimeGuard(page);
 
   // Nur Datum/Uhrzeit einfrieren; normale Timer der Anwendung laufen weiter.
-  await page.clock.setFixedTime(new Date('2027-07-15T12:00:00+02:00'));
+  await page.clock.setFixedTime(new Date('2028-06-15T12:00:00+02:00'));
   await openApp(page);
   // V17-Migration/Hotfix vollständig auslaufen lassen, damit kein paralleler DB-Write die Seed-Daten überschreibt.
   await page.waitForTimeout(500);
@@ -422,7 +422,7 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   // Wiederherstellung in einem komplett frischen Browserkontext.
   const restored = await browser.newContext(contextOptions());
   const page2 = await restored.newPage();
-  await page2.clock.setFixedTime(new Date('2041-07-15T12:00:00+02:00'));
+  await page2.clock.setFixedTime(new Date('2042-06-15T12:00:00+02:00'));
   await openApp(page2);
   await page2.waitForTimeout(500);
 
