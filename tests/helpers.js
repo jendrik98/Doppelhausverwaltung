@@ -46,16 +46,21 @@ async function addUnit(page, data) {
   const modal = page.locator('#modal');
   await expect(modal).toBeVisible();
 
-  await modal.getByLabel('Bezeichnung').fill(data.name);
-  await modal.getByLabel('Nutzung').selectOption(data.type);
-  await modal.getByLabel('Wohnfläche (m²)').fill(String(data.area));
-  await modal.getByLabel('Baujahr dieses Gebäudeteils').fill(String(data.year));
-  await modal.getByLabel('Gebäudeteil', { exact: true }).fill(data.part);
-  await modal.getByLabel('Aktuelle Personenzahl').fill(String(data.persons));
-  await modal.getByLabel('Personenzahl gültig ab').fill(data.from);
+  // modal() setzt den Fokus absichtlich leicht verzögert auf das erste Feld.
+  // Darauf synchronisieren, bevor weitere Felder ausgefüllt werden.
+  const nameInput = modal.locator('input[name="name"]');
+  await expect(nameInput).toBeFocused();
 
-  await expect(modal.getByLabel('Bezeichnung')).toHaveValue(data.name);
-  await expect(modal.getByLabel('Wohnfläche (m²)')).toHaveValue(String(data.area));
+  await nameInput.fill(data.name);
+  await modal.locator('select[name="type"]').selectOption(data.type);
+  await modal.locator('input[name="area"]').fill(String(data.area));
+  await modal.locator('input[name="constructionYear"]').fill(String(data.year));
+  await modal.locator('input[name="buildingPart"]').fill(data.part);
+  await modal.locator('input[name="persons"]').fill(String(data.persons));
+  await modal.locator('input[name="occupancyFrom"]').fill(data.from);
+
+  await expect(nameInput).toHaveValue(data.name);
+  await expect(modal.locator('input[name="area"]')).toHaveValue(String(data.area));
 
   await modal.getByRole('button', { name: 'Speichern', exact: true }).click();
   await expect(modal).toHaveClass(/hidden/);
