@@ -3,10 +3,10 @@
   "short_name": "Mietverwaltung",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f1f5f9",
-  "theme_color": "#0f172a",
+  "background_color": "#f4f6ef",
+  "theme_color": "#6f7d37",
   "lang": "de-DE",
-  "description": "Finale Premium-Version der privaten Haus- und Mietverwaltung: fokussierte iPhone-UX, erklärbare Entscheidungen, Dokumente, Kaltwasser, Betriebskostenabrechnung, Zahlungen, Finanzen, Sicherung und Diagnose",
+  "description": "Private Doppelhausverwaltung mit Vermietung, Kaltwasser, Betriebskosten, Zahlungen, Dokumenten, Sicherung und Abrechnungsassistent.",
   "id": "./",
   "scope": "./",
   "orientation": "portrait-primary",
@@ -14,12 +14,12 @@
     {
       "name": "Abrechnung",
       "short_name": "Abrechnung",
-      "url": "./#billing"
+      "url": "./#rental/billing"
     },
     {
       "name": "Assistent",
       "short_name": "Assistent",
-      "url": "./#assistant"
+      "url": "./#more/smart"
     }
   ],
   "icons": [

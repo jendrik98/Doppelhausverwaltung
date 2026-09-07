@@ -15,6 +15,18 @@ const SERVICE_WORKER_REGISTRATION=("serviceWorker" in navigator)
     })
   : Promise.resolve(null);
 
+function localDateISO(date=new Date()){
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`
+}
+function dateOnlyAddDays(value,days){
+  const m=String(value||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return "";
+  const d=new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3])+Number(days||0)));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`
+}
+function localMonthEndISO(date){
+  return localDateISO(new Date(date.getFullYear(),date.getMonth()+1,0))
+}
+
 function createEmptyState(){
   return {
     schemaVersion:SCHEMA_VERSION,
@@ -55,8 +67,7 @@ function normalizeState(s){
   out.property={...base.property,...(s?.property||{})};
   out.property.billingTakeoverDate=out.property.billingTakeoverDate||out.property.ownershipEffective||"";
   if(out.property.billingTakeoverDate&&!out.property.predecessorBillingEnd){
-    const d=new Date(out.property.billingTakeoverDate+"T00:00:00");
-    if(!Number.isNaN(d.getTime())){d.setDate(d.getDate()-1);out.property.predecessorBillingEnd=d.toISOString().slice(0,10)}
+    out.property.predecessorBillingEnd=dateOnlyAddDays(out.property.billingTakeoverDate,-1)
   }
   out.correspondence={...base.correspondence,...(s?.correspondence||{})};
   out.finance={...base.finance,...(s?.finance||{})};
@@ -626,7 +637,7 @@ function positionMonthlyEquivalent(p,monthStart,monthEnd){
 }
 function predictedMonth(state,date){
   const ms=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-01`,
-        me=new Date(date.getFullYear(),date.getMonth()+1,0).toISOString().slice(0,10),
+        me=localMonthEndISO(date),
         key=ms.slice(0,7);
   let rentalIncome=0;
   for(const l of state.leases||[]){
@@ -865,7 +876,7 @@ function dataQualityScore(state){
 /* ===== smart-engine.js ===== */
 const SMART_ENGINE_VERSION=1;
 
-function smartToday(){return new Date().toISOString().slice(0,10)}
+function smartToday(){return localDateISO()}
 function smartMonthKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`}
 function smartMonthOffset(offset){
   const d=new Date(),x=new Date(d.getFullYear(),d.getMonth()+offset,1);
@@ -948,7 +959,7 @@ function v18StatusLabel(status){return status==="known"?"Bekannt":status==="esti
 function v18StatusClass(status){return status==="known"?"good":status==="estimated"?"warn":"bad"}
 function v18BillingAssistant(s,year=preferredBillingYear()){
   const period=billingPeriodInfo(s,year),analysis=billingAnalysis(s,year),lease=analysis.lease||s.leases?.[0]||null,owner=unitByType(s,"owner"),rental=unitByType(s,"rental"),rows=V18_EXPECTED_BILLING_CATEGORIES.map(d=>v18CategoryForecast(s,year,d));
-  const leaseItem={id:"lease",label:"Mietvertrag",status:lease?"known":"open",detail:lease?`${euro(lease.rent)} Kaltmiete · ${euro(lease.advance)} BK-Vorauszahlung`:"Mietvertrag fehlt.",route:"rental",sub:"lease"};
+  const leaseItem={id:"lease",label:"Mietvertrag",status:lease?"known":"open",detail:lease?`${euro(lease.rent)} Kaltmiete · ${euro(lease.advance)} BK-Vorauszahlung`:"Mietvertrag fehlt.",route:"rental",sub:"overview"};
   const areaOK=Number(s.property?.totalArea||0)>0&&Number(rental?.area||0)>0&&Number(owner?.area||0)>0;
   const areaItem={id:"area",label:"Wohnflächen",status:areaOK?"known":"open",detail:areaOK?`${rental.area} m² Mietwohnung von ${s.property.totalArea} m² gesamt`:"Wohnflächen sind noch nicht vollständig.",route:"data",sub:"object"};
   const correspondenceOK=!!String(s.correspondence?.landlordName||"").trim()&&!!String(s.correspondence?.landlordAddress||s.property?.address||"").trim();
@@ -970,14 +981,14 @@ function v18BillingAssistantHTML(s,year,{compact=false}={}){
   const m=v18BillingAssistant(s,year),cb=confidenceBand(m.confidence),resultLabel=m.projectedResult>=0?"voraussichtliche Nachzahlung":"voraussichtliches Guthaben",problem=m.openItems.length+m.estimatedItems.length;
   if(compact){
     const next=[...m.openItems,...m.estimatedItems].slice(0,3);
-    return `<section id="v18BillingAssistant" class="card"><div class="card-head"><div><p class="eyebrow">V18 · ABRECHNUNGSASSISTENT</p><h3>${m.score}% vorbereitet · ${esc(m.label)}</h3><p class="muted">${esc(billingPeriodLabel(s,year))}</p></div><span class="confidence confidence-${cb.id}">${esc(cb.short)}</span></div>
+    return `<section id="v18BillingAssistant" class="card"><div class="card-head"><div><p class="eyebrow">ABRECHNUNGSASSISTENT</p><h3>${m.score}% vorbereitet · ${esc(m.label)}</h3><p class="muted">${esc(billingPeriodLabel(s,year))}</p></div><span class="confidence confidence-${cb.id}">${esc(cb.short)}</span></div>
       <div class="storage-meter" aria-label="Vorbereitungsgrad"><span style="width:${m.score}%"></span></div>
       <div class="grid cards"><article class="card metric-card"><span>Bekannte Kosten</span><strong>${euro(m.knownTenant)}</strong></article><article class="card metric-card"><span>Geschätzt</span><strong>${euro(m.estimatedTenant)}</strong></article><article class="card metric-card"><span>Prognose</span><strong>${euro(Math.abs(m.projectedResult))}</strong><small>${resultLabel}</small></article></div>
       ${next.length?`<div class="card"><strong>${problem} Punkt(e) noch nicht endgültig</strong>${next.map(x=>`<div class="fact-row"><span>${esc(x.label)}</span><strong>${v18StatusLabel(x.status)}</strong></div>`).join("")}</div>`:`<div class="legal-ok">✓ Alle für die Prognose erwarteten Daten sind vorhanden.</div>`}
       <div class="${m.backup.status==="known"?"legal-ok":"legal-warn"}"><strong>${esc(m.backup.label)}</strong><br>${esc(m.backup.detail)}</div>
       <button class="primary wide" data-v18-go="rental|billing">Abrechnung vorbereiten</button></section>`
   }
-  return `<section id="v18BillingAssistantFull" class="card"><div class="card-head"><div><p class="eyebrow">V18 · ABRECHNUNGSASSISTENT</p><h3>${m.score}% vorbereitet · ${esc(m.label)}</h3><p class="muted">Planungsansicht für ${esc(billingPeriodLabel(s,year))}. Schätzwerte werden niemals automatisch in die endgültige Abrechnung übernommen.</p></div><span class="confidence confidence-${cb.id}">${esc(cb.label)} · ${m.confidence}%</span></div>
+  return `<section id="v18BillingAssistantFull" class="card"><div class="card-head"><div><p class="eyebrow">ABRECHNUNGSASSISTENT</p><h3>${m.score}% vorbereitet · ${esc(m.label)}</h3><p class="muted">Planungsansicht für ${esc(billingPeriodLabel(s,year))}. Schätzwerte werden niemals automatisch in die endgültige Abrechnung übernommen.</p></div><span class="confidence confidence-${cb.id}">${esc(cb.label)} · ${m.confidence}%</span></div>
     <div class="storage-meter" aria-label="Vorbereitungsgrad"><span style="width:${m.score}%"></span></div>
     <div class="grid cards">
       <article class="card metric-card"><span>Bekannte Kosten</span><strong>${euro(m.knownTenant)}</strong><small>abrechnungswirksam</small></article>
@@ -1145,10 +1156,10 @@ function smartTaskSuggestions(state){
   }
   for(const m of state.meters||[]){
     const last=latestMeterReading(m),age=last?Math.max(0,calendarDayDiff(last.date,smartToday())):999;
-    if(age>90){const due=new Date();due.setDate(due.getDate()+7);const title=`${m.name} ablesen`;const ds=due.toISOString().slice(0,10),k=`${normalizeLabelText(title)}|${ds}`;if(!existing.has(k))out.push({title,due:ds,lead:2,reason:last?`Letzte Ablesung vor ${age} Tagen`:"Noch keine Ablesung"})}
+    if(age>90){const due=new Date();due.setDate(due.getDate()+7);const title=`${m.name} ablesen`;const ds=localDateISO(due),k=`${normalizeLabelText(title)}|${ds}`;if(!existing.has(k))out.push({title,due:ds,lead:2,reason:last?`Letzte Ablesung vor ${age} Tagen`:"Noch keine Ablesung"})}
   }
   const backupAge=state.meta?.lastBackupAt?Math.max(0,calendarDayDiff(String(state.meta.lastBackupAt).slice(0,10),smartToday())):999;
-  if(backupAge>30){const due=new Date();due.setDate(due.getDate()+3);out.push({title:"Verschlüsselte Datensicherung erstellen",due:due.toISOString().slice(0,10),lead:1,reason:"Datensicherung ist nicht aktuell"})}
+  if(backupAge>30){const due=new Date();due.setDate(due.getDate()+3);out.push({title:"Verschlüsselte Datensicherung erstellen",due:localDateISO(due),lead:1,reason:"Datensicherung ist nicht aktuell"})}
   return out.slice(0,12)
 }
 function smartInsights(state){
@@ -1311,7 +1322,7 @@ function billingPeriodInfo(s,year){
     else if(takeover>nominalStart){start=takeover;isTakeoverPeriod=true}
   }
   const predecessorEnd=s?.property?.predecessorBillingEnd||(
-    takeover?(()=>{const d=new Date(takeover+"T00:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10)})():""
+    takeover?dateOnlyAddDays(takeover,-1):""
   );
   return {year,start,end,nominalStart,takeover,predecessorEnd,active,isTakeoverPeriod,
     days:active?daysInclusive(start,end):0,nominalDays:daysInclusive(nominalStart,end)}
@@ -1351,7 +1362,7 @@ function daysInclusive(start,end){
 }
 
 function unitByType(state,type){return state.units.find(u=>u.type===type)}
-function currentPersons(unit,date=new Date().toISOString().slice(0,10)){
+function currentPersons(unit,date=localDateISO()){
   const h=(unit?.occupancy||[]).filter(x=>(!x.from||x.from<=date)&&(!x.to||x.to>=date)).sort((a,b)=>(b.from||"").localeCompare(a.from||""));
   return h.length?Number(h[0].count)||0:0
 }
@@ -1439,7 +1450,7 @@ function billingReadiness(s,periodYear){
     {id:"totalArea",ok:Number(s.property.totalArea)>0,label:"Gesamtwohnfläche fehlt",route:"data",sub:"property"},
     {id:"ownerUnit",ok:!!unitByType(s,"owner"),label:"Eigennutzungs-Einheit fehlt",route:"data",sub:"units"},
     {id:"rentalUnit",ok:!!unitByType(s,"rental"),label:"Mietwohnung fehlt",route:"data",sub:"units"},
-    {id:"lease",ok:!!s.leases.length,label:"Mietvertrag fehlt",route:"rental",sub:"lease"},
+    {id:"lease",ok:!!s.leases.length,label:"Mietvertrag fehlt",route:"rental",sub:"overview"},
     {id:"positions",ok:relevant,label:"Keine bestätigte Kostenposition für diese Abrechnungsperiode",route:"data",sub:"positions"},
     {id:"water",ok:!waterPositions||!!cons?.valid,label:"Wasserzähler / Verbrauchsdaten fehlen",route:"rental",sub:"water"},
     {id:"allocation",ok:analysis.unresolved.length===0,label:"Ungeklärte Umlageentscheidungen",route:"data",sub:"positions"}
@@ -1673,6 +1684,8 @@ function runSelfTests(){
   results.push(assert("Standardperiode endet 31.03.",periodEnd(2025)==="2026-03-31"));
   results.push(assert("Schaltjahr 2028",daysInclusive("2028-01-01","2028-12-31")===366));
   results.push(assert("März bleibt trotz Sommerzeit 31 Kalendertage",daysInclusive("2027-03-01","2027-03-31")===31));
+  results.push(assert("Date-only Vortag bleibt DST-sicher",dateOnlyAddDays("2026-09-01",-1)==="2026-08-31"));
+  results.push(assert("Monatsende bleibt lokales Kalenderdatum",localMonthEndISO(new Date(2026,2,1))==="2026-03-31"));
   const dstState=createEmptyState();dstState.property.billingTakeoverDate="2027-04-01";dstState.leases=[{id:"dst-lease",start:"2027-04-01",end:"",rent:500,advance:150,tenantName:"DST-Test"}];
   results.push(assert("12 Monate Vorauszahlung DST-sicher",Math.abs(monthlyAdvanceInPeriod(dstState,dstState.leases[0],2027)-1800)<0.01));
   const v18Leap=createEmptyState();v18Leap.property={...v18Leap.property,totalArea:200,billingTakeoverDate:"2026-04-01"};v18Leap.units=[{id:"o",type:"owner",area:100,occupancy:[]},{id:"r",type:"rental",area:100,occupancy:[]}];v18Leap.costPositions=[positionDefaults({id:"ins-leap",label:"Gebäudeversicherung",category:"insurance",amount:1000,serviceStart:"2026-04-01",serviceEnd:"2027-03-31",assignment:"house",agreement:"area",confirmed:true})];const leapForecast=v18CategoryForecast(v18Leap,2027,{category:"insurance",label:"Gebäudeversicherung",route:"data",sub:"positions"});results.push(assert("V18 Volljahresprognose ignoriert Schaltjahr-Differenz",Math.abs(leapForecast.amount-500)<0.01));
@@ -1770,10 +1783,10 @@ try{
 const ROUTE_LABELS={home:"Start",rental:"Vermietung",data:"Haus",owner:"Finanzen",more:"Mehr"};
 const DEFAULT_SUB={data:"overview",rental:"overview",owner:"overview",more:"smart"};
 const SUB_PARENT={
-  data:{property:"object",units:"object",sources:"costs",positions:"costs",assessment:"costs"},
-  rental:{calculation:"billing",workflow:"billing"},
-  owner:{cashflow:"payments",reconciliation:"payments",finance:"planning",analytics:"planning"},
-  more:{overview:"smart",security:"protection",backup:"protection",recovery:"protection",audit:"app",diagnostics:"app"}
+  data:{object:"overview",property:"overview",units:"overview",sources:"costs",positions:"costs",assessment:"costs"},
+  rental:{lease:"overview",calculation:"billing",workflow:"billing"},
+  owner:{tasks:"overview",cashflow:"payments",reconciliation:"payments",finance:"planning",analytics:"planning"},
+  more:{overview:"smart",legal:"app",security:"protection",backup:"protection",recovery:"protection",audit:"app",diagnostics:"app"}
 };
 let route="home";
 let sub={...DEFAULT_SUB};
@@ -1888,7 +1901,7 @@ const CHECK_INPUT_MAP={
   "Gesamtwohnfläche fehlt":{route:"data",sub:"property",label:"Gesamtwohnfläche"},
   "Eigennutzungs-Einheit fehlt":{route:"data",sub:"units",label:"Eigennutzung"},
   "Mietwohnung fehlt":{route:"data",sub:"units",label:"Mietwohnung"},
-  "Mietvertrag fehlt":{route:"rental",sub:"lease",label:"Mietvertrag"},
+  "Mietvertrag fehlt":{route:"rental",sub:"overview",label:"Mietvertrag"},
   "Keine bestätigte Kostenposition für diese Abrechnungsperiode":{route:"data",sub:"positions",label:"Kostenpositionen"},
   "Wasserzähler / Verbrauchsdaten fehlen":{route:"rental",sub:"water",label:"Wasserzähler"},
   "Ungeklärte Umlageentscheidungen":{route:"data",sub:"positions",label:"Umlageentscheidung"}
@@ -1930,20 +1943,34 @@ function home(){
 function hubAction(id,title,detail,badge=""){
   return `<button class="hub-action" data-hub-action="${id}"><span><strong>${esc(title)}</strong><small>${esc(detail)}</small></span>${badge?`<b>${esc(badge)}</b>`:""}<span class="chevron">›</span></button>`
 }
-function houseOverviewView(){
-  const owner=unitByType(state,"owner"),rental=unitByType(state,"rental"),docs=state.documentsCache||[],openDocs=docs.filter(d=>documentWorkflowState(d)!=="done").length;
+async function houseOverviewView(){
+  let docs=state.documentsCache||[];
+  try{docs=await listDocuments();state.documentsCache=docs}catch{}
+  if(route!=="data"||sub.data!=="overview")return;
+  const owner=unitByType(state,"owner"),rental=unitByType(state,"rental"),openDocs=docs.filter(d=>documentWorkflowState(d)!=="done").length,takeover=state.property.billingTakeoverDate||state.property.ownershipEffective||"";
   $("workspaceBody").innerHTML=`<div class="grid cards overview-cards">
     <article class="card"><span>Wohnfläche gesamt</span><strong>${Number(state.property.totalArea||0).toLocaleString("de-DE")} m²</strong><small>${owner&&rental?`${owner.area} + ${rental.area} m²`:"Einheiten prüfen"}</small></article>
     <article class="card"><span>Kostenpositionen</span><strong>${state.costPositions.length}</strong><small>${state.costPositions.filter(p=>p.confirmed).length} bestätigt</small></article>
     <article class="card"><span>Zähler</span><strong>${state.meters.length}</strong><small>${state.meters.reduce((s,m)=>s+(m.readings?.length||0),0)} Ablesungen</small></article>
-    <article class="card"><span>Dokumente offen</span><strong>${openDocs}</strong><small>${docs.length} insgesamt geladen</small></article>
+    <article class="card"><span>Dokumente offen</span><strong>${openDocs}</strong><small>${docs.length} insgesamt</small></article>
   </div>
-  <div class="card"><div class="card-head"><div><p class="eyebrow">HAUSVERWALTUNG</p><h3>Stammdaten & Belege</h3></div></div>
-    ${hubAction("object","Objekt & Einheiten","Adresse, Wohnflächen, Baujahre und Nutzung")}
-    ${hubAction("costs","Kosten & Bescheide","Kostenquellen, Positionen und Grundbesitzabgaben",String(state.costPositions.length))}
-    ${hubAction("infrastructure","Zähler & Behälter","Wasserzähler, Ablesungen und Abfallbehälter",String(state.meters.length))}
-    ${hubAction("documents","Dokumente","Inbox, OCR-Analyse und Belege",openDocs?`${openDocs} offen`:"")}
+  <section class="card embedded-overview-card">
+    <div class="card-head"><div><p class="eyebrow">STAMMDATEN</p><h3>Objekt & Einheiten</h3></div><button class="secondary compact" id="editPropertyOverview">Objektdaten bearbeiten</button></div>
+    <div class="fact-row"><span>Objekt</span><strong>${esc(state.property.name||"noch nicht benannt")}</strong></div>
+    <div class="fact-row"><span>Adresse</span><strong>${esc(state.property.address||"fehlt")}</strong></div>
+    <div class="fact-row"><span>Gesamtwohnfläche</span><strong>${state.property.totalArea?`${state.property.totalArea} m²`:"fehlt"}</strong></div>
+    <div class="fact-row"><span>Eigennutzung</span><strong>${owner?`${esc(owner.name)} · ${owner.area} m²`:"fehlt"}</strong></div>
+    <div class="fact-row"><span>Mietwohnung</span><strong>${rental?`${esc(rental.name)} · ${rental.area} m²`:"fehlt"}</strong></div>
+    ${takeover?`<div class="fact-row"><span>Abrechnung übernommen</span><strong>${dateDE(takeover)}</strong></div>`:""}
+    <button class="secondary wide" id="editUnitsOverview">Einheiten bearbeiten</button>
+  </section>
+  <div class="card">
+    ${hubAction("costs","Kosten","Bescheide, Rechnungen, Kostenpositionen und Umlage",String(state.costPositions.length))}
+    ${hubAction("infrastructure","Zähler","Wasserzähler, Ablesungen und Abfallbehälter",String(state.meters.length))}
+    ${hubAction("documents","Dokumente","Belege, PDFs und OCR-Analyse",openDocs?`${openDocs} offen`:"")}
   </div>`;
+  $("editPropertyOverview").onclick=()=>goSub("data","property");
+  $("editUnitsOverview").onclick=()=>goSub("data","units");
   document.querySelectorAll("[data-hub-action]").forEach(b=>b.onclick=()=>goSub("data",b.dataset.hubAction))
 }
 function houseObjectHubView(){
@@ -2007,7 +2034,9 @@ function protectionHubView(){
 }
 function appManagementHubView(){
   const errors=state.meta?.errorLog?.length||0;
-  $("workspaceBody").innerHTML=`<div class="card">
+  $("workspaceBody").innerHTML=`<div class="card"><p class="eyebrow">SELTENER BENÖTIGT</p><h3>Erweitert</h3><p class="muted">Rechtsstand, Änderungsverlauf und technische Prüfungen bleiben erreichbar, ohne die tägliche Navigation zu belasten.</p></div>
+  <div class="card">
+    ${hubAction("legal","Recht & Regeln","Hinterlegte Rechtsgrundlagen und Prüfstand")}
     ${hubAction("audit","Änderungsverlauf","Nachvollziehen, was wann geändert wurde")}
     ${hubAction("diagnostics","App-Prüfung","Datenintegrität, Speicher, Tests und technische Details",errors?`${errors} Fehler`:"")}
   </div>`;
@@ -2017,13 +2046,12 @@ function appManagementHubView(){
 function dataWorkspace(){
   const tabs=[
     {id:"overview",label:"Überblick",icon:"⌂"},
-    {id:"object",label:"Objekt & Einheiten",icon:"◇"},
-    {id:"costs",label:"Kosten & Bescheide",icon:"€"},
-    {id:"infrastructure",label:"Zähler & Behälter",icon:"◌"},
+    {id:"costs",label:"Kosten",icon:"€"},
+    {id:"infrastructure",label:"Zähler",icon:"◌"},
     {id:"documents",label:"Dokumente",icon:"▤"}
   ];
   const active=sub.data||"overview",visible=visibleSub("data",active);
-  $("app").innerHTML=workspaceHeader("HAUS","Haus","Stammdaten, Kosten, Technik und Belege des gesamten Hauses.",tabs,visible);
+  $("app").innerHTML=workspaceHeader("HAUS","Haus","Objekt, Kosten, Zähler und Belege an einem Ort.",tabs,visible);
   bindWorkspaceTabs("data",dataWorkspace);
   if(active==="overview")houseOverviewView();
   else if(active==="object")houseObjectHubView();
@@ -2071,7 +2099,7 @@ function unitsDataView(){
 }
 
 function openUnitEditor(x=null){
-  const today=new Date().toISOString().slice(0,10),current=currentPersons(x,today);
+  const today=localDateISO(),current=currentPersons(x,today);
   modal(x?"Einheit bearbeiten":"Einheit hinzufügen",`<form id="f" class="form-grid">
     ${formField({name:"name",label:"Bezeichnung",value:x?.name||"",placeholder:"z. B. Eigennutzung"})}
     ${formField({name:"type",label:"Nutzung",type:"select",value:x?.type||"rental",options:[{value:"owner",label:"Eigennutzung"},{value:"rental",label:"Mietwohnung"}]})}
@@ -2091,7 +2119,7 @@ function openUnitEditor(x=null){
       obj.name=v.name.trim();obj.type=v.type;obj.area=Number(v.area)||0;obj.constructionYear=v.constructionYear?Number(v.constructionYear):null;obj.buildingPart=v.buildingPart.trim();obj.note=v.note.trim();obj.occupancy=Array.isArray(obj.occupancy)?obj.occupancy:[];
       const persons=Math.max(0,Number(v.persons)||0),from=v.occupancyFrom||today,last=obj.occupancy.slice().sort((a,b)=>(b.from||"").localeCompare(a.from||""))[0];
       if(!last||Number(last.count)!==persons||last.from!==from){
-        const active=obj.occupancy.find(o=>(!o.to)&&o.from&&o.from<from);if(active){const d=new Date(from+"T00:00:00");d.setDate(d.getDate()-1);active.to=d.toISOString().slice(0,10)}
+        const active=obj.occupancy.find(o=>(!o.to)&&o.from&&o.from<from);if(active)active.to=dateOnlyAddDays(from,-1)
         obj.occupancy.push({from,to:"",count:persons});obj.occupancy.sort((a,b)=>(a.from||"").localeCompare(b.from||""))
       }
       if(!x)state.units.push(obj);
@@ -2121,7 +2149,7 @@ function openSourceEditor(x=null){
       const obj=x||{id:uid(),kind:"manual"};
       Object.assign(obj,{name:v.name.trim(),category:v.category,amount:Number(v.amount)||0,interval:v.interval,serviceStart:v.serviceStart,serviceEnd:v.serviceEnd,assignment:v.assignment,agreement:v.agreement,dueDates:String(v.dueDates||"").split(/[,;]+/).map(s=>s.trim()).filter(Boolean),note:v.note.trim()});
       if(!x)state.sources.push(obj);syncSimpleSourcePosition(state,obj);
-      await persist(x?"Kostenquelle geändert":"Kostenquelle angelegt",obj.name);$("modal").classList.add("hidden");sourcesDataView()
+      await persist(x?"Kostenquelle geändert":"Kostenquelle angelegt",obj.name);closeModal(true);sourcesDataView()
     }
   })
 }
@@ -2209,7 +2237,7 @@ function openCostPositionEditor(x=null){
   </form>`,()=>{
     const preview=()=>{const v=Object.fromEntries(new FormData($("f")));const d=v.assignment==="review"?{status:"check",reason:"Zuordnung muss bestätigt werden.",basis:"Objektzuordnung"}:legalDecision({category:v.category},{assignment:v.assignment,agreement:v.agreement,hasConsumption:v.category==="water"&&!!settlementConsumption(state,settlementByPeriod(state,currentPeriodYear()))?.valid});$("positionDecision").innerHTML=`<div class="${d.status==="check"?"legal-warn":"info"}"><strong>Regelprüfung:</strong> ${esc(d.reason)}<br><small>${esc(d.basis||"")}</small></div>`};
     $("f").onchange=preview;preview();
-    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));if(v.serviceEnd<v.serviceStart)return alert("Leistungszeitraum prüfen.");const obj=positionDefaults({...x,id:x?.id||uid(),label:v.label.trim(),category:v.category,amount:Number(v.amount)||0,interval:v.interval,serviceStart:v.serviceStart,serviceEnd:v.serviceEnd,assignment:v.assignment,agreement:v.agreement,sourceId:v.sourceId,confirmed:v.confirmed==="yes",origin:x?.origin||"manual",details:{...(x?.details||{}),quantity:v.quantity===""?null:Number(v.quantity),unit:v.unit.trim(),rate:v.rate===""?null:Number(v.rate),vatRate:v.vatRate===""?null:Number(v.vatRate)}});const result=await executeCommand(x?"costPosition.update":"costPosition.create",{id:obj.id,label:obj.label,amount:obj.amount},async()=>{const i=state.costPositions.findIndex(p=>p.id===obj.id);if(i>=0)state.costPositions[i]=obj;else state.costPositions.push(obj)},{auditText:x?"Kostenposition geändert":"Kostenposition angelegt"});if(!result.ok)return alert(result.message);$("modal").classList.add("hidden");costPositionsDataView()}
+    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));if(v.serviceEnd<v.serviceStart)return alert("Leistungszeitraum prüfen.");const obj=positionDefaults({...x,id:x?.id||uid(),label:v.label.trim(),category:v.category,amount:Number(v.amount)||0,interval:v.interval,serviceStart:v.serviceStart,serviceEnd:v.serviceEnd,assignment:v.assignment,agreement:v.agreement,sourceId:v.sourceId,confirmed:v.confirmed==="yes",origin:x?.origin||"manual",details:{...(x?.details||{}),quantity:v.quantity===""?null:Number(v.quantity),unit:v.unit.trim(),rate:v.rate===""?null:Number(v.rate),vatRate:v.vatRate===""?null:Number(v.vatRate)}});const result=await executeCommand(x?"costPosition.update":"costPosition.create",{id:obj.id,label:obj.label,amount:obj.amount},async()=>{const i=state.costPositions.findIndex(p=>p.id===obj.id);if(i>=0)state.costPositions[i]=obj;else state.costPositions.push(obj)},{auditText:x?"Kostenposition geändert":"Kostenposition angelegt"});if(!result.ok)return alert(result.message);closeModal(true);costPositionsDataView()}
   })
 }
 
@@ -2294,7 +2322,7 @@ function renderMeterPhotoProposal(file,a){
   r.innerHTML=`<form id="meterPhotoConfirm" class="form-grid">
     <div class="full ${a.meterId?"legal-ok":"legal-warn"}"><strong>Zuordnung:</strong> ${a.meterId?`${esc(a.meterName)} · ${Math.round(a.assignmentConfidence*100)} %`:"nicht eindeutig"}<br><small>${esc(a.assignmentReason)}</small></div>
     ${formField({name:"meterId",label:"Zähler",type:"select",value:a.meterId||"",options:[{value:"",label:"Bitte Zähler wählen"},...meterOptions]})}
-    ${formField({name:"date",label:"Ablesedatum",type:"date",value:new Date().toISOString().slice(0,10)})}
+    ${formField({name:"date",label:"Ablesedatum",type:"date",value:localDateISO()})}
     ${formField({name:"value",label:"Erkannter Zählerstand",type:"number",step:"0.001",value:a.reading??""})}
     ${a.serialCandidate?formField({name:"detectedNumber",label:"Erkannte mögliche Zählernummer",value:a.serialCandidate}):""}
     <div class="full" id="meterPhotoPlausibility"></div>
@@ -2325,7 +2353,7 @@ function renderMeterPhotoProposal(file,a){
     if(v.saveDetectedNumber==="yes"&&!m.number&&(v.detectedNumber||a.serialCandidate))m.number=String(v.detectedNumber||a.serialCandidate).trim();
     const ok=await persist("Zählerstand per Foto erfasst",`${m.name} · ${value} ${m.unit||""} · ${v.date}`);
     if(!ok){try{await deleteDocument(doc.id)}catch{};return}
-    $("modal").classList.add("hidden");
+    closeModal(true);
     if(route==="data"&&sub.data==="infrastructure")infrastructureDataView();else if(route==="rental"&&sub.rental==="water")waterView();else render()
   }
 }
@@ -2345,8 +2373,8 @@ function infrastructureDataView(){
 }
 function openMeterEditor(m){
   modal("Zähler bearbeiten",`<form id="f" class="form-grid">${formField({name:"name",label:"Bezeichnung",value:m.name})}${formField({name:"number",label:"Zählernummer",value:m.number||"",placeholder:"wichtig für automatische Foto-Zuordnung"})}${formField({name:"unit",label:"Einheit",value:m.unit||"m³"})}<div class="full"><div class="row between"><h3>Ablesungen</h3><button type="button" id="photoFromMeterEditor" class="primary">Stand per Foto</button></div>${(m.readings||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(r=>`<p>${esc(r.date)} · <strong>${r.value} ${esc(m.unit||"")}</strong>${r.synthetic?" · übernommen":r.origin==="photo"?" · 📷 Foto":""}</p>`).join("")||"<p class='muted'>Noch keine Ablesungen.</p>"}</div><div class="full"><button class="primary">Zähler speichern</button></div></form>`,()=>{
-    $("photoFromMeterEditor").onclick=()=>{$("modal").classList.add("hidden");openMeterPhotoCapture(m.id,"camera")};
-    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));m.name=v.name.trim();m.number=v.number.trim();m.unit=v.unit.trim()||"m³";await persist("Zähler geändert",m.name);$("modal").classList.add("hidden");infrastructureDataView()}
+    $("photoFromMeterEditor").onclick=()=>{MODAL_RETURN_FOCUS=null;closeModal(true);openMeterPhotoCapture(m.id,"camera")};
+    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));m.name=v.name.trim();m.number=v.number.trim();m.unit=v.unit.trim()||"m³";await persist("Zähler geändert",m.name);closeModal(true);infrastructureDataView()}
   })
 }
 function openContainerEditor(x=null){
@@ -2405,7 +2433,7 @@ function openAssessmentEditor(x=null){
         ["Wasserverbrauch","water",v.waterUse,"house"]
       ].filter(r=>Number(r[2])>0).map(r=>positionDefaults({sourceId:src.id,documentId:src.sourceDocumentId||"",label:r[0],category:r[1],amount:Number(r[2]),serviceStart:v.serviceStart,serviceEnd:v.serviceEnd,assignment:r[3],agreement:"auto",origin:"assessment"}));
       replaceAssessmentPositions(state,src,rows);
-      await persist(existing?"Bescheid geändert":"Bescheid angelegt",src.name);$("modal").classList.add("hidden");assessmentDataView()
+      await persist(existing?"Bescheid geändert":"Bescheid angelegt",src.name);closeModal(true);assessmentDataView()
     }
   })
 }
@@ -2660,7 +2688,7 @@ async function saveDraftDocument(){
   const existing=await listDocuments(),duplicate=existing.find(d=>fingerprint&&d.fingerprint===fingerprint);
   if(duplicate&&!confirm(`Dieses Dokument scheint bereits als „${duplicate.label||duplicate.name}“ gespeichert zu sein. Trotzdem erneut speichern?`))return;
   const doc={id:uid(),name:label,label,type:DOC_DRAFT_PAGES.length>1?"application/x-mietverwaltung-document":DOC_DRAFT_PAGES[0].type,size:DOC_DRAFT_PAGES.reduce((sum,p)=>sum+p.size,0),created:new Date().toISOString(),sourceId:"",pages:DOC_DRAFT_PAGES.slice(),fingerprint,analysis:{status:"queued",createdAt:new Date().toISOString()}};
-  await addDocument(doc);DOC_DRAFT_PAGES=[];await persist("Dokument gespeichert",`${label} · ${doc.pages.length} Seite(n)`);$("modal")?.classList.add("hidden");await documentsView(false);
+  await addDocument(doc);DOC_DRAFT_PAGES=[];await persist("Dokument gespeichert",`${label} · ${doc.pages.length} Seite(n)`);closeModal(true);await documentsView(false);
   const progress=msg=>{const el=$("documentGlobalStatus");if(el)el.innerHTML=`<div class="info"><strong>Automatische Analyse:</strong> ${esc(msg)}</div>`};
   try{progress(`${label} wird analysiert …`);await analyzeDocumentById(doc.id,progress);progress(`${label} wurde analysiert.`)}catch(err){recordClientError("document-analysis",err);progress(`Analyse fehlgeschlagen: ${err.message||err}`)}
   if(route==="data"&&sub.data==="documents")await documentsView(false)
@@ -2705,7 +2733,7 @@ async function acceptDocumentProposals(doc){
   }
   doc.sourceId=src.id;doc.analysis.acceptedAt=new Date().toISOString();await updateDocument(doc);
   await persist("Dokumentvorschläge bestätigt",`${doc.label||doc.name} · ${accepted.length} Kostenposition(en)`);
-  $("modal").classList.add("hidden");sub.data="positions";dataWorkspace()
+  closeModal(true);sub.data="positions";dataWorkspace()
 }
 function openDocumentAnalysis(doc){
   const a=doc.analysis||{},f=a.fields||{},proposals=f.positionProposals||[],overall=confidenceBand(confidencePercent(f.confidence||0));
@@ -2741,14 +2769,13 @@ async function documentsView(autoQueue=true){
 function rentalWorkspace(){
   const tabs=[
     {id:"overview",label:"Überblick",icon:"⌂"},
-    {id:"lease",label:"Mietvertrag",icon:"▧"},
     {id:"water",label:"Kaltwasser",icon:"◌"},
     {id:"billing",label:"Abrechnung",icon:"€"}
   ];
   let active=sub.rental||"overview";
   if(active==="calculation"||active==="workflow")active="billing";
   sub.rental=active;
-  $("app").innerHTML=workspaceHeader("VERMIETUNG","Vermietung","Mietvertrag, Verbrauch und Betriebskostenabrechnung an einem Ort.",tabs,visibleSub("rental",active));
+  $("app").innerHTML=workspaceHeader("VERMIETUNG","Vermietung","Mietverhältnis, Kaltwasser und Betriebskostenabrechnung.",tabs,visibleSub("rental",active));
   bindWorkspaceTabs("rental",rentalWorkspace);
   if(active==="overview")rentalOverview();
   else if(active==="lease")leaseDataView();
@@ -2764,14 +2791,14 @@ function v17RentLedgerCard(s){
   const rows=v17LedgerMonthKeys(12).map(key=>rentMonthStatus(s,key)).filter(r=>r.status!=="none");
   const current=rentMonthStatus(s),arrears=rows.reduce((sum,r)=>sum+Math.max(0,-Number(r.difference||0)),0);
   const pill=r=>{const c=r.status==="paid"?"good":r.status==="missing"?"bad":"warn";return `<span class="pill ${c}">${esc(rentStatusLabel(r))}</span>`};
-  return `<section id="v17RentLedger" class="card"><div class="card-head"><div><p class="eyebrow">V17 · MIETKONTO</p><h3>Mietkonto & Zahlungsstatus</h3></div>${current.status!=="none"?pill(current):""}</div>
+  return `<section id="v17RentLedger" class="card"><div class="card-head"><div><p class="eyebrow">MIETKONTO</p><h3>Mietkonto & Zahlungsstatus</h3></div>${current.status!=="none"?pill(current):""}</div>
   <div class="grid cards"><article class="card metric-card"><span>Soll aktuell</span><strong>${euro(current.expected)}</strong></article><article class="card metric-card"><span>Erkannt aktuell</span><strong>${euro(current.paid)}</strong></article><article class="card metric-card"><span>Offener Saldo 12M</span><strong class="${arrears>0?"negative":"positive"}">${euro(arrears)}</strong></article></div>
   <div class="tablewrap"><table class="costtable"><thead><tr><th>Monat</th><th>Soll</th><th>Erhalten</th><th>Differenz</th><th>Status</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.key)}</td><td>${euro(r.expected)}</td><td>${euro(r.paid)}</td><td class="${r.difference<-.01?"negative":"positive"}">${euro(r.difference)}</td><td>${pill(r)}</td></tr>`).join("")}</tbody></table></div>
   <p class="muted">Erkennung aus Mietvertrag und gespeicherten Zahlungseingängen. Teil-, Fehl- und Überzahlungen bleiben sichtbar.</p></section>`
 }
 function v17UtilitiesCard(s){
   const p=s.meta?.v17?.utilityProfile||{};
-  return `<section id="v17Utilities" class="card"><p class="eyebrow">V17 · VERSORGUNG</p><h3>Abrechnungsverantwortung</h3>
+  return `<section id="v17Utilities" class="card"><p class="eyebrow">VERSORGUNG</p><h3>Abrechnungsverantwortung</h3>
   <div class="fact-row"><span>Kaltwasser / Kanal</span><strong>${p.coldWater==="landlord"?"über Vermieter":"Mietervertrag"}</strong></div>
   <div class="fact-row"><span>Heizung</span><strong>${p.heating==="tenant"?"eigener Mietervertrag":"über Vermieter"}</strong></div>
   <div class="fact-row"><span>Warmwasser</span><strong>${p.hotWater==="tenant"?"eigene Verantwortung":"über Vermieter"}</strong></div>
@@ -2783,24 +2810,69 @@ function v17PaymentQualityCard(s){
   const payments=s.payments||[],bad=payments.filter(p=>!p.date||!String(p.label||"").trim()||!(Number(p.amount)>0)),seen=new Map();
   for(const p of payments){const k=`${p.date}|${p.direction}|${Number(p.amount||0).toFixed(2)}|${normalizeLabelText(p.label||"")}`;seen.set(k,(seen.get(k)||0)+1)}
   const dups=[...seen.values()].filter(n=>n>1).length,problem=bad.length||dups;
-  return `<div id="v17PaymentQuality" class="${problem?"legal-warn":"legal-ok"}"><strong>V17 Buchungsprüfung</strong><br>${bad.length?`${bad.length} Buchung(en) mit unvollständigen Pflichtdaten. `:""}${dups?`${dups} mögliche Dublette(n).`:"Keine ungültigen oder doppelten Buchungen erkannt."}</div>`
+  return `<div id="v17PaymentQuality" class="${problem?"legal-warn":"legal-ok"}"><strong>Buchungsprüfung</strong><br>${bad.length?`${bad.length} Buchung(en) mit unvollständigen Pflichtdaten. `:""}${dups?`${dups} mögliche Dublette(n).`:"Keine ungültigen oder doppelten Buchungen erkannt."}</div>`
 }
 
+function leaseDocumentCandidate(doc){
+  const hay=normalizeLabelText(`${doc?.label||""} ${doc?.name||""} ${doc?.analysis?.fields?.kind||""}`);
+  return /mietvertrag|wohnraummietvertrag|mietvereinbarung/.test(hay)
+}
+function openStoredLeaseDocument(doc){
+  const pages=docPages(doc);
+  if(pages.length===1&&(pages[0].type==="application/pdf"||String(pages[0].name||"").toLowerCase().endsWith(".pdf"))){
+    const url=URL.createObjectURL(pages[0].blob),opened=window.open(url,"_blank");
+    if(!opened){URL.revokeObjectURL(url);openDocumentAnalysis(doc);return}
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    return
+  }
+  openDocumentAnalysis(doc)
+}
+async function renderLeaseDocumentSlot(){
+  const host=$("leaseDocumentSlot");if(!host)return;
+  try{
+    const docs=await listDocuments();state.documentsCache=docs;
+    if(route!=="rental"||sub.rental!=="overview"||!$("leaseDocumentSlot"))return;
+    const matches=docs.filter(leaseDocumentCandidate);
+    if(matches.length){
+      const d=matches[0],more=matches.length-1;
+      host.innerHTML=`<div class="mini-document-row"><span><strong>${esc(d.label||d.name)}</strong><small>${d.pages?.length||1} Seite(n) · ${esc(docStatus(d).label)}${more>0?` · +${more} weiteres Dokument`:""}</small></span><button class="secondary compact" id="openLeaseDocument">Öffnen</button></div>`;
+      $("openLeaseDocument").onclick=()=>openStoredLeaseDocument(d)
+    }else{
+      host.innerHTML=`<div class="empty-inline"><span><strong>Noch kein Vertragsdokument erkannt</strong><small>Ein PDF oder Foto mit „Mietvertrag“ in der Bezeichnung erscheint hier automatisch.</small></span></div>`
+    }
+  }catch(e){
+    host.innerHTML=`<div class="empty-inline"><span><strong>Vertragsdokument konnte nicht geladen werden</strong><small>${esc(e.message||e)}</small></span></div>`
+  }
+}
 function rentalOverview(){
-  const y=currentPeriodYear(),a=billingAnalysis(state,y),p=billingProjection(state,y),rent=rentMonthStatus(state),ctx=billingPeriodContext(state,y),cb=confidenceBand(p.confidence);
+  const y=currentPeriodYear(),a=billingAnalysis(state,y),p=billingProjection(state,y),rent=rentMonthStatus(state),ctx=billingPeriodContext(state,y),cb=confidenceBand(p.confidence),l=state.leases[0];
   $("workspaceBody").innerHTML=`<div class="grid cards">
     <article class="card metric-card"><span>Bestätigte Kosten Mieterin</span><strong>${euro(a.tenantCosts)}</strong><small>aktueller Rechenstand</small></article>
     <article class="card metric-card"><span>Vorauszahlungen</span><strong>${euro(a.advances)}</strong><small>für diese Periode</small></article>
     <article class="card metric-card"><span>Aktuelles Ergebnis</span><strong>${euro(Math.abs(a.result))}</strong><small>${a.result>=0?"Nachzahlung":"Guthaben"}</small></article>
     <article class="card metric-card"><span>Prognose</span><strong>${euro(Math.abs(p.projectedResult))}</strong><small>${p.projectedResult>=0?"Nachzahlung":"Guthaben"} · ${esc(cb.short)}</small></article>
   </div>
+  <section class="card embedded-overview-card lease-overview-card">
+    <div class="card-head"><div><p class="eyebrow">MIETVERHÄLTNIS</p><h3>${l?esc(l.tenantName||"Mietvertrag"):"Noch kein Mietvertrag"}</h3></div><button id="editLeaseOverview" class="${l?"secondary":"primary"} compact">${l?"Vertragsdaten bearbeiten":"Mietvertrag anlegen"}</button></div>
+    ${l?`<div class="overview-facts">
+      <div class="fact-row"><span>Vertragsbeginn</span><strong>${dateDE(l.start)}</strong></div>
+      <div class="fact-row"><span>Kaltmiete</span><strong>${euro(l.rent)} / Monat</strong></div>
+      <div class="fact-row"><span>BK-Vorauszahlung</span><strong>${euro(l.advance)} / Monat</strong></div>
+      ${l.end?`<div class="fact-row"><span>Vertragsende</span><strong>${dateDE(l.end)}</strong></div>`:""}
+    </div>`:`<p class="muted">Lege einmalig die Vertragsdaten an. Danach erscheinen sie dauerhaft direkt hier in der Übersicht.</p>`}
+    <div class="embedded-document">
+      <div class="embedded-document-head"><span><strong>Mietvertrag / PDF</strong><small>Direkt beim Mietverhältnis abgelegt</small></span><button id="addLeaseDocument" class="secondary compact">Dokument hinzufügen</button></div>
+      <div id="leaseDocumentSlot"><span class="muted">Dokument wird geladen …</span></div>
+    </div>
+  </section>
   <div class="${ctx.kind==="takeover"?"info":"legal-ok"}"><strong>${esc(billingPeriodLabel(state,y))}</strong><br>${esc(ctx.message)}<br><small>Reguläres Fristende: ${periodDeadline(y)}.</small></div>
   ${p.missingCategories.length?`<details class="card secondary-detail"><summary>Was in der Prognose noch geschätzt wird</summary><div class="detail-content"><p>${p.missingCategories.map(x=>`${esc(categoryLabel(x.category))}${x.annualized?" (aus Teilperiode hochgerechnet)":""}`).join(", ")}</p><span class="confidence confidence-${cb.id}">${esc(cb.label)} · ${p.confidence}%</span></div></details>`:""}
   <div class="card"><div class="fact-row"><span>Mietzahlung ${esc(rent.key)}</span><strong>${rent.status==="none"?"kein aktiver Vertrag":esc(rentStatusLabel(rent))}</strong></div>${rent.status!=="none"?`<small>${euro(rent.paid)} von ${euro(rent.expected)} in erfassten Zahlungen erkannt.</small>`:""}</div>
   ${v17RentLedgerCard(state)}
-  ${v17UtilitiesCard(state)}
-  <div class="card action-row"><button id="toLeaseData" class="secondary">Mietvertrag</button><button id="toSourceData" class="secondary">Kosten</button><button id="toSmartRental" class="secondary">Assistent</button></div>`;
-  $("toLeaseData").onclick=()=>go("rental","lease");$("toSourceData").onclick=()=>go("data","costs");$("toSmartRental").onclick=()=>go("more","smart")
+  ${v17UtilitiesCard(state)}`;
+  $("editLeaseOverview").onclick=()=>openLeaseEditor(l||null);
+  $("addLeaseDocument").onclick=()=>{go("data","documents");setTimeout(()=>{openDocumentCapture();setTimeout(()=>{if($("newDocLabel")&&!$("newDocLabel").value)$("newDocLabel").value="Mietvertrag"},0)},0)};
+  renderLeaseDocumentSlot()
 }
 function waterRentalView(){
   // Reuse water view into workspaceBody
@@ -2824,14 +2896,14 @@ function openLeaseEditor(x=null){
     ${formField({name:"note",label:"Vertragsnotiz",value:x?.note||"",full:true,placeholder:"Optionale Besonderheiten"})}
     <div class="full form-actions"><button class="primary">Speichern</button></div>
   </form>`,()=>{
-    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),obj=x||{id:uid()};if(!v.start)return alert("Bitte den Vertragsbeginn eintragen.");Object.assign(obj,{tenantName:v.tenantName.trim(),tenantAddress:v.tenantAddress.trim(),start:v.start,end:v.end,rent:Number(v.rent)||0,advance:Number(v.advance)||0,note:v.note.trim()});if(!x)state.leases.push(obj);await persist(x?"Mietvertrag geändert":"Mietvertrag angelegt","Mietvertrag");$("modal").classList.add("hidden");leaseDataView()}
+    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),obj=x||{id:uid()};if(!v.start)return alert("Bitte den Vertragsbeginn eintragen.");Object.assign(obj,{tenantName:v.tenantName.trim(),tenantAddress:v.tenantAddress.trim(),start:v.start,end:v.end,rent:Number(v.rent)||0,advance:Number(v.advance)||0,note:v.note.trim()});if(!x)state.leases.push(obj);await persist(x?"Mietvertrag geändert":"Mietvertrag angelegt","Mietvertrag");closeModal(true);go("rental","overview")}
   })
 }
 function waterView(){
   const y=currentPeriodYear(),sett=settlementByPeriod(state,y),cons=settlementConsumption(state,sett),waterCosts=(state.costPositions||[]).filter(p=>p.confirmed&&p.category==="water"&&positionToEvents(state,p,y).length),waterCostTotal=waterCosts.reduce((sum,p)=>sum+positionToEvents(state,p,y).reduce((a,e)=>a+Number(e.amount||0),0),0),waterTenantCost=cons?.valid?waterCostTotal*cons.share:0,waterRate=cons?.valid&&cons.house>0?waterCostTotal/cons.house:0,{main,owner}=ensureDefaultMeters(state);
   $("workspaceBody").innerHTML=`<div class="card"><div class="row between"><div><button id="editWater" class="primary">${sett?"Abrechnungsperiode bearbeiten":"Abrechnungsperiode erfassen"}</button><button id="openMeters" class="secondary">Zählerstammdaten</button></div><div><button id="photoMain" class="secondary">📷 Hauptzähler</button><button id="photoOwner" class="secondary">📷 Zwischenzähler</button></div></div></div>
   ${cons?`<div class="${cons.valid?"legal-ok":"legal-bad"}"><strong>${billingPeriodLabel(state,y)}</strong><br>Hausverbrauch ${cons.house.toFixed(3)} m³ · Eigennutzung ${cons.owner.toFixed(3)} m³ · Mietwohnung ${cons.tenant.toFixed(3)} m³ · Anteil ${percent(cons.share)}</div>`:`<div class="legal-warn">Für diese Periode fehlen vollständige Zählerstände. Fotoaufnahmen werden als historische Ablesungen gespeichert; die Abrechnungsperiode wählt anschließend die passenden Anfangs- und Endstände aus.</div>`}
-  <section id="v17WaterPlus" class="card"><div class="card-head"><div><p class="eyebrow">V17 · KALTWASSER PLUS</p><h3>Verbrauch & Kosten auf einen Blick</h3></div><span class="pill ${cons?.valid&&waterCostTotal>0?"good":"warn"}">${cons?.valid&&waterCostTotal>0?"Abrechnungsbereit":"Noch offen"}</span></div><div class="grid cards"><article class="card metric-card"><span>Hausverbrauch</span><strong>${cons?.valid?cons.house.toFixed(3)+" m³":"–"}</strong></article><article class="card metric-card"><span>Mietwohnung</span><strong>${cons?.valid?cons.tenant.toFixed(3)+" m³":"–"}</strong><small>${cons?.valid?percent(cons.share):"Anteil offen"}</small></article><article class="card metric-card"><span>Wasserkosten</span><strong>${euro(waterCostTotal)}</strong><small>${cons?.valid&&waterCostTotal?`${euro(waterRate)} / m³ Hausverbrauch`:"Tarif noch offen"}</small></article><article class="card metric-card"><span>Rechnerischer Mieteranteil</span><strong>${cons?.valid&&waterCostTotal?euro(waterTenantCost):"–"}</strong></article></div><p class="muted">Die Werte stammen direkt aus dem zentralen Zähler- und Kostenmodell; es gibt keine separate V17-Nebenrechnung mehr.</p></section>
+  <section id="v17WaterPlus" class="card"><div class="card-head"><div><p class="eyebrow">KALTWASSER</p><h3>Verbrauch & Kosten auf einen Blick</h3></div><span class="pill ${cons?.valid&&waterCostTotal>0?"good":"warn"}">${cons?.valid&&waterCostTotal>0?"Abrechnungsbereit":"Noch offen"}</span></div><div class="grid cards"><article class="card metric-card"><span>Hausverbrauch</span><strong>${cons?.valid?cons.house.toFixed(3)+" m³":"–"}</strong></article><article class="card metric-card"><span>Mietwohnung</span><strong>${cons?.valid?cons.tenant.toFixed(3)+" m³":"–"}</strong><small>${cons?.valid?percent(cons.share):"Anteil offen"}</small></article><article class="card metric-card"><span>Wasserkosten</span><strong>${euro(waterCostTotal)}</strong><small>${cons?.valid&&waterCostTotal?`${euro(waterRate)} / m³ Hausverbrauch`:"Tarif noch offen"}</small></article><article class="card metric-card"><span>Rechnerischer Mieteranteil</span><strong>${cons?.valid&&waterCostTotal?euro(waterTenantCost):"–"}</strong></article></div><p class="muted">Die Werte stammen direkt aus dem zentralen Zähler- und Kostenmodell; es gibt keine separate V17-Nebenrechnung mehr.</p></section>
   <div class="card"><h3>Letzte Ablesungen</h3><p>${esc(main.name)}: <strong>${latestMeterReading(main)?`${latestMeterReading(main).value} ${esc(main.unit||"")} · ${esc(latestMeterReading(main).date)}`:"noch keine"}</strong></p><p>${esc(owner.name)}: <strong>${latestMeterReading(owner)?`${latestMeterReading(owner).value} ${esc(owner.unit||"")} · ${esc(latestMeterReading(owner).date)}`:"noch keine"}</strong></p></div>
   <div class="card"><h3>Wasser-/Kanalkosten</h3>${waterCosts.map(p=>`<p>${esc(p.label)}: <strong>${euro(p.amount)}</strong></p>`).join("")||"<div class='empty-state compact-empty'><strong>Noch keine bestätigten Wasser-/Kanalkosten</strong><p>Bestätigte Kosten erscheinen hier automatisch.</p></div>"}<p class="muted">Kosten und Verbrauch sind getrennt gespeichert. Die Abrechnung verbindet beides erst bei der Umlage.</p></div>`;
   $("editWater").onclick=()=>openWaterEditor(sett);$("openMeters").onclick=()=>{sub.data="infrastructure";go("data")};
@@ -2856,13 +2928,13 @@ function openWaterEditor(x=null){
     const calc=()=>{const v=Object.fromEntries(new FormData($("f"))),house=Number(v.mainEnd)-Number(v.mainStart),own=Number(v.ownerEnd)-Number(v.ownerStart),tenant=house-own;$("waterCalc").innerHTML=house>=0&&own>=0&&tenant>=0?`<div class="info">Haus ${house.toFixed(3)} m³ − Eigennutzung ${own.toFixed(3)} m³ = Mietwohnung <strong>${tenant.toFixed(3)} m³</strong> (${house>0?percent(tenant/house):"–"})</div>`:`<div class="legal-bad">Zählerstände ergeben einen negativen Verbrauch. Bitte prüfen.</div>`};$("f").oninput=calc;calc();
     $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),house=Number(v.mainEnd)-Number(v.mainStart),own=Number(v.ownerEnd)-Number(v.ownerStart);if(house<0||own<0||house-own<0)return alert("Zählerstände prüfen.");
       const ms=addMeterReading(main,v.mainStartDate,Number(v.mainStart),"manual"),me=addMeterReading(main,v.mainEndDate,Number(v.mainEnd),"manual"),os=addMeterReading(owner,v.ownerStartDate,Number(v.ownerStart),"manual"),oe=addMeterReading(owner,v.ownerEndDate,Number(v.ownerEnd),"manual");
-      const obj=x||{id:uid()};Object.assign(obj,{periodYear:Number(v.periodYear),mainMeterId:main.id,ownerMeterId:owner.id,mainStartReadingId:ms.id,mainEndReadingId:me.id,ownerStartReadingId:os.id,ownerEndReadingId:oe.id});if(!x)state.waterSettlements.push(obj);await persist(x?"Wasserperiode geändert":"Wasserperiode angelegt",billingPeriodLabel(state,obj.periodYear));$("modal").classList.add("hidden");waterView()
+      const obj=x||{id:uid()};Object.assign(obj,{periodYear:Number(v.periodYear),mainMeterId:main.id,ownerMeterId:owner.id,mainStartReadingId:ms.id,mainEndReadingId:me.id,ownerStartReadingId:os.id,ownerEndReadingId:oe.id});if(!x)state.waterSettlements.push(obj);await persist(x?"Wasserperiode geändert":"Wasserperiode angelegt",billingPeriodLabel(state,obj.periodYear));closeModal(true);waterView()
     }
   })
 }
 function calculationView(){
   const y=selectedBillingYear(state),yearOptions=billingSelectableYears(state),closure=billingClosureChecklist(state,y),a=closure.analysis,snap=(state.billingSnapshots||[]).find(s=>Number(s.periodYear)===Number(y)),ctx=billingPeriodContext(state,y),v18=v18BillingAssistant(state,y);
-  const routeFor={period:["data","property"],periodComplete:["rental","billing"],costs:["data","positions"],assignment:["data","positions"],water:["rental","water"],advance:["rental","lease"],readiness:["more","smart"]};
+  const routeFor={period:["data","property"],periodComplete:["rental","billing"],costs:["data","positions"],assignment:["data","positions"],water:["rental","water"],advance:["rental","overview"],readiness:["more","smart"]};
   $("workspaceBody").innerHTML=`<div class="card"><div class="row between"><div><p class="eyebrow">BETRIEBSKOSTENABRECHNUNG</p><h3>${billingPeriodLabel(state,y)}</h3><p class="muted">${esc(ctx.message)}</p><label style="display:block;margin-top:10px"><span class="muted">Abrechnungsperiode</span><select id="billingYearSelect" aria-label="Abrechnungsperiode">${yearOptions.map(yy=>`<option value="${yy}" ${yy===y?"selected":""}>${esc(billingPeriodLabel(state,yy))}</option>`).join("")}</select></label></div><span class="pill ${closure.ok?"good":"warn"}">${closure.ok?"Abschlussbereit":"Noch offen"}</span></div></div>
   ${v18BillingAssistantHTML(state,y,{compact:false})}
   <div class="card"><h3>Abschlussprüfung</h3><p class="muted">Offene Punkte führen direkt zur passenden Eingabe.</p>${closure.points.map((p,i)=>`<${p.ok?"div":"button"} class="closure-step ${p.ok?"done":"open actionable"}" ${p.ok?"":`data-closure="${p.id}"`}><span>${p.ok?"✓":"!"}</span><div><strong>${i+1}. ${esc(p.label)}</strong>${p.ok?"":"<small>Öffnen und beheben</small>"}</div></${p.ok?"div":"button"}>`).join("")}</div>
@@ -2890,7 +2962,7 @@ function openBillingFinalReview(y){
         const snap=createBillingSnapshot(state,y);await finalizeSnapshotIntegrity(snap);state.billingSnapshots.push(snap);return snap
       },{auditText:"Abrechnung eingefroren",restorePoint:true});
       if(!result.ok)return alert(result.message);
-      $("modal").classList.add("hidden");calculationView()
+      closeModal(true);calculationView()
     }
   })
 }
@@ -2915,11 +2987,10 @@ function ownerWorkspace(){
   const tabs=[
     {id:"overview",label:"Überblick",icon:"⌂"},
     {id:"payments",label:"Zahlungen",icon:"€"},
-    {id:"planning",label:"Planung & Analyse",icon:"↗"},
-    {id:"tasks",label:"Erinnerungen",icon:"✓"}
+    {id:"planning",label:"Planung",icon:"↗"}
   ];
   const active=sub.owner||"overview",visible=visibleSub("owner",active);
-  $("app").innerHTML=workspaceHeader("FINANZEN","Finanzen","Hausrate, Zahlungen, Planung und eigene Termine – getrennt von der Mieterabrechnung.",tabs,visible);
+  $("app").innerHTML=workspaceHeader("FINANZEN","Finanzen","Zahlungen, Planung und Termine – getrennt von der Mieterabrechnung.",tabs,visible);
   bindWorkspaceTabs("owner",ownerWorkspace);
   if(active==="overview")ownerOverview();
   else if(active==="payments")financePaymentsHubView();
@@ -2931,13 +3002,22 @@ function ownerWorkspace(){
   else ownerTasksView()
 }
 function ownerOverview(){
-  const f=intelligentForecast(state,12),sum=f.reduce((s,x)=>s+x.net,0),rent=state.leases.reduce((s,l)=>s+Number(l.rent||0),0),repay=Number(state.finance.repayment||0);
+  const f=intelligentForecast(state,12),sum=f.reduce((s,x)=>s+x.net,0),rent=state.leases.reduce((s,l)=>s+Number(l.rent||0),0),repay=Number(state.finance.repayment||0),items=taskList(),overdue=items.filter(t=>daysUntil(t.due)<0),upcoming=items.filter(t=>daysUntil(t.due)>=0),shown=[...overdue,...upcoming].slice(0,4);
   $("workspaceBody").innerHTML=`<div class="grid cards">
     <article class="card metric-card"><span>Hausrate</span><strong>${euro(repay)}</strong><small>monatlich</small></article>
     <article class="card metric-card"><span>Kaltmiete</span><strong>${euro(rent)}</strong><small>monatlich</small></article>
     <article class="card metric-card"><span>Hausrate nach Kaltmiete</span><strong>${euro(repay-rent)}</strong><small>ohne weitere Hauskosten</small></article>
     <article class="card metric-card"><span>12M-Cashflow-Prognose</span><strong class="${sum<0?"negative":"positive"}">${euro(sum)}</strong><small>inkl. BK-Geldfluss</small></article>
-  </div><div class="info"><strong>Privater Bereich</strong><br>Hausfinanzierung und eigener Zahlungsfluss werden hier analysiert, aber niemals als umlagefähige Betriebskosten behandelt.</div>`
+  </div>
+  <div class="info"><strong>Privater Bereich</strong><br>Hausfinanzierung und eigener Zahlungsfluss werden hier analysiert, aber niemals als umlagefähige Betriebskosten behandelt.</div>
+  <section class="card embedded-overview-card">
+    <div class="card-head"><div><p class="eyebrow">TERMINE</p><h3>Erinnerungen</h3></div><div class="overview-button-group"><button id="exportOverviewICS" class="secondary compact">Kalender exportieren</button><button id="addOverviewTask" class="primary compact">Hinzufügen</button></div></div>
+    ${shown.length?shown.map(taskHTML).join(""):`<div class="empty-inline"><span><strong>Keine anstehenden Erinnerungen</strong><small>Fälligkeiten aus Kostenquellen und eigene Termine erscheinen automatisch hier.</small></span></div>`}
+    ${items.length>4?`<button id="openAllTasks" class="secondary wide">Alle ${items.length} Erinnerungen anzeigen</button>`:""}
+  </section>`;
+  $("exportOverviewICS").onclick=exportICS;
+  $("addOverviewTask").onclick=openTaskEditor;
+  if($("openAllTasks"))$("openAllTasks").onclick=()=>go("owner","tasks")
 }
 function ownerFinanceView(){
   financeView()
@@ -2968,19 +3048,18 @@ function smartCenterView(){
 }
 function openSmartTaskSuggestions(items=smartTaskSuggestions(state)){
   modal("Erinnerungsvorschläge",items.length?`<div class="card"><p>Diese Vorschläge werden aus Fälligkeiten, Ablesungen und Sicherungsstatus abgeleitet.</p></div>${items.map((t,i)=>`<label class="import-row"><input type="checkbox" data-smart-task="${i}" checked><span><strong>${esc(t.title)}</strong><br>${esc(t.due)} · ${esc(t.reason)}</span></label>`).join("")}<button id="acceptSmartTasks" class="primary">Ausgewählte Erinnerungen anlegen</button>`:`<div class="legal-ok">Keine neuen Erinnerungsvorschläge.</div>`,()=>{
-    if($("acceptSmartTasks"))$("acceptSmartTasks").onclick=async()=>{const selected=[...document.querySelectorAll("[data-smart-task]:checked")].map(x=>items[Number(x.dataset.smartTask)]).filter(Boolean);if(!selected.length)return;for(const t of selected)state.tasks.push({id:uid(),title:t.title,due:t.due,lead:t.lead||14,origin:"smart"});await persist("Smart-Erinnerungen angelegt",`${selected.length} Vorschlag/Vorschläge`);$("modal").classList.add("hidden");smartCenterView()}
+    if($("acceptSmartTasks"))$("acceptSmartTasks").onclick=async()=>{const selected=[...document.querySelectorAll("[data-smart-task]:checked")].map(x=>items[Number(x.dataset.smartTask)]).filter(Boolean);if(!selected.length)return;for(const t of selected)state.tasks.push({id:uid(),title:t.title,due:t.due,lead:t.lead||14,origin:"smart"});await persist("Smart-Erinnerungen angelegt",`${selected.length} Vorschlag/Vorschläge`);closeModal(true);smartCenterView()}
   })
 }
 
 function more(){
   const tabs=[
     {id:"smart",label:"Assistent",icon:"✦"},
-    {id:"legal",label:"Recht & Regeln",icon:"§"},
-    {id:"protection",label:"Sicherheit",icon:"◇"},
-    {id:"app",label:"App & Verlauf",icon:"•••"}
+    {id:"protection",label:"Sicherung",icon:"◇"},
+    {id:"app",label:"Erweitert",icon:"•••"}
   ];
   const active=sub.more||"smart",visible=visibleSub("more",active);
-  $("app").innerHTML=workspaceHeader("MEHR","Mehr","Assistent, Rechtsstand, Sicherheit und technische Verwaltung.",tabs,visible);
+  $("app").innerHTML=workspaceHeader("MEHR","Mehr","Assistent, Datensicherung und selten benötigte Einstellungen.",tabs,visible);
   bindWorkspaceTabs("more",more);
   if(active==="smart"||active==="overview")smartCenterView();
   else if(active==="legal")legalMoreView();
@@ -3025,14 +3104,14 @@ function openBankImportPreview(parsed,fileName){
     $("commitBankImport").onclick=async()=>{const selected=[...document.querySelectorAll("[data-import-row]:checked")].map(x=>rows[Number(x.dataset.importRow)]).filter(Boolean);if(!selected.length)return;
       createRestorePoint("Vor Kontoimport");
       const result=await executeCommand("bank.csv.import",{fileName,count:selected.length},async()=>{for(const r of selected)state.payments.push({id:uid(),date:r.date,direction:r.direction,label:r.label,amount:r.amount,sourceId:"",positionId:"",importOrigin:"csv",importFile:fileName});state.meta.importHistory.unshift({id:uid(),at:new Date().toISOString(),fileName,recognized:rows.length,imported:selected.length,duplicates:rows.length-fresh.length});state.meta.importHistory=state.meta.importHistory.slice(0,25)},{auditText:"Kontoauszug importiert"});
-      if(!result.ok)return alert(result.message);$("modal").classList.add("hidden");cashflowView()
+      if(!result.ok)return alert(result.message);closeModal(true);cashflowView()
     }
   })
 }
 function openPaymentEditor(){
   const sources=(state.sources||[]).map(s=>({value:s.id,label:s.name})),positions=(state.costPositions||[]).filter(p=>p.confirmed).map(p=>({value:p.id,label:`${p.label} · ${euro(p.amount)}`}));
-  modal("Zahlung erfassen",`<form id="f" class="form-grid">${formField({name:"date",label:"Datum",type:"date",value:new Date().toISOString().slice(0,10)})}${formField({name:"direction",label:"Art",type:"select",value:"outflow",options:[{value:"outflow",label:"Ausgabe"},{value:"income",label:"Einnahme"}]})}${formField({name:"label",label:"Bezeichnung"})}${formField({name:"amount",label:"Betrag €",type:"number",step:"0.01",min:0.01})}${formField({name:"sourceId",label:"Quelle",type:"select",value:"",options:[{value:"",label:"keine Quelle"},...sources]})}${formField({name:"positionId",label:"Kostenposition",type:"select",value:"",options:[{value:"",label:"keine Kostenposition"},...positions]})}<div class="full"><button class="primary">Speichern</button></div></form>`,()=>{
-    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),amount=Number(v.amount);if(!v.date)return alert("Bitte ein Buchungsdatum eintragen.");if(!String(v.label||"").trim())return alert("Bitte eine aussagekräftige Bezeichnung eintragen.");if(!Number.isFinite(amount)||amount<=0)return alert("Der Betrag muss größer als 0,00 € sein.");const payment={id:uid(),date:v.date,direction:v.direction,label:v.label.trim(),amount,sourceId:v.sourceId||"",positionId:v.positionId||""};const result=await executeCommand("payment.create",payment,async()=>state.payments.push(payment),{auditText:"Zahlung erfasst"});if(!result.ok)return alert(result.message);$("modal").classList.add("hidden");cashflowView()}
+  modal("Zahlung erfassen",`<form id="f" class="form-grid">${formField({name:"date",label:"Datum",type:"date",value:localDateISO()})}${formField({name:"direction",label:"Art",type:"select",value:"outflow",options:[{value:"outflow",label:"Ausgabe"},{value:"income",label:"Einnahme"}]})}${formField({name:"label",label:"Bezeichnung"})}${formField({name:"amount",label:"Betrag €",type:"number",step:"0.01",min:0.01})}${formField({name:"sourceId",label:"Quelle",type:"select",value:"",options:[{value:"",label:"keine Quelle"},...sources]})}${formField({name:"positionId",label:"Kostenposition",type:"select",value:"",options:[{value:"",label:"keine Kostenposition"},...positions]})}<div class="full"><button class="primary">Speichern</button></div></form>`,()=>{
+    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),amount=Number(v.amount);if(!v.date)return alert("Bitte ein Buchungsdatum eintragen.");if(!String(v.label||"").trim())return alert("Bitte eine aussagekräftige Bezeichnung eintragen.");if(!Number.isFinite(amount)||amount<=0)return alert("Der Betrag muss größer als 0,00 € sein.");const payment={id:uid(),date:v.date,direction:v.direction,label:v.label.trim(),amount,sourceId:v.sourceId||"",positionId:v.positionId||""};const result=await executeCommand("payment.create",payment,async()=>state.payments.push(payment),{auditText:"Zahlung erfasst"});if(!result.ok)return alert(result.message);closeModal(true);cashflowView()}
   })
 }
 
@@ -3062,7 +3141,7 @@ function tasksView(){
   $("addTask").onclick=openTaskEditor;$("ics").onclick=exportICS
 }
 function openTaskEditor(){
-  modal("Erinnerung hinzufügen",`<form id="f" class="form-grid">${formField({name:"title",label:"Titel"})}${formField({name:"due",label:"Fällig am",type:"date"})}${formField({name:"lead",label:"Vorwarnung (Tage)",type:"number",value:14})}<div class="full"><button class="primary">Speichern</button></div></form>`,()=>{$("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));state.tasks.push({id:uid(),title:v.title,due:v.due,lead:Number(v.lead)||14});await persist("Erinnerung angelegt",v.title);$("modal").classList.add("hidden");route==="owner"?ownerTasksView():tasksView()}})
+  modal("Erinnerung hinzufügen",`<form id="f" class="form-grid">${formField({name:"title",label:"Titel"})}${formField({name:"due",label:"Fällig am",type:"date"})}${formField({name:"lead",label:"Vorwarnung (Tage)",type:"number",value:14})}<div class="full"><button class="primary">Speichern</button></div></form>`,()=>{$("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));state.tasks.push({id:uid(),title:v.title,due:v.due,lead:Number(v.lead)||14});await persist("Erinnerung angelegt",v.title);closeModal(true);route==="owner"?(sub.owner==="overview"?ownerOverview():ownerTasksView()):tasksView()}})
 }
 function exportICS(){
   let out="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Mietverwaltung//DE\r\n";
@@ -3165,7 +3244,7 @@ function recoveryView(){
 }
 
 function backupView(){
-  const stamp=new Date().toISOString().slice(0,10),last=state.meta?.lastBackupAt?new Date(state.meta.lastBackupAt).toLocaleString("de-DE"):"noch keine";
+  const stamp=localDateISO(),last=state.meta?.lastBackupAt?new Date(state.meta.lastBackupAt).toLocaleString("de-DE"):"noch keine";
   $("workspaceBody").innerHTML=`<div class="card"><div class="item-title-row"><div><p class="eyebrow">EMPFOHLEN</p><h3>Verschlüsselte Datensicherung</h3></div><span class="pill good">Stammdaten + Dokumente</span></div><p>Letzte erstellte Sicherung: <strong>${esc(last)}</strong></p><label>Passwort<input id="backupPw" type="password" class="big-input" placeholder="mindestens 8 Zeichen" autocomplete="new-password"></label><div class="action-row"><button id="fullExport" class="primary">Sicherung erstellen</button><label class="file-label">Sicherung auswählen<input id="fullImportFile" type="file" accept=".json,application/json"></label><button id="fullImport" class="secondary">Wiederherstellen</button></div><p class="muted">Das Passwort wird nicht gespeichert. Ohne Passwort kann eine verschlüsselte Sicherung nicht wiederhergestellt werden.</p></div>
   <details class="card secondary-detail"><summary>Technischer Klartext-Export</summary><div class="detail-content"><div class="legal-warn"><strong>Unverschlüsselt</strong><br>Enthält persönliche Verwaltungsdaten im Klartext und keine Dokumentdateien. Nur für technische Zwecke verwenden.</div><button id="exportState" class="secondary">JSON exportieren</button></div></details>`;
   $("exportState").onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Daten_${stamp}.json`;a.click();URL.revokeObjectURL(a.href)};
@@ -3189,7 +3268,7 @@ function setupGlobal(){
     else if(q==="payment"){go("owner","cashflow");setTimeout(openPaymentEditor,0)}
     else if(q==="source"){go("data","sources");setTimeout(openSourceEditor,0)}
     else if(q==="task"){go("owner","tasks");setTimeout(()=>openTaskEditor(),0)}
-    else go("rental","lease")
+    else {go("rental","overview");setTimeout(()=>openLeaseEditor(state.leases?.[0]||null),0)}
   })
 }
 function search(q){
@@ -3202,7 +3281,7 @@ function search(q){
   (state.payments||[]).forEach(p=>add(p.label,`Finanzen · ${p.direction==="income"?"Einnahme":"Ausgabe"} · ${dateDE(p.date)} · ${euro(p.amount)}`,"owner","cashflow","zahlung buchung konto"));
   (state.meters||[]).forEach(m=>add(m.name,`Haus · Zähler · ${m.number||"ohne Nummer"}`,"data","infrastructure","wasser zählerstand ablesung"));
   (state.documentsCache||[]).forEach(d=>add(d.label||d.name,`Haus · Dokument · ${documentWorkflowLabel(d)}`,"data","documents","beleg pdf scan ocr"));
-  (state.leases||[]).forEach(l=>add("Mietvertrag",`Vermietung · ab ${dateDE(l.start)}`,"rental","lease",`${l.tenantName||""} miete vertrag`));
+  (state.leases||[]).forEach(l=>add("Mietvertrag",`Vermietung · ab ${dateDE(l.start)}`,"rental","overview",`${l.tenantName||""} miete vertrag`));
   [
     ["Kaltwasser","Vermietung · Zähler & Verbrauch","rental","water","wasser verbrauch"],
     ["Betriebskostenabrechnung","Vermietung · Abrechnung","rental","billing","abrechnung betriebskosten nebenkosten"],

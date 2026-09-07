@@ -6,7 +6,6 @@ async function buildCoreData(page) {
   const takeover = `${y}-09-01`, predecessor = `${y}-08-31`, end = `${y + 1}-03-31`;
 
   await top(page, 'Haus');
-  await section(page, 'object');
   await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
   await page.getByLabel('Objektname').fill('E2E Premium Testobjekt');
   await page.getByLabel('Adresse', { exact: true }).fill('Musterweg 10, 12345 Beispielstadt');
@@ -20,13 +19,12 @@ async function buildCoreData(page) {
   await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`0?1\\.0?9\\.${y}`));
   await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`31\\.0?3\\.${y + 1}`));
 
-  await section(page, 'object');
-  await page.getByRole('button', { name: 'Einheiten verwalten' }).click();
+  await top(page, 'Haus');
+  await page.getByRole('button', { name: 'Einheiten bearbeiten' }).click();
   await addUnit(page, { name: 'Eigennutzung Test', type: 'owner', area: 100, year: 1980, part: 'Anbau', persons: 3, from: takeover });
   await addUnit(page, { name: 'Mietwohnung Test', type: 'rental', area: 100, year: 1965, part: 'Stammgebäude', persons: 2, from: takeover });
 
   await top(page, 'Vermietung');
-  await section(page, 'lease');
   await page.getByRole('button', { name: 'Mietvertrag anlegen' }).click();
   await page.getByLabel('Mieter/in – Name').fill('Testperson');
   await page.getByLabel('Korrespondenzadresse').fill('Musterweg 10');
@@ -34,7 +32,10 @@ async function buildCoreData(page) {
   await page.getByLabel('Kaltmiete pro Monat (€)').fill('500');
   await page.getByLabel('Betriebskostenvorauszahlung pro Monat (€)').fill('150');
   await page.getByRole('button', { name: 'Speichern', exact: true }).click();
-  await expect(page.getByText('Kaltmiete 500,00')).toBeVisible();
+  const leaseOverview = page.locator('#workspaceBody .lease-overview-card');
+  await expect(leaseOverview).toContainText('Testperson');
+  await expect(leaseOverview).toContainText('500,00 € / Monat');
+  await expect(leaseOverview).toContainText('150,00 € / Monat');
 
   await top(page, 'Haus');
   await section(page, 'costs');
@@ -144,7 +145,6 @@ test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung 
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await top(page, 'Haus');
-  await section(page, 'object');
   await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
   await expect(page.getByLabel('Objektname')).toHaveValue('E2E Premium Testobjekt');
   await expect(page.getByLabel('Gesamtwohnfläche m²')).toHaveValue('200');
@@ -157,11 +157,11 @@ test('Erinnerung + ICS-Export nutzt echte gespeicherte Fälligkeiten', async ({ 
   const dates = await buildCoreData(page);
 
   await top(page, 'Finanzen');
-  await section(page, 'tasks');
   await expect(page.getByText('Fälligkeit: Kommunalabgaben Test')).toBeVisible();
   await expect(page.getByText(`15.11.${dates.y}`)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Erinnerung hinzufügen' }).click();
+  const remindersOverview = page.locator('#workspaceBody .embedded-overview-card').filter({ hasText: 'Erinnerungen' });
+  await remindersOverview.getByRole('button', { name: 'Hinzufügen', exact: true }).click();
   await page.getByLabel('Titel').fill('E2E eigener Termin');
   await page.getByLabel('Fällig am').fill(`${dates.y + 1}-02-10`);
   await page.getByRole('button', { name: 'Speichern', exact: true }).click();

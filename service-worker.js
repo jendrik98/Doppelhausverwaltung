@@ -1,5 +1,5 @@
-const CACHE="mietverwaltung-v18-0-0-core";
-const CORE=["./","./index.html","./style.css","./app.js?v=1800","./manifest.webmanifest","./legal-rules.json","./icon-192.png","./icon-512.png"];
+const CACHE="mietverwaltung-v18-consolidated-preview-1";
+const CORE=["./","./index.html","./style.css?v=1810p1","./app.js?v=1800","./manifest.webmanifest?v=1810p1","./legal-rules.json","./icon-192.png","./icon-512.png"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE))));
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener("message",e=>{if(e.data?.type==="SKIP_WAITING")self.skipWaiting()});

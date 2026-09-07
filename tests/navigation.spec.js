@@ -11,14 +11,15 @@ test('iPhone-Navigation, Unterseiten, Zurück/Vorwärts, Suche und Schnellaktion
 
   await top(page, 'Haus');
   await expect(page).toHaveURL(/#data\/overview$/);
-  await section(page, 'object');
-  await expect(page).toHaveURL(/#data\/object$/);
-  await expect(page.getByText('Objekt- und Einheitendaten bilden gemeinsam')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Objekt & Einheiten' })).toBeVisible();
+  await expect(page.locator('#workspaceSelect option[value="object"]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
+  await expect(page).toHaveURL(/#data\/property$/);
 
   await page.goBack();
   await expect(page).toHaveURL(/#data\/overview$/);
   await page.goForward();
-  await expect(page).toHaveURL(/#data\/object$/);
+  await expect(page).toHaveURL(/#data\/property$/);
 
   await page.getByRole('button', { name: 'Suchen' }).click();
   await expect(page.getByText('Häufig gebraucht')).toBeVisible();
@@ -44,15 +45,22 @@ test('Dialog warnt bei ungespeicherten Änderungen und stellt Fokus wieder her',
   await expect(page.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
   await page.getByLabel('Bezeichnung').fill('Nicht speichern');
 
-  page.once('dialog', async d => {
-    expect(d.message()).toContain('Ungespeicherte Änderungen verwerfen');
-    await d.dismiss();
-  });
-  await page.getByRole('button', { name: 'Schließen' }).click();
+  const closeButton = page.getByRole('button', { name: 'Schließen' });
+
+  const dismissDialog = page.waitForEvent('dialog');
+  const dismissClick = closeButton.click();
+  const firstDialog = await dismissDialog;
+  expect(firstDialog.message()).toContain('Ungespeicherte Änderungen verwerfen');
+  await firstDialog.dismiss();
+  await dismissClick;
   await expect(page.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
 
-  page.once('dialog', d => d.accept());
-  await page.getByRole('button', { name: 'Schließen' }).click();
+  const acceptDialog = page.waitForEvent('dialog');
+  const acceptClick = closeButton.click();
+  const secondDialog = await acceptDialog;
+  expect(secondDialog.message()).toContain('Ungespeicherte Änderungen verwerfen');
+  await secondDialog.accept();
+  await acceptClick;
   await expect(page.locator('#modal')).toHaveClass(/hidden/);
   await expect(quick).toBeFocused();
 });

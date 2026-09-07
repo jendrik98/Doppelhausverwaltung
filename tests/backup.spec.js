@@ -12,7 +12,6 @@ test('verschlüsselte Vollsicherung kann in frischem Browser wiederhergestellt w
   await openApp(page);
 
   await top(page, 'Haus');
-  await section(page, 'object');
   await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
   await page.getByLabel('Objektname').fill('Backup E2E Objekt');
   await page.getByLabel('Adresse', { exact: true }).fill('Backupweg 1');
@@ -50,7 +49,6 @@ test('verschlüsselte Vollsicherung kann in frischem Browser wiederhergestellt w
   await page2.waitForTimeout(1000);
 
   await top(page2, 'Haus');
-  await section(page2, 'object');
   await page2.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
   await expect(page2.getByLabel('Objektname')).toHaveValue('Backup E2E Objekt');
   await restored.close();

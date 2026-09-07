@@ -131,7 +131,7 @@ test('V18 Assistent: erste Teilperiode zeigt 7 geplante Vorauszahlungen, offene 
 
   const card=page.locator('#v18BillingAssistant');
   await expect(card).toBeVisible();
-  await expect(card).toContainText('V18 · ABRECHNUNGSASSISTENT');
+  await expect(card).toContainText('ABRECHNUNGSASSISTENT');
   await expect(card).toContainText('Noch kein Backup');
   await card.getByRole('button',{name:'Abrechnung vorbereiten'}).click();
 
