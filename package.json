@@ -3,10 +3,15 @@
   "private": true,
   "version": "1.0.1",
   "scripts": {
-    "test": "playwright test",
+    "build": "node scripts/build-app.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:validation": "node scripts/test-validation.mjs",
+    "test:e2e": "playwright test",
     "test:report": "playwright show-report"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0"
+    "@playwright/test": "1.63.0",
+    "typescript": "7.0.2",
+    "esbuild": "0.28.2"
   }
 }
