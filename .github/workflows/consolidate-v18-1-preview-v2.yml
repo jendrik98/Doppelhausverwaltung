@@ -1,0 +1,247 @@
+name: Consolidate V18.1 preview v2
+
+on:
+  push:
+    paths:
+      - ".github/workflows/consolidate-v18-1-preview-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  preflight-and-consolidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ausgangsstand prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'const APP_VERSION="18.0.0";' app.js
+          grep -F 'app.js?v=1800' index.html
+          grep -F 'mietverwaltung-v18-0-0-core' service-worker.js
+          grep -F 'V18.1 olive visual refresh' style.css
+          test -f .github/workflows/consolidate-v18-1-preview.yml
+          test -f tests/backup.spec.js
+          test -f tests/core-journey.spec.js
+          echo "Ausgangsstand passt."
+
+      - name: Geprüften V18.1-Basispatch aus Run 1 anwenden
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          src = Path('.github/workflows/consolidate-v18-1-preview.yml').read_text(encoding='utf-8')
+          marker = "cat > /tmp/consolidated_patch.b64 <<'B64PAYLOAD'"
+          if src.count(marker) != 1:
+              raise SystemExit(f"Basispatch-Payload nicht eindeutig: {src.count(marker)} Treffer")
+
+          tail = src.split(marker, 1)[1].splitlines()[1:]
+          payload = []
+          for line in tail:
+              if line.strip() == 'B64PAYLOAD':
+                  break
+              payload.append(line.strip())
+          else:
+              raise SystemExit('Ende des Basispatch-Payloads nicht gefunden')
+
+          if not payload:
+              raise SystemExit('Basispatch-Payload ist leer')
+          Path('/tmp/consolidated_patch.b64').write_text('\n'.join(payload) + '\n', encoding='ascii')
+          print(f"Basispatch extrahiert: {len(payload)} Base64-Zeilen")
+          PY
+          base64 -d /tmp/consolidated_patch.b64 > /tmp/consolidated_patch.py
+          python3 -m py_compile /tmp/consolidated_patch.py
+          python3 /tmp/consolidated_patch.py
+
+      - name: Vier nachgewiesene Preflight-Fehler korrigieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              n = text.count(old)
+              if n != 1:
+                  raise SystemExit(f"{label}: erwartet 1 Treffer, gefunden {n}")
+              return text.replace(old, new, 1)
+
+          # 1) Backup: nach Restore gibt es den alten Unterbereich "object" nicht mehr.
+          p = Path('tests/backup.spec.js')
+          text = p.read_text(encoding='utf-8')
+          old = """  await top(page2, 'Haus');\n  await section(page2, 'object');\n  await page2.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();"""
+          new = """  await top(page2, 'Haus');\n  await page2.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();"""
+          text = replace_once(text, old, new, 'Backup-Restore-Navigation')
+          p.write_text(text, encoding='utf-8')
+
+          # 2+3) Kernreise + ICS nutzen denselben Datenaufbau. Statt altem UI-Wortlaut
+          # werden die tatsächlich gespeicherten Vertragswerte in der neuen Übersicht geprüft.
+          p = Path('tests/core-journey.spec.js')
+          text = p.read_text(encoding='utf-8')
+          old = "  await expect(page.getByText('Kaltmiete 500,00')).toBeVisible();"
+          new = """  const leaseOverview = page.locator('#workspaceBody .lease-overview-card');\n  await expect(leaseOverview).toContainText('Testperson');\n  await expect(leaseOverview).toContainText('500,00 € / Monat');\n  await expect(leaseOverview).toContainText('150,00 € / Monat');"""
+          text = replace_once(text, old, new, 'Mietvertrags-Persistenzcheck')
+          p.write_text(text, encoding='utf-8')
+
+          # 4) Der neue Navigations-Test wartet auf den DOM-Wechsel, statt sofort nach
+          # dem Top-Level-Klick noch die vorherigen Optionen auszulesen.
+          Path('tests/navigation-simplified.spec.js').write_text(r'''const { test, expect } = require('@playwright/test');
+          const { openApp, top, section } = require('./helpers');
+
+          async function optionValues(page) {
+            return page.locator('#workspaceSelect option').evaluateAll(opts => opts.map(o => o.value));
+          }
+
+          async function expectOptions(page, expected) {
+            await expect.poll(async () => optionValues(page)).toEqual(expected);
+          }
+
+          test('volle Startseite bleibt erhalten, Fachbereiche sind bewusst schmal', async ({ page }) => {
+            await openApp(page, '#home');
+
+            await expect(page.getByText('Nächste vier Monate')).toBeVisible();
+            await expect(page.getByText('Aktuelle Anteile')).toBeVisible();
+            await expect(page.getByText('Hausrate nach Kaltmiete')).toBeVisible();
+
+            await top(page, 'Vermietung');
+            await expectOptions(page, ['overview','water','billing']);
+            await expect(page.locator('#workspaceSelect option[value="lease"]')).toHaveCount(0);
+            await expect(page.getByText('Mietvertrag / PDF')).toBeVisible();
+            await expect(page.getByRole('button', { name: /Mietvertrag anlegen|Vertragsdaten bearbeiten/ })).toBeVisible();
+
+            await top(page, 'Haus');
+            await expectOptions(page, ['overview','costs','infrastructure','documents']);
+            await expect(page.locator('#workspaceSelect option[value="object"]')).toHaveCount(0);
+            await expect(page.getByRole('heading', { name: 'Objekt & Einheiten' })).toBeVisible();
+
+            await top(page, 'Finanzen');
+            await expectOptions(page, ['overview','payments','planning']);
+            await expect(page.locator('#workspaceSelect option[value="tasks"]')).toHaveCount(0);
+            await expect(page.getByRole('heading', { name: 'Erinnerungen' })).toBeVisible();
+            await expect(page.getByRole('button', { name: 'Kalender exportieren' })).toBeVisible();
+
+            await top(page, 'Mehr');
+            await expectOptions(page, ['smart','protection','app']);
+            await expect(page.locator('#workspaceSelect option[value="legal"]')).toHaveCount(0);
+            await section(page, 'app');
+            await expect(page.getByRole('button', { name: /Recht & Regeln/ })).toBeVisible();
+            await expect(page.getByRole('button', { name: /Änderungsverlauf/ })).toBeVisible();
+            await expect(page.getByRole('button', { name: /App-Prüfung/ })).toBeVisible();
+          });
+          '''.replace('          ', ''), encoding='utf-8')
+
+          print('Vier Preflight-Befunde gezielt korrigiert.')
+          PY
+
+      - name: Statische Preflight-Prüfung
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app.js
+          node --check service-worker.js
+          node --check tests/backup.spec.js
+          node --check tests/core-journey.spec.js
+          node --check tests/navigation.spec.js
+          node --check tests/navigation-simplified.spec.js
+          node --check tests/accessibility-visual.spec.js
+          node --check tests/deployment.spec.js
+          node --check tests/v18-assistant.spec.js
+          node --check playwright.config.js
+          node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
+          grep -F 'retries: 0' playwright.config.js
+          grep -F 'mietverwaltung-v18-consolidated-preview-1' service-worker.js
+          grep -F 'style.css?v=1810p1' index.html
+          grep -F 'manifest.webmanifest?v=1810p1' index.html
+          grep -F '500,00 € / Monat' tests/core-journey.spec.js
+          test ! -e README_V17.md
+          test ! -e README_V17_0_1.txt
+          test ! -e README_V17_0_2.txt
+          test ! -e tests/.gitkeep
+          if git diff --name-only -- .github/workflows | grep -q .; then
+            echo "FEHLER: Die Arbeitskopie versucht geschützte Workflow-Dateien zu ändern."
+            git diff -- .github/workflows
+            exit 1
+          fi
+
+      - name: Node und Chromium vorbereiten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Testabhängigkeiten installieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+
+      - name: Lokalen Preview-Server starten
+        shell: bash
+        run: |
+          set -euo pipefail
+          nohup python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/mv-http.log 2>&1 &
+          echo $! >/tmp/mv-http.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/index.html >/dev/null; then
+              echo "Lokaler Preview-Server bereit."
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/mv-http.log || true
+          exit 1
+
+      - name: Testanzahl vorab prüfen
+        shell: bash
+        env:
+          E2E_BASE_URL: http://127.0.0.1:4173/
+        run: |
+          set -euo pipefail
+          npx playwright test --list | tee /tmp/test-list.log
+          grep -Eq 'Total: 24 tests' /tmp/test-list.log
+
+      - name: Vollständiger lokaler Browser-Preflight ohne Retries
+        shell: bash
+        env:
+          E2E_BASE_URL: http://127.0.0.1:4173/
+          CI: 1
+        run: |
+          set -euo pipefail
+          npx playwright test | tee /tmp/e2e-preflight.log
+          grep -Eq '24 passed' /tmp/e2e-preflight.log
+          if grep -Eiq '[0-9]+ failed|flaky' /tmp/e2e-preflight.log; then
+            echo "Unerwarteter Fehler oder Flake im Preflight."
+            exit 1
+          fi
+
+      - name: Nur geprüfte Änderungen committen
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --name-only | grep -q '^.github/workflows/'; then
+            echo "FEHLER: Workflow-Dateien würden durch den Bot geändert."
+            git diff --cached --name-only
+            exit 1
+          fi
+          if git diff --cached --quiet; then
+            echo "Keine Änderungen zu committen."
+            exit 0
+          fi
+          echo "Geprüfte Dateien:"
+          git diff --cached --name-status
+          git commit -m "Consolidate V18.1 preview after clean preflight"
+          git push origin HEAD:main
