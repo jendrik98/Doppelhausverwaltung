@@ -1,0 +1,273 @@
+name: Architecture migration – TypeScript phase 5
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Phase-4-Ausgangslage schützen
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .github/workflows/e2e-live.yml
+          test -f .github/workflows/architecture-typescript-phase4.yml
+          test -f src/core/persistence.ts
+          test -f src/io/backup-codec.ts
+          test ! -e src/core/auth.ts
+          grep -F 'APP_VERSION="18.0.0"' app.js
+          grep -F 'const SEC_KEY="mietverwaltung_webauthn"' src/legacy/120-security.js
+          grep -F 'mietverwaltung_v75_webauthn' src/legacy/120-security.js
+
+      - name: Phase-5-Patch anwenden
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/architecture_phase5.b64 <<'B64PAYLOAD'
+          ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCBoYXNobGliCgpFWFBFQ1RFRF9CTE9CUyA9IHsnQVJDSElURUNUVVJFLm1kJzogJzI5ZTViYTlhZDRi
+          MGE0ZTU1M2MyYWM0ZmJkMGNjMDA3ZTg4YWNjYTgnLCAnc2NyaXB0cy9idWlsZC1hcHAubWpzJzogJzVhY2UzZmMyMTY1MTc4NWI0MTRjYWZiMDllYjJjOGUx
+          MTk3YmMwMWEnLCAnc2NyaXB0cy90ZXN0LWFyY2hpdGVjdHVyZS5tanMnOiAnZGIxZTY2MjIwNjkyNDMxYmJhODdhZDU4MzVjNThlODdmYTU2ZGUzMCcsICdz
+          cmMvbGVnYWN5LzEyMC1zZWN1cml0eS5qcyc6ICczNDRiOTM5MTJmMmRkNTQzOGVkMzcwNWEzODkyMGFhNDEzZDc2MTA0J30KCmRlZiBnaXRfYmxvYl9zaGEo
+          ZGF0YTogYnl0ZXMpIC0+IHN0cjoKICAgIHJldHVybiBoYXNobGliLnNoYTEoYiJibG9iICIgKyBzdHIobGVuKGRhdGEpKS5lbmNvZGUoKSArIGIiXDAiICsg
+          ZGF0YSkuaGV4ZGlnZXN0KCkKCmZvciBwYXRoLCBleHBlY3RlZCBpbiBFWFBFQ1RFRF9CTE9CUy5pdGVtcygpOgogICAgZGF0YSA9IFBhdGgocGF0aCkucmVh
+          ZF9ieXRlcygpCiAgICBhY3R1YWwgPSBnaXRfYmxvYl9zaGEoZGF0YSkKICAgIGlmIGFjdHVhbCAhPSBleHBlY3RlZDoKICAgICAgICByYWlzZSBTeXN0ZW1F
+          eGl0KGYiRkVITEVSOiBBdXNnYW5nc2RhdGVpIHtwYXRofSBwYXNzdCBuaWNodCB6dW0gYmVzdMOkdGlndGVuIFBoYXNlLTQtU3RhbmQgKHthY3R1YWx9ICE9
+          IHtleHBlY3RlZH0pLiIpCgpwaGFzZTQgPSBQYXRoKCIuZ2l0aHViL3dvcmtmbG93cy9hcmNoaXRlY3R1cmUtdHlwZXNjcmlwdC1waGFzZTQueW1sIikKaWYg
+          bm90IHBoYXNlNC5leGlzdHMoKToKICAgIHJhaXNlIFN5c3RlbUV4aXQoIkZFSExFUjogUGhhc2UtNC1Xb3JrZmxvdyBmZWhsdDsgQXVmcsOkdW16dXN0YW5k
+          IGlzdCB1bmVyd2FydGV0LiIpCmlmICJ3b3JrZmxvd19kaXNwYXRjaDoiIG5vdCBpbiBwaGFzZTQucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpOgogICAg
+          cmFpc2UgU3lzdGVtRXhpdCgiRkVITEVSOiBQaGFzZS00LVdvcmtmbG93IGhhdCBlaW5lbiB1bmVyd2FydGV0ZW4gSW5oYWx0LiIpCgpQYXRoKCJzcmMvY29y
+          ZS9hdXRoLnRzIikud3JpdGVfdGV4dCgnY29uc3QgU0VDX0tFWSA9ICJtaWV0dmVyd2FsdHVuZ193ZWJhdXRobiI7XG5cbmZ1bmN0aW9uIHJhbmRvbUJ5dGVz
+          KGxlbmd0aDogbnVtYmVyKTogVWludDhBcnJheTxBcnJheUJ1ZmZlcj4ge1xuICByZXR1cm4gY3J5cHRvLmdldFJhbmRvbVZhbHVlcyhuZXcgVWludDhBcnJh
+          eShuZXcgQXJyYXlCdWZmZXIobGVuZ3RoKSkpO1xufVxuXG5mdW5jdGlvbiB0b0Jhc2U2NFVybChieXRlczogVWludDhBcnJheTxBcnJheUJ1ZmZlcj4pOiBz
+          dHJpbmcge1xuICBsZXQgYmluYXJ5ID0gIiI7XG4gIGZvciAoY29uc3QgYnl0ZSBvZiBieXRlcykgYmluYXJ5ICs9IFN0cmluZy5mcm9tQ2hhckNvZGUoYnl0
+          ZSk7XG4gIHJldHVybiBidG9hKGJpbmFyeSlcbiAgICAucmVwbGFjZSgvXFwrL2csICItIilcbiAgICAucmVwbGFjZSgvXFwvL2csICJfIilcbiAgICAucmVw
+          bGFjZSgvPSskLywgIiIpO1xufVxuXG5mdW5jdGlvbiBmcm9tQmFzZTY0VXJsKHZhbHVlOiBzdHJpbmcpOiBVaW50OEFycmF5PEFycmF5QnVmZmVyPiB7XG4g
+          IGxldCBub3JtYWxpemVkID0gdmFsdWUucmVwbGFjZSgvLS9nLCAiKyIpLnJlcGxhY2UoL18vZywgIi8iKTtcbiAgd2hpbGUgKG5vcm1hbGl6ZWQubGVuZ3Ro
+          ICUgNCkgbm9ybWFsaXplZCArPSAiPSI7XG4gIGNvbnN0IGJpbmFyeSA9IGF0b2Iobm9ybWFsaXplZCk7XG4gIGNvbnN0IGJ5dGVzID0gbmV3IFVpbnQ4QXJy
+          YXkobmV3IEFycmF5QnVmZmVyKGJpbmFyeS5sZW5ndGgpKTtcbiAgZm9yIChsZXQgaW5kZXggPSAwOyBpbmRleCA8IGJpbmFyeS5sZW5ndGg7IGluZGV4Kysp
+          IHtcbiAgICBieXRlc1tpbmRleF0gPSBiaW5hcnkuY2hhckNvZGVBdChpbmRleCk7XG4gIH1cbiAgcmV0dXJuIGJ5dGVzO1xufVxuXG5leHBvcnQgZnVuY3Rp
+          b24gYXV0aENyZWRlbnRpYWxJZCgpOiBzdHJpbmcge1xuICByZXR1cm4gbG9jYWxTdG9yYWdlLmdldEl0ZW0oU0VDX0tFWSkgfHwgIiI7XG59XG5cbmV4cG9y
+          dCBmdW5jdGlvbiBhdXRoRW5hYmxlZCgpOiBib29sZWFuIHtcbiAgcmV0dXJuIGF1dGhDcmVkZW50aWFsSWQoKS5sZW5ndGggPiAwO1xufVxuXG5leHBvcnQg
+          YXN5bmMgZnVuY3Rpb24gcmVnaXN0ZXJEZXZpY2UoKTogUHJvbWlzZTx2b2lkPiB7XG4gIGlmICghd2luZG93LlB1YmxpY0tleUNyZWRlbnRpYWwgfHwgIW5h
+          dmlnYXRvci5jcmVkZW50aWFscykge1xuICAgIHRocm93IG5ldyBFcnJvcigiR2Vyw6R0ZWF1dGhlbnRpZml6aWVydW5nIG5pY2h0IHVudGVyc3TDvHR6dCIp
+          O1xuICB9XG5cbiAgY29uc3QgY3JlZGVudGlhbCA9IGF3YWl0IG5hdmlnYXRvci5jcmVkZW50aWFscy5jcmVhdGUoe1xuICAgIHB1YmxpY0tleToge1xuICAg
+          ICAgY2hhbGxlbmdlOiByYW5kb21CeXRlcygzMiksXG4gICAgICBycDogeyBuYW1lOiAiTWlldHZlcndhbHR1bmciIH0sXG4gICAgICB1c2VyOiB7XG4gICAg
+          ICAgIGlkOiByYW5kb21CeXRlcygxNiksXG4gICAgICAgIG5hbWU6ICJwcml2YXRlLXVzZXIiLFxuICAgICAgICBkaXNwbGF5TmFtZTogIk1pZXR2ZXJ3YWx0
+          dW5nIlxuICAgICAgfSxcbiAgICAgIHB1YktleUNyZWRQYXJhbXM6IFtcbiAgICAgICAgeyB0eXBlOiAicHVibGljLWtleSIsIGFsZzogLTcgfSxcbiAgICAg
+          ICAgeyB0eXBlOiAicHVibGljLWtleSIsIGFsZzogLTI1NyB9XG4gICAgICBdLFxuICAgICAgYXV0aGVudGljYXRvclNlbGVjdGlvbjoge1xuICAgICAgICBh
+          dXRoZW50aWNhdG9yQXR0YWNobWVudDogInBsYXRmb3JtIixcbiAgICAgICAgdXNlclZlcmlmaWNhdGlvbjogInJlcXVpcmVkIlxuICAgICAgfSxcbiAgICAg
+          IHRpbWVvdXQ6IDYwMDAwLFxuICAgICAgYXR0ZXN0YXRpb246ICJub25lIlxuICAgIH1cbiAgfSk7XG5cbiAgaWYgKCEoY3JlZGVudGlhbCBpbnN0YW5jZW9m
+          IFB1YmxpY0tleUNyZWRlbnRpYWwpKSB7XG4gICAgdGhyb3cgbmV3IEVycm9yKCJHZXLDpHRlYXV0aGVudGlmaXppZXJ1bmcga29ubnRlIG5pY2h0IGVpbmdl
+          cmljaHRldCB3ZXJkZW4iKTtcbiAgfVxuXG4gIGxvY2FsU3RvcmFnZS5zZXRJdGVtKFNFQ19LRVksIHRvQmFzZTY0VXJsKG5ldyBVaW50OEFycmF5KGNyZWRl
+          bnRpYWwucmF3SWQpKSk7XG59XG5cbmV4cG9ydCBhc3luYyBmdW5jdGlvbiBhdXRoZW50aWNhdGUoKTogUHJvbWlzZTxib29sZWFuPiB7XG4gIGNvbnN0IGlk
+          ID0gYXV0aENyZWRlbnRpYWxJZCgpO1xuICBpZiAoIWlkKSByZXR1cm4gdHJ1ZTtcbiAgaWYgKCF3aW5kb3cuUHVibGljS2V5Q3JlZGVudGlhbCB8fCAhbmF2
+          aWdhdG9yLmNyZWRlbnRpYWxzKSByZXR1cm4gZmFsc2U7XG5cbiAgdHJ5IHtcbiAgICBhd2FpdCBuYXZpZ2F0b3IuY3JlZGVudGlhbHMuZ2V0KHtcbiAgICAg
+          IHB1YmxpY0tleToge1xuICAgICAgICBjaGFsbGVuZ2U6IHJhbmRvbUJ5dGVzKDMyKSxcbiAgICAgICAgYWxsb3dDcmVkZW50aWFsczogW3sgaWQ6IGZyb21C
+          YXNlNjRVcmwoaWQpLCB0eXBlOiAicHVibGljLWtleSIgfV0sXG4gICAgICAgIHVzZXJWZXJpZmljYXRpb246ICJyZXF1aXJlZCIsXG4gICAgICAgIHRpbWVv
+          dXQ6IDYwMDAwXG4gICAgICB9XG4gICAgfSk7XG4gICAgcmV0dXJuIHRydWU7XG4gIH0gY2F0Y2gge1xuICAgIHJldHVybiBmYWxzZTtcbiAgfVxufVxuXG5l
+          eHBvcnQgZnVuY3Rpb24gZGlzYWJsZUF1dGgoKTogdm9pZCB7XG4gIGxvY2FsU3RvcmFnZS5yZW1vdmVJdGVtKFNFQ19LRVkpO1xufVxuJywgZW5jb2Rpbmc9
+          InV0Zi04IikKUGF0aCgic3JjL2xlZ2FjeS8xMjAtc2VjdXJpdHkuanMiKS53cml0ZV90ZXh0KCcvKiA9PT09PSBzZWN1cml0eS5qcyA9PT09PSAqL1xuXG5j
+          b25zdCB7XG4gIGF1dGhDcmVkZW50aWFsSWQsXG4gIGF1dGhFbmFibGVkLFxuICByZWdpc3RlckRldmljZSxcbiAgYXV0aGVudGljYXRlLFxuICBkaXNhYmxl
+          QXV0aFxufT1BcHBBdXRoO1xuXG4nLCBlbmNvZGluZz0idXRmLTgiKQoKYnVpbGRfcGF0aCA9IFBhdGgoInNjcmlwdHMvYnVpbGQtYXBwLm1qcyIpCmJ1aWxk
+          ID0gYnVpbGRfcGF0aC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikKbmVlZGxlID0gJyAgICBjb21waWxlTW9kdWxlKCJzcmMvY29yZS9wZXJzaXN0ZW5j
+          ZS50cyIsICJBcHBQZXJzaXN0ZW5jZSIpLFxuJwppZiBidWlsZC5jb3VudChuZWVkbGUpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJGRUhMRVI6IEJ1
+          aWxkLUVpbmbDvGdlcHVua3QgZsO8ciBBcHBBdXRoIG5pY2h0IGVpbmRldXRpZy4iKQpidWlsZCA9IGJ1aWxkLnJlcGxhY2UobmVlZGxlLCBuZWVkbGUgKyAn
+          ICAgIGNvbXBpbGVNb2R1bGUoInNyYy9jb3JlL2F1dGgudHMiLCAiQXBwQXV0aCIpLFxuJykKYnVpbGRfcGF0aC53cml0ZV90ZXh0KGJ1aWxkLCBlbmNvZGlu
+          Zz0idXRmLTgiKQoKdGVzdF9wYXRoID0gUGF0aCgic2NyaXB0cy90ZXN0LWFyY2hpdGVjdHVyZS5tanMiKQp0ZXN0ID0gdGVzdF9wYXRoLnJlYWRfdGV4dChl
+          bmNvZGluZz0idXRmLTgiKQpuZWVkbGUgPSAnY29uc3QgcGVyc2lzdGVuY2UgPSByZWFkKCJzcmMvY29yZS9wZXJzaXN0ZW5jZS50cyIpO1xuJwppZiB0ZXN0
+          LmNvdW50KG5lZWRsZSkgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoIkZFSExFUjogQXJjaGl0ZWt0dXJ0ZXN0LUVpbmbDvGdlcHVua3QgZsO8ciBhdXRo
+          LnRzIG5pY2h0IGVpbmRldXRpZy4iKQp0ZXN0ID0gdGVzdC5yZXBsYWNlKG5lZWRsZSwgbmVlZGxlICsgJ2NvbnN0IGF1dGggPSByZWFkKCJzcmMvY29yZS9h
+          dXRoLnRzIik7XG4nKQpuZWVkbGUgPSAnYXNzZXJ0KCFzZWN1cml0eS5pbmNsdWRlcygiZnVuY3Rpb24gYnl0ZXNUb0I2NCIpLCAiQmFja3VwLUJhc2U2NC1D
+          b2RlYyBsaWVndCBub2NoIGltIExlZ2FjeS1TaWNoZXJoZWl0c2NvZGUuIik7XG4nCmlmIHRlc3QuY291bnQobmVlZGxlKSAhPSAxOgogICAgcmFpc2UgU3lz
+          dGVtRXhpdCgiRkVITEVSOiBTaWNoZXJoZWl0cy1UZXN0YmxvY2sgbmljaHQgZWluZGV1dGlnLiIpCnRlc3QgPSB0ZXN0LnJlcGxhY2UobmVlZGxlLCBuZWVk
+          bGUgKyAnYXNzZXJ0KCFzZWN1cml0eS5pbmNsdWRlcygiUHVibGljS2V5Q3JlZGVudGlhbCIpLCAiV2ViQXV0aG4tSW1wbGVtZW50aWVydW5nIGxpZWd0IG5v
+          Y2ggaW0gTGVnYWN5LVNpY2hlcmhlaXRzY29kZS4iKTtcbmFzc2VydChzZWN1cml0eS5pbmNsdWRlcygifT1BcHBBdXRoOyIpLCAiTGVnYWN5LUJyw7xja2Ug
+          enUgQXBwQXV0aCBmZWhsdC4iKTtcbmFzc2VydChhdXRoLmluY2x1ZGVzKFwnU0VDX0tFWSA9ICJtaWV0dmVyd2FsdHVuZ193ZWJhdXRobiJcJyksICJBa3R1
+          ZWxsZXIgV2ViQXV0aG4tU2NobMO8c3NlbCB3dXJkZSB2ZXLDpG5kZXJ0LiIpO1xuYXNzZXJ0KGF1dGguaW5jbHVkZXMoImV4cG9ydCBhc3luYyBmdW5jdGlv
+          biByZWdpc3RlckRldmljZSIpLCAicmVnaXN0ZXJEZXZpY2UgbGllZ3QgbmljaHQgaW0gVHlwZVNjcmlwdC1BdXRoLU1vZHVsLiIpO1xuYXNzZXJ0KGF1dGgu
+          aW5jbHVkZXMoImV4cG9ydCBhc3luYyBmdW5jdGlvbiBhdXRoZW50aWNhdGUiKSwgImF1dGhlbnRpY2F0ZSBsaWVndCBuaWNodCBpbSBUeXBlU2NyaXB0LUF1
+          dGgtTW9kdWwuIik7XG5hc3NlcnQoIWF1dGguaW5jbHVkZXMoIm1pZXR2ZXJ3YWx0dW5nX3Y3NV93ZWJhdXRobiIpLCAiVmVyYWx0ZXRlIFY3NS1XZWJBdXRo
+          bi1TY2hsw7xzc2Vsw7xiZXJuYWhtZSBpc3Qgbm9jaCB2b3JoYW5kZW4uIik7XG4nKQpuZWVkbGUgPSAnYXNzZXJ0KGJ1aWxkU2NyaXB0LmluY2x1ZGVzKFwn
+          IkFwcFBlcnNpc3RlbmNlIlwnKSwgIkFwcFBlcnNpc3RlbmNlIHdpcmQgbmljaHQgZ2ViYXV0LiIpO1xuJwppZiB0ZXN0LmNvdW50KG5lZWRsZSkgIT0gMToK
+          ICAgIHJhaXNlIFN5c3RlbUV4aXQoIkZFSExFUjogQnVpbGQtVGVzdC1FaW5mw7xnZXB1bmt0IG5pY2h0IGVpbmRldXRpZy4iKQp0ZXN0ID0gdGVzdC5yZXBs
+          YWNlKG5lZWRsZSwgbmVlZGxlICsgJ2Fzc2VydChidWlsZFNjcmlwdC5pbmNsdWRlcyhcJyJBcHBBdXRoIlwnKSwgIkFwcEF1dGggd2lyZCBuaWNodCBnZWJh
+          dXQuIik7XG4nKQpuZWVkbGUgPSAnYXNzZXJ0KGFwcC5pbmNsdWRlcygiY29tcGlsZWQgc3JjL2NvcmUvcGVyc2lzdGVuY2UudHMiKSwgIlBlcnNpc3Rlbnot
+          VHlwZVNjcmlwdCBmZWhsdCBpbSBCcm93c2VyLUJ1bmRsZS4iKTtcbicKaWYgdGVzdC5jb3VudChuZWVkbGUpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0
+          KCJGRUhMRVI6IEJ1bmRsZS1UZXN0LUVpbmbDvGdlcHVua3QgbmljaHQgZWluZGV1dGlnLiIpCnRlc3QgPSB0ZXN0LnJlcGxhY2UobmVlZGxlLCBuZWVkbGUg
+          KyAnYXNzZXJ0KGFwcC5pbmNsdWRlcygiY29tcGlsZWQgc3JjL2NvcmUvYXV0aC50cyIpLCAiQXV0aC1UeXBlU2NyaXB0IGZlaGx0IGltIEJyb3dzZXItQnVu
+          ZGxlLiIpO1xuJykKb2xkID0gJ2NvbnNvbGUubG9nKCJBcmNoaXRla3R1cnByw7xmdW5nIGJlc3RhbmRlbjogUGVyc2lzdGVueiB1bmQgQmFja3VwLUNvZGVj
+          IHNpbmQgZWNodGUgVHlwZVNjcmlwdC1Nb2R1bGU7IEluZGV4ZWREQiB2MiBibGVpYnQgdW52ZXLDpG5kZXJ0LiIpOycKaWYgb2xkIG5vdCBpbiB0ZXN0Ogog
+          ICAgcmFpc2UgU3lzdGVtRXhpdCgiRkVITEVSOiBBYnNjaGx1c3NtZWxkdW5nIGRlcyBBcmNoaXRla3R1cnRlc3RzIGZlaGx0LiIpCnRlc3QgPSB0ZXN0LnJl
+          cGxhY2Uob2xkLCAnY29uc29sZS5sb2coIkFyY2hpdGVrdHVycHLDvGZ1bmcgYmVzdGFuZGVuOiBQaGFzZSA1IG1pZ3JpZXJ0IFdlYkF1dGhuIG5hY2ggVHlw
+          ZVNjcmlwdDsgUGVyc2lzdGVueiB1bmQgSW5kZXhlZERCIHYyIGJsZWliZW4gdW52ZXLDpG5kZXJ0LiIpOycpCnRlc3RfcGF0aC53cml0ZV90ZXh0KHRlc3Qs
+          IGVuY29kaW5nPSJ1dGYtOCIpCgphcmNoX3BhdGggPSBQYXRoKCJBUkNISVRFQ1RVUkUubWQiKQphcmNoID0gYXJjaF9wYXRoLnJlYWRfdGV4dChlbmNvZGlu
+          Zz0idXRmLTgiKQppZiAiIyMgUGhhc2UgNTogR2Vyw6R0ZWF1dGhlbnRpZml6aWVydW5nIiBpbiBhcmNoOgogICAgcmFpc2UgU3lzdGVtRXhpdCgiRkVITEVS
+          OiBQaGFzZSA1IHNjaGVpbnQgYmVyZWl0cyBhbmdld2VuZGV0IHp1IHNlaW4uIikKYXJjaF9wYXRoLndyaXRlX3RleHQoYXJjaC5yc3RyaXAoKSArICdcblxu
+          IyMgUGhhc2UgNTogR2Vyw6R0ZWF1dGhlbnRpZml6aWVydW5nXG5cbkRpZSBXZWJBdXRobi0vUGFzc2tleS1uYWhlIEdlcsOkdGVhdXRoZW50aWZpemllcnVu
+          ZyBsaWVndCBudW4gaW4gYHNyYy9jb3JlL2F1dGgudHNgLiBEZXIgYmlzaGVyaWdlXG5MZWdhY3ktQmVyZWljaCBgc3JjL2xlZ2FjeS8xMjAtc2VjdXJpdHku
+          anNgIGlzdCBudXIgbm9jaCBlaW5lIHNjaG1hbGUgTGF1ZnplaXRicsO8Y2tlIHp1IGBBcHBBdXRoYC5cbkRlciBha3R1ZWxsZSBsb2thbGUgQ3JlZGVudGlh
+          bC1TY2hsw7xzc2VsIGBtaWV0dmVyd2FsdHVuZ193ZWJhdXRobmAgYmxlaWJ0IHVudmVyw6RuZGVydCwgZGFtaXQgZWluZVxuYmVyZWl0cyBmw7xyIGRpZXNl
+          IEFwcCBlaW5nZXJpY2h0ZXRlIEdlcsOkdGVhdXRoZW50aWZpemllcnVuZyB3ZWl0ZXIgdmVyd2VuZGV0IHdlcmRlbiBrYW5uLlxuXG5EaWUgZnLDvGhlcmUg
+          w5xiZXJuYWhtZSBkZXMgYWx0ZW4gU2NobMO8c3NlbHMgYG1pZXR2ZXJ3YWx0dW5nX3Y3NV93ZWJhdXRobmAgd3VyZGUgZW50ZmVybnQuIE5ldWVcbkFsdGtv
+          bXBhdGliaWxpdMOkdHMtUGZhZGUgd2VyZGVuIG5pY2h0IG1laHIgZ2VwZmxlZ3QuIERpZSBBdXRoZW50aWZpemllcnVuZ3NmdW5rdGlvbmVuIGJlaGFsdGVu
+          IGlocmVcbmJlc3RlaGVuZGVuIExhdWZ6ZWl0bmFtZW4gKGBhdXRoQ3JlZGVudGlhbElkYCwgYGF1dGhFbmFibGVkYCwgYHJlZ2lzdGVyRGV2aWNlYCwgYGF1
+          dGhlbnRpY2F0ZWAsXG5gZGlzYWJsZUF1dGhgKSwgc29kYXNzIGRpZSBub2NoIG5pY2h0IG1pZ3JpZXJ0ZSBVSSB1bnZlcsOkbmRlcnQgd2VpdGVyYXJiZWl0
+          ZW4ga2Fubi5cblxuRGVyIGVpbm1hbGlnZSBQaGFzZS00LU1pZ3JhdGlvbnN3b3JrZmxvdyB3aXJkIG1pdCBkZW0gZXJmb2xncmVpY2hlbiBQaGFzZS01LUNv
+          bW1pdCBlbnRmZXJudC5cbicsIGVuY29kaW5nPSJ1dGYtOCIpCgpwaGFzZTQudW5saW5rKCkKcHJpbnQoIlBoYXNlIDUgdm9yYmVyZWl0ZXQ6IFdlYkF1dGhu
+          IGluIFR5cGVTY3JpcHQ7IFY3NS1BbHRwZmFkIHVuZCBQaGFzZS00LVdvcmtmbG93IGVudGZlcm50LiIpCg==
+          B64PAYLOAD
+          tr -d '\n ' </tmp/architecture_phase5.b64 | base64 --decode >/tmp/architecture_phase5.py
+          python3 -m py_compile /tmp/architecture_phase5.py
+          python3 /tmp/architecture_phase5.py
+
+      - name: Abhängigkeiten installieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Build, TypeScript und Architektur prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          npm run typecheck
+          npm run test:validation
+          npm run test:architecture
+          node --check app.js
+          node --check service-worker.js
+          node --check scripts/build-app.mjs
+          node --check scripts/test-architecture.mjs
+          grep -F 'compiled src/core/auth.ts' app.js
+          grep -F 'APP_VERSION="18.0.0"' app.js
+
+      - name: Auth- und Persistenz-Invarianten schützen
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'SEC_KEY = "mietverwaltung_webauthn"' src/core/auth.ts
+          ! grep -F 'mietverwaltung_v75_webauthn' src/core/auth.ts
+          ! grep -F 'PublicKeyCredential' src/legacy/120-security.js
+          grep -F '}=AppAuth;' src/legacy/120-security.js
+          grep -F 'DB_NAME = "mietverwaltung-v6"' src/core/persistence.ts
+          grep -F 'DB_VERSION = 2' src/core/persistence.ts
+          grep -F 'STATE_ID = "main"' src/core/persistence.ts
+          test ! -e .github/workflows/architecture-typescript-phase4.yml
+
+      - name: Chromium und PDF-Werkzeuge installieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+
+      - name: Lokalen Testserver starten
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 >/tmp/doppelhaus-http.log 2>&1 &
+          echo $! >/tmp/doppelhaus-http.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/doppelhaus-http.log || true
+          exit 1
+
+      - name: Exakt 25 Tests verlangen
+        shell: bash
+        env:
+          E2E_BASE_URL: http://127.0.0.1:4173/
+        run: |
+          set -euo pipefail
+          npx playwright test --list | tee /tmp/test-list.txt
+          TOTAL="$(grep -Eo 'Total: [0-9]+ tests?' /tmp/test-list.txt | tail -1 | grep -Eo '[0-9]+')"
+          if [ "$TOTAL" != "25" ]; then
+            echo "FEHLER: Erwartet werden exakt 25 Tests, gefunden: ${TOTAL:-unbekannt}"
+            exit 1
+          fi
+
+      - name: Strenges 25-von-25-Gate
+        shell: bash
+        env:
+          E2E_BASE_URL: http://127.0.0.1:4173/
+        run: |
+          set -euo pipefail
+          npx playwright test --retries=0 --reporter=json > /tmp/e2e.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('/tmp/e2e.json').read_text(encoding='utf-8'))
+          stats = report.get('stats') or {}
+          expected = int(stats.get('expected', -1))
+          unexpected = int(stats.get('unexpected', -1))
+          flaky = int(stats.get('flaky', -1))
+          skipped = int(stats.get('skipped', -1))
+          total = expected + unexpected + flaky + skipped
+          print(f"Playwright: total={total}, passed={expected}, failed={unexpected}, flaky={flaky}, skipped={skipped}, retries=0")
+          if not (total == 25 and expected == 25 and unexpected == 0 and flaky == 0 and skipped == 0):
+              raise SystemExit("FEHLER: Strenges Gate verlangt exakt 25/25 bestanden, 0 Fehler, 0 Flakes, 0 Skips und 0 Retries.")
+          PY
+
+      - name: Änderungsumfang kontrollieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          echo "Geänderte/neue/gelöschte Dateien:"
+          cat /tmp/changed.txt
+
+          for required in \
+            .github/workflows/architecture-typescript-phase4.yml \
+            ARCHITECTURE.md \
+            app.js \
+            scripts/build-app.mjs \
+            scripts/test-architecture.mjs \
+            src/core/auth.ts \
+            src/legacy/120-security.js
+          do
+            grep -Fx "$required" /tmp/changed.txt >/dev/null || { echo "FEHLER: Erwartete Änderung fehlt: $required"; exit 1; }
+          done
+
+          ALLOWED='^(\.github/workflows/architecture-typescript-phase4\.yml|ARCHITECTURE\.md|app\.js|scripts/build-app\.mjs|scripts/test-architecture\.mjs|src/core/auth\.ts|src/legacy/120-security\.js)$'
+          if grep -Ev "$ALLOWED" /tmp/changed.txt; then
+            echo "FEHLER: Unerwartete Dateiänderung erkannt."
+            exit 1
+          fi
+          test ! -e .github/workflows/architecture-typescript-phase4.yml
+          test -f .github/workflows/architecture-typescript-phase5.yml
+
+      - name: Phase 5 committen und pushen
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- \
+            .github/workflows/architecture-typescript-phase4.yml \
+            ARCHITECTURE.md \
+            app.js \
+            scripts/build-app.mjs \
+            scripts/test-architecture.mjs \
+            src/core/auth.ts \
+            src/legacy/120-security.js
+          git diff --cached --quiet && { echo "FEHLER: Nichts zu committen."; exit 1; }
+          git commit -m "Extract device authentication into TypeScript module"
+          git push
