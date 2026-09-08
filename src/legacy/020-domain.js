@@ -123,48 +123,17 @@ function addMeterReading(meter,date,value,origin="manual",synthetic=false){
   meter.readings.push(r);meter.readings.sort((a,b)=>a.date.localeCompare(b.date));return r
 }
 
-function normalizeMeterNumber(v){return String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"")}
-function parseMeterReadingValue(v){
-  let s=String(v||"").trim().replace(/\s/g,"");
-  if(!s)return null;
-  if(s.includes(",")&&s.includes(".")){
-    if(s.lastIndexOf(",")>s.lastIndexOf("."))s=s.replace(/\./g,"").replace(",",".");
-    else s=s.replace(/,/g,"")
-  }else if(s.includes(","))s=s.replace(",",".");
-  s=s.replace(/[^\d.]/g,"");
-  if(!/^\d+(?:\.\d{1,4})?$/.test(s))return null;
-  const n=Number(s);return Number.isFinite(n)?n:null
-}
-function meterNumericInterpretations(raw){
-  const clean=String(raw||"").replace(/\s/g,"").replace(/O/gi,"0").replace(/[Il|]/g,"1"),out=[],direct=parseMeterReadingValue(clean);
-  if(direct!=null)out.push({value:direct,mode:"direkt",bonus:/[.,]/.test(clean)?.12:0});
-  const digits=clean.replace(/\D/g,"");
-  if(/^\d{4,9}$/.test(digits)&&!/[.,]/.test(clean)){for(const decimals of [3,2,1,4]){if(digits.length<=decimals)continue;const n=Number(`${digits.slice(0,-decimals)}.${digits.slice(-decimals)}`);if(Number.isFinite(n))out.push({value:n,mode:`${decimals} Nachkommastellen ergänzt`,bonus:decimals===3?.08:decimals===2?.04:0})}}
-  const seen=new Set();return out.filter(x=>{const k=x.value.toFixed(4);if(seen.has(k))return false;seen.add(k);return true})
-}
-function meterReadingCandidates(text,source="ocr",baseScore=.55){
-  const lines=String(text||"").split(/\r?\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean),out=[];
-  for(const line of lines){const low=line.toLowerCase(),context=/zählerstand|zaehlerstand|stand|m³|m3|kubik|verbrauch/.test(low),rx=/\d(?:[\d\s.,]{1,12}\d)?/g;
-    for(const m of line.matchAll(rx)){const raw=m[0].trim(),digits=raw.replace(/\D/g,"");if(digits.length<2||digits.length>10)continue;
-      for(const interpretation of meterNumericInterpretations(raw)){let score=baseScore+(context?.16:0)+(/[.,]/.test(raw)?.08:0)+(interpretation.bonus||0);out.push({raw,value:interpretation.value,line,score:Math.min(.96,score),source,interpretation:interpretation.mode})}
-    }
-  }return out
-}
-function detectedMeterSerialCandidates(text){
-  const lines=String(text||"").split(/\r?\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean),out=[];
-  for(const line of lines){
-    const low=line.toLowerCase(),context=/zähler|zaehler|nummer|nr\.|serial|serien/.test(low);
-    for(const m of line.matchAll(/\b[A-Z0-9][A-Z0-9\-\/]{5,17}\b/gi)){
-      const norm=normalizeMeterNumber(m[0]);
-      if(norm.length<6||/^\d{1,6}$/.test(norm))continue;
-      out.push({raw:m[0],normalized:norm,line,score:context?.9:.45})
-    }
-  }
-  return out.sort((a,b)=>b.score-a.score)
-}
-function meterNumberComparable(v){return normalizeMeterNumber(v).replace(/[OQ]/g,"0").replace(/[IL]/g,"1").replace(/S/g,"5").replace(/B/g,"8")}
-function editDistance(a,b){a=String(a);b=String(b);const row=Array(b.length+1).fill(0).map((_,i)=>i);for(let i=1;i<=a.length;i++){let prev=row[0];row[0]=i;for(let j=1;j<=b.length;j++){const old=row[j],cost=a[i-1]===b[j-1]?0:1;row[j]=Math.min(row[j]+1,row[j-1]+1,prev+cost);prev=old}}return row[b.length]}
-function meterNumberSimilarity(a,b){const A=meterNumberComparable(a),B=meterNumberComparable(b);if(!A||!B)return 0;if(A.includes(B)||B.includes(A))return .99;return 1-editDistance(A,B)/Math.max(A.length,B.length)}
+const {
+  normalizeMeterNumber,
+  parseMeterReadingValue,
+  meterNumericInterpretations,
+  meterReadingCandidates,
+  detectedMeterSerialCandidates,
+  meterNumberComparable,
+  editDistance,
+  meterNumberSimilarity
+}=AppMeterParsing;
+
 function matchMeterFromOCR(s,text,preferredMeterId=""){
   const meters=s.meters||[];if(preferredMeterId){const preferred=meters.find(m=>m.id===preferredMeterId);if(preferred)return{meter:preferred,confidence:1,reason:"Aufnahme direkt an diesem Zähler gestartet"}}
   const serials=detectedMeterSerialCandidates(text),matches=[];

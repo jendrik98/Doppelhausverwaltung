@@ -4,6 +4,7 @@ try{
 
 
 /* ===== compiled src/core/validation.ts ===== */
+"use strict";
 var AppValidation = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -22,8 +23,10 @@ var AppValidation = (() => {
     return to;
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-  var stdin_exports = {};
-  __export(stdin_exports, {
+
+  // src/core/validation.ts
+  var validation_exports = {};
+  __export(validation_exports, {
     normalizeIban: () => normalizeIban,
     parseGermanNumber: () => parseGermanNumber,
     validateArea: () => validateArea,
@@ -37,8 +40,8 @@ var AppValidation = (() => {
     validatePostalCodeDE: () => validatePostalCodeDE,
     validateYear: () => validateYear
   });
-  const valid = (value) => ({ ok: true, level: "ok", value });
-  const invalid = (message) => ({ ok: false, level: "error", message });
+  var valid = (value) => ({ ok: true, level: "ok", value });
+  var invalid = (message) => ({ ok: false, level: "error", message });
   function normalizeIban(input) {
     return String(input ?? "").replace(/\s+/g, "").toUpperCase();
   }
@@ -143,11 +146,12 @@ var AppValidation = (() => {
     if (!value) return required ? invalid("Postleitzahl fehlt.") : valid("");
     return /^\d{5}$/.test(value) ? valid(value) : invalid("Eine deutsche Postleitzahl muss aus 5 Ziffern bestehen.");
   }
-  return __toCommonJS(stdin_exports);
+  return __toCommonJS(validation_exports);
 })();
 
 
 /* ===== compiled src/core/feedback.ts ===== */
+"use strict";
 var AppFeedback = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -166,8 +170,10 @@ var AppFeedback = (() => {
     return to;
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-  var stdin_exports = {};
-  __export(stdin_exports, {
+
+  // src/core/feedback.ts
+  var feedback_exports = {};
+  __export(feedback_exports, {
     showToast: () => showToast
   });
   function showToast(message, options = {}) {
@@ -191,11 +197,356 @@ var AppFeedback = (() => {
       window.setTimeout(() => toast.remove(), 180);
     }, timeoutMs);
   }
-  return __toCommonJS(stdin_exports);
+  return __toCommonJS(feedback_exports);
+})();
+
+
+/* ===== compiled src/core/state.ts ===== */
+"use strict";
+var AppState = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/core/state.ts
+  var state_exports = {};
+  __export(state_exports, {
+    SCHEMA_VERSION: () => SCHEMA_VERSION,
+    createEmptyState: () => createEmptyState,
+    dateOnlyAddDays: () => dateOnlyAddDays,
+    localDateISO: () => localDateISO,
+    localMonthEndISO: () => localMonthEndISO,
+    normalizeState: () => normalizeState,
+    validateState: () => validateState
+  });
+
+  // src/core/date.ts
+  function localDateISO(date = /* @__PURE__ */ new Date()) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+  function dateOnlyAddDays(value, days) {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return "";
+    const date = new Date(
+      Date.UTC(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]) + Number(days || 0)
+      )
+    );
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+  }
+  function localMonthEndISO(date) {
+    return localDateISO(new Date(date.getFullYear(), date.getMonth() + 1, 0));
+  }
+
+  // src/core/state.ts
+  var SCHEMA_VERSION = 13;
+  var ARRAY_KEYS = [
+    "units",
+    "leases",
+    "sources",
+    "costPositions",
+    "meters",
+    "waterSettlements",
+    "containers",
+    "water",
+    "tasks",
+    "billingWorkflows",
+    "billingSnapshots",
+    "payments",
+    "audit"
+  ];
+  function createEmptyState() {
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      meta: {
+        appVersion: "18.0.0",
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        migratedFrom: null,
+        revision: 0,
+        lastSavedAt: null,
+        lastBackupAt: null,
+        lastIntegrityCheckAt: null,
+        errorLog: [],
+        v17: {
+          integrated: true,
+          profileSchema: 3,
+          waterModule: 3,
+          utilityProfile: {
+            coldWater: "landlord",
+            heating: "tenant",
+            hotWater: "tenant",
+            electricity: "tenant",
+            gas: "tenant"
+          }
+        }
+      },
+      property: { name: "", address: "", totalArea: 0, year: "" },
+      correspondence: {
+        landlordName: "",
+        landlordAddress: "",
+        iban: "",
+        paymentReference: "",
+        contact: ""
+      },
+      units: [],
+      leases: [],
+      sources: [],
+      costPositions: [],
+      meters: [],
+      waterSettlements: [],
+      containers: [],
+      water: [],
+      tasks: [],
+      finance: { repayment: 900, fixed: 0 },
+      billingWorkflows: [],
+      billingSnapshots: [],
+      payments: [],
+      audit: []
+    };
+  }
+  function validateState(value) {
+    const errors = [];
+    if (!value || typeof value !== "object") {
+      return { ok: false, errors: ["State fehlt"] };
+    }
+    const state = value;
+    if (!Number.isInteger(state.schemaVersion)) errors.push("schemaVersion fehlt");
+    if (!state.property || typeof state.property !== "object") errors.push("property fehlt");
+    for (const key of ARRAY_KEYS) {
+      if (!Array.isArray(state[key])) errors.push(`${key} ist kein Array`);
+    }
+    if (!state.finance || typeof state.finance !== "object") errors.push("finance fehlt");
+    return { ok: errors.length === 0, errors };
+  }
+  function normalizeState(value) {
+    const state = value && typeof value === "object" ? value : {};
+    const base = createEmptyState();
+    const out = { ...base, ...state };
+    out.property = { ...base.property, ...state.property || {} };
+    out.property.billingTakeoverDate = out.property.billingTakeoverDate || out.property.ownershipEffective || "";
+    if (out.property.billingTakeoverDate && !out.property.predecessorBillingEnd) {
+      out.property.predecessorBillingEnd = dateOnlyAddDays(
+        out.property.billingTakeoverDate,
+        -1
+      );
+    }
+    out.correspondence = { ...base.correspondence, ...state.correspondence || {} };
+    out.finance = { ...base.finance, ...state.finance || {} };
+    for (const key of ARRAY_KEYS) {
+      out[key] = Array.isArray(state[key]) ? state[key] : [];
+    }
+    out.schemaVersion = SCHEMA_VERSION;
+    out.meta = { ...base.meta, ...state.meta || {}, appVersion: "18.0.0" };
+    out.meta.v17 = {
+      ...base.meta.v17,
+      ...state.meta?.v17 || {},
+      integrated: true,
+      profileSchema: 3,
+      waterModule: 3,
+      utilityProfile: {
+        coldWater: "landlord",
+        heating: "tenant",
+        hotWater: "tenant",
+        electricity: "tenant",
+        gas: "tenant"
+      }
+    };
+    out.meta.revision = Number(out.meta.revision || 0);
+    out.meta.errorLog = Array.isArray(out.meta.errorLog) ? out.meta.errorLog : [];
+    return out;
+  }
+  return __toCommonJS(state_exports);
+})();
+
+
+/* ===== compiled src/domain/meter-parsing.ts ===== */
+"use strict";
+var AppMeterParsing = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/meter-parsing.ts
+  var meter_parsing_exports = {};
+  __export(meter_parsing_exports, {
+    detectedMeterSerialCandidates: () => detectedMeterSerialCandidates,
+    editDistance: () => editDistance,
+    meterNumberComparable: () => meterNumberComparable,
+    meterNumberSimilarity: () => meterNumberSimilarity,
+    meterNumericInterpretations: () => meterNumericInterpretations,
+    meterReadingCandidates: () => meterReadingCandidates,
+    normalizeMeterNumber: () => normalizeMeterNumber,
+    parseMeterReadingValue: () => parseMeterReadingValue
+  });
+  function normalizeMeterNumber(value) {
+    return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
+  function parseMeterReadingValue(value) {
+    let text = String(value || "").trim().replace(/\s/g, "");
+    if (!text) return null;
+    if (text.includes(",") && text.includes(".")) {
+      if (text.lastIndexOf(",") > text.lastIndexOf(".")) {
+        text = text.replace(/\./g, "").replace(",", ".");
+      } else {
+        text = text.replace(/,/g, "");
+      }
+    } else if (text.includes(",")) {
+      text = text.replace(",", ".");
+    }
+    text = text.replace(/[^\d.]/g, "");
+    if (!/^\d+(?:\.\d{1,4})?$/.test(text)) return null;
+    const number = Number(text);
+    return Number.isFinite(number) ? number : null;
+  }
+  function meterNumericInterpretations(raw) {
+    const clean = String(raw || "").replace(/\s/g, "").replace(/O/gi, "0").replace(/[Il|]/g, "1");
+    const out = [];
+    const direct = parseMeterReadingValue(clean);
+    if (direct != null) {
+      out.push({
+        value: direct,
+        mode: "direkt",
+        bonus: /[.,]/.test(clean) ? 0.12 : 0
+      });
+    }
+    const digits = clean.replace(/\D/g, "");
+    if (/^\d{4,9}$/.test(digits) && !/[.,]/.test(clean)) {
+      for (const decimals of [3, 2, 1, 4]) {
+        if (digits.length <= decimals) continue;
+        const number = Number(
+          `${digits.slice(0, -decimals)}.${digits.slice(-decimals)}`
+        );
+        if (Number.isFinite(number)) {
+          out.push({
+            value: number,
+            mode: `${decimals} Nachkommastellen ergänzt`,
+            bonus: decimals === 3 ? 0.08 : decimals === 2 ? 0.04 : 0
+          });
+        }
+      }
+    }
+    const seen = /* @__PURE__ */ new Set();
+    return out.filter((item) => {
+      const key = item.value.toFixed(4);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  function meterReadingCandidates(text, source = "ocr", baseScore = 0.55) {
+    const lines = String(text || "").split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      const low = line.toLowerCase();
+      const context = /zählerstand|zaehlerstand|stand|m³|m3|kubik|verbrauch/.test(low);
+      const regex = /\d(?:[\d\s.,]{1,12}\d)?/g;
+      for (const match of line.matchAll(regex)) {
+        const raw = match[0].trim();
+        const digits = raw.replace(/\D/g, "");
+        if (digits.length < 2 || digits.length > 10) continue;
+        for (const interpretation of meterNumericInterpretations(raw)) {
+          const score = baseScore + (context ? 0.16 : 0) + (/[.,]/.test(raw) ? 0.08 : 0) + (interpretation.bonus || 0);
+          out.push({
+            raw,
+            value: interpretation.value,
+            line,
+            score: Math.min(0.96, score),
+            source,
+            interpretation: interpretation.mode
+          });
+        }
+      }
+    }
+    return out;
+  }
+  function detectedMeterSerialCandidates(text) {
+    const lines = String(text || "").split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      const low = line.toLowerCase();
+      const context = /zähler|zaehler|nummer|nr\.|serial|serien/.test(low);
+      for (const match of line.matchAll(/\b[A-Z0-9][A-Z0-9\-\/]{5,17}\b/gi)) {
+        const normalized = normalizeMeterNumber(match[0]);
+        if (normalized.length < 6 || /^\d{1,6}$/.test(normalized)) continue;
+        out.push({
+          raw: match[0],
+          normalized,
+          line,
+          score: context ? 0.9 : 0.45
+        });
+      }
+    }
+    return out.sort((a, b) => b.score - a.score);
+  }
+  function meterNumberComparable(value) {
+    return normalizeMeterNumber(value).replace(/[OQ]/g, "0").replace(/[IL]/g, "1").replace(/S/g, "5").replace(/B/g, "8");
+  }
+  function editDistance(aValue, bValue) {
+    const a = String(aValue);
+    const b = String(bValue);
+    const row = Array(b.length + 1).fill(0).map((_, index) => index);
+    for (let i = 1; i <= a.length; i++) {
+      let previous = row[0];
+      row[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const old = row[j];
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + cost);
+        previous = old;
+      }
+    }
+    return row[b.length];
+  }
+  function meterNumberSimilarity(a, b) {
+    const left = meterNumberComparable(a);
+    const right = meterNumberComparable(b);
+    if (!left || !right) return 0;
+    if (left.includes(right) || right.includes(left)) return 0.99;
+    return 1 - editDistance(left, right) / Math.max(left.length, right.length);
+  }
+  return __toCommonJS(meter_parsing_exports);
 })();
 
 /* ===== schema.js ===== */
-const SCHEMA_VERSION=13;
+const {
+  SCHEMA_VERSION,
+  localDateISO,
+  dateOnlyAddDays,
+  localMonthEndISO,
+  createEmptyState,
+  validateState,
+  normalizeState
+}=AppState;
 
 // Register the Service Worker before the first asynchronous startup wait.
 // On fast page loads the window "load" event can fire while IndexedDB is still
@@ -206,71 +557,6 @@ const SERVICE_WORKER_REGISTRATION=("serviceWorker" in navigator)
       return null;
     })
   : Promise.resolve(null);
-
-function localDateISO(date=new Date()){
-  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`
-}
-function dateOnlyAddDays(value,days){
-  const m=String(value||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return "";
-  const d=new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3])+Number(days||0)));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`
-}
-function localMonthEndISO(date){
-  return localDateISO(new Date(date.getFullYear(),date.getMonth()+1,0))
-}
-
-function createEmptyState(){
-  return {
-    schemaVersion:SCHEMA_VERSION,
-    meta:{appVersion:"18.0.0",createdAt:new Date().toISOString(),migratedFrom:null,revision:0,lastSavedAt:null,lastBackupAt:null,lastIntegrityCheckAt:null,errorLog:[],v17:{integrated:true,profileSchema:3,waterModule:3,utilityProfile:{coldWater:"landlord",heating:"tenant",hotWater:"tenant",electricity:"tenant",gas:"tenant"}}},
-    property:{name:"",address:"",totalArea:0,year:""},
-    correspondence:{landlordName:"",landlordAddress:"",iban:"",paymentReference:"",contact:""},
-    units:[],
-    leases:[],
-    sources:[],
-    costPositions:[],
-    meters:[],
-    waterSettlements:[],
-    containers:[],
-    water:[],
-    tasks:[],
-    finance:{repayment:900,fixed:0},
-    billingWorkflows:[],
-    billingSnapshots:[],
-    payments:[],
-    audit:[]
-  }
-}
-
-function validateState(s){
-  const errors=[];
-  if(!s||typeof s!=="object")return{ok:false,errors:["State fehlt"]};
-  if(!Number.isInteger(s.schemaVersion))errors.push("schemaVersion fehlt");
-  if(!s.property||typeof s.property!=="object")errors.push("property fehlt");
-  for(const k of ["units","leases","sources","costPositions","meters","waterSettlements","containers","water","tasks","billingWorkflows","billingSnapshots","payments","audit"]){
-    if(!Array.isArray(s[k]))errors.push(`${k} ist kein Array`)
-  }
-  if(!s.finance||typeof s.finance!=="object")errors.push("finance fehlt");
-  return {ok:!errors.length,errors}
-}
-
-function normalizeState(s){
-  const base=createEmptyState(),out={...base,...s};
-  out.property={...base.property,...(s?.property||{})};
-  out.property.billingTakeoverDate=out.property.billingTakeoverDate||out.property.ownershipEffective||"";
-  if(out.property.billingTakeoverDate&&!out.property.predecessorBillingEnd){
-    out.property.predecessorBillingEnd=dateOnlyAddDays(out.property.billingTakeoverDate,-1)
-  }
-  out.correspondence={...base.correspondence,...(s?.correspondence||{})};
-  out.finance={...base.finance,...(s?.finance||{})};
-  for(const k of ["units","leases","sources","costPositions","meters","waterSettlements","containers","water","tasks","billingWorkflows","billingSnapshots","payments","audit"])out[k]=Array.isArray(s?.[k])?s[k]:[];
-  out.schemaVersion=SCHEMA_VERSION;
-  out.meta={...base.meta,...(s?.meta||{}),appVersion:"18.0.0"};
-  out.meta.v17={...base.meta.v17,...(s?.meta?.v17||{}),integrated:true,profileSchema:3,waterModule:3,utilityProfile:{coldWater:"landlord",heating:"tenant",hotWater:"tenant",electricity:"tenant",gas:"tenant"}};
-  out.meta.revision=Number(out.meta.revision||0);
-  out.meta.errorLog=Array.isArray(out.meta.errorLog)?out.meta.errorLog:[];
-  return out
-}
 
 
 
@@ -399,48 +685,17 @@ function addMeterReading(meter,date,value,origin="manual",synthetic=false){
   meter.readings.push(r);meter.readings.sort((a,b)=>a.date.localeCompare(b.date));return r
 }
 
-function normalizeMeterNumber(v){return String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"")}
-function parseMeterReadingValue(v){
-  let s=String(v||"").trim().replace(/\s/g,"");
-  if(!s)return null;
-  if(s.includes(",")&&s.includes(".")){
-    if(s.lastIndexOf(",")>s.lastIndexOf("."))s=s.replace(/\./g,"").replace(",",".");
-    else s=s.replace(/,/g,"")
-  }else if(s.includes(","))s=s.replace(",",".");
-  s=s.replace(/[^\d.]/g,"");
-  if(!/^\d+(?:\.\d{1,4})?$/.test(s))return null;
-  const n=Number(s);return Number.isFinite(n)?n:null
-}
-function meterNumericInterpretations(raw){
-  const clean=String(raw||"").replace(/\s/g,"").replace(/O/gi,"0").replace(/[Il|]/g,"1"),out=[],direct=parseMeterReadingValue(clean);
-  if(direct!=null)out.push({value:direct,mode:"direkt",bonus:/[.,]/.test(clean)?.12:0});
-  const digits=clean.replace(/\D/g,"");
-  if(/^\d{4,9}$/.test(digits)&&!/[.,]/.test(clean)){for(const decimals of [3,2,1,4]){if(digits.length<=decimals)continue;const n=Number(`${digits.slice(0,-decimals)}.${digits.slice(-decimals)}`);if(Number.isFinite(n))out.push({value:n,mode:`${decimals} Nachkommastellen ergänzt`,bonus:decimals===3?.08:decimals===2?.04:0})}}
-  const seen=new Set();return out.filter(x=>{const k=x.value.toFixed(4);if(seen.has(k))return false;seen.add(k);return true})
-}
-function meterReadingCandidates(text,source="ocr",baseScore=.55){
-  const lines=String(text||"").split(/\r?\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean),out=[];
-  for(const line of lines){const low=line.toLowerCase(),context=/zählerstand|zaehlerstand|stand|m³|m3|kubik|verbrauch/.test(low),rx=/\d(?:[\d\s.,]{1,12}\d)?/g;
-    for(const m of line.matchAll(rx)){const raw=m[0].trim(),digits=raw.replace(/\D/g,"");if(digits.length<2||digits.length>10)continue;
-      for(const interpretation of meterNumericInterpretations(raw)){let score=baseScore+(context?.16:0)+(/[.,]/.test(raw)?.08:0)+(interpretation.bonus||0);out.push({raw,value:interpretation.value,line,score:Math.min(.96,score),source,interpretation:interpretation.mode})}
-    }
-  }return out
-}
-function detectedMeterSerialCandidates(text){
-  const lines=String(text||"").split(/\r?\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean),out=[];
-  for(const line of lines){
-    const low=line.toLowerCase(),context=/zähler|zaehler|nummer|nr\.|serial|serien/.test(low);
-    for(const m of line.matchAll(/\b[A-Z0-9][A-Z0-9\-\/]{5,17}\b/gi)){
-      const norm=normalizeMeterNumber(m[0]);
-      if(norm.length<6||/^\d{1,6}$/.test(norm))continue;
-      out.push({raw:m[0],normalized:norm,line,score:context?.9:.45})
-    }
-  }
-  return out.sort((a,b)=>b.score-a.score)
-}
-function meterNumberComparable(v){return normalizeMeterNumber(v).replace(/[OQ]/g,"0").replace(/[IL]/g,"1").replace(/S/g,"5").replace(/B/g,"8")}
-function editDistance(a,b){a=String(a);b=String(b);const row=Array(b.length+1).fill(0).map((_,i)=>i);for(let i=1;i<=a.length;i++){let prev=row[0];row[0]=i;for(let j=1;j<=b.length;j++){const old=row[j],cost=a[i-1]===b[j-1]?0:1;row[j]=Math.min(row[j]+1,row[j-1]+1,prev+cost);prev=old}}return row[b.length]}
-function meterNumberSimilarity(a,b){const A=meterNumberComparable(a),B=meterNumberComparable(b);if(!A||!B)return 0;if(A.includes(B)||B.includes(A))return .99;return 1-editDistance(A,B)/Math.max(A.length,B.length)}
+const {
+  normalizeMeterNumber,
+  parseMeterReadingValue,
+  meterNumericInterpretations,
+  meterReadingCandidates,
+  detectedMeterSerialCandidates,
+  meterNumberComparable,
+  editDistance,
+  meterNumberSimilarity
+}=AppMeterParsing;
+
 function matchMeterFromOCR(s,text,preferredMeterId=""){
   const meters=s.meters||[];if(preferredMeterId){const preferred=meters.find(m=>m.id===preferredMeterId);if(preferred)return{meter:preferred,confidence:1,reason:"Aufnahme direkt an diesem Zähler gestartet"}}
   const serials=detectedMeterSerialCandidates(text),matches=[];

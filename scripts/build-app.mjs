@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { transform } from "esbuild";
+import { build } from "esbuild";
 
 const root = process.cwd();
 const manifestPath = path.join(root, "src", "legacy", "order.json");
@@ -10,33 +10,56 @@ if (!Array.isArray(manifest.files) || manifest.files.length < 2) {
   throw new Error("src/legacy/order.json enthält keine plausible Build-Reihenfolge.");
 }
 
-async function compileCore(relativePath, globalName) {
+async function compileModule(relativePath, globalName) {
   const absolute = path.join(root, relativePath);
-  if (!fs.existsSync(absolute)) throw new Error(`TypeScript-Core fehlt: ${relativePath}`);
-  const result = await transform(fs.readFileSync(absolute, "utf8"), {
-    loader: "ts",
+  if (!fs.existsSync(absolute)) {
+    throw new Error(`TypeScript-Modul fehlt: ${relativePath}`);
+  }
+
+  const result = await build({
+    entryPoints: [absolute],
+    bundle: true,
+    write: false,
     format: "iife",
     globalName,
     target: "es2022",
     charset: "utf8",
     legalComments: "none",
-    sourcemap: false
+    sourcemap: false,
+    logLevel: "silent",
+    platform: "browser"
   });
-  return `\n/* ===== compiled ${relativePath} ===== */\n${result.code}\n`;
+
+  if (result.outputFiles.length !== 1) {
+    throw new Error(`Unerwartete Build-Ausgabe für ${relativePath}.`);
+  }
+
+  return `\n/* ===== compiled ${relativePath} ===== */\n${result.outputFiles[0].text}\n`;
 }
 
-const coreRuntime =
-  await compileCore("src/core/validation.ts", "AppValidation") +
-  await compileCore("src/core/feedback.ts", "AppFeedback");
+const typedRuntime = (
+  await Promise.all([
+    compileModule("src/core/validation.ts", "AppValidation"),
+    compileModule("src/core/feedback.ts", "AppFeedback"),
+    compileModule("src/core/state.ts", "AppState"),
+    compileModule("src/domain/meter-parsing.ts", "AppMeterParsing")
+  ])
+).join("");
 
 let output = "";
 for (let i = 0; i < manifest.files.length; i++) {
-  const rel = manifest.files[i];
-  const absolute = path.join(root, rel);
-  if (!fs.existsSync(absolute)) throw new Error(`Build-Quelle fehlt: ${rel}`);
+  const relativePath = manifest.files[i];
+  const absolute = path.join(root, relativePath);
+
+  if (!fs.existsSync(absolute)) {
+    throw new Error(`Build-Quelle fehlt: ${relativePath}`);
+  }
+
   output += fs.readFileSync(absolute, "utf8");
-  if (i === 0) output += coreRuntime;
+  if (i === 0) output += typedRuntime;
 }
 
 fs.writeFileSync(path.join(root, "app.js"), output, "utf8");
-console.log(`app.js aus ${manifest.files.length} Legacy-Quellbereichen + TypeScript-Core erzeugt (${output.length} Zeichen).`);
+console.log(
+  `app.js aus ${manifest.files.length} Legacy-Quellbereichen + gebündelten TypeScript-Modulen erzeugt (${output.length} Zeichen).`
+);

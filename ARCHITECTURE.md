@@ -52,3 +52,18 @@ Sie soll nicht mehr direkt manuell bearbeitet werden.
 Der Abrechnungszeitraum ist fachlich auf das Kalenderjahr `01.01.–31.12.` korrigiert. Bei der Übernahme mitten im Jahr beginnt nur die erste eigene Periode am Übernahmedatum. Die interne Arbeitszielfrist für die fertige Endabrechnung ist der `31.03.` des Folgejahres; die gesetzliche Frist nach § 556 Abs. 3 BGB wird davon getrennt als `31.12.` des Folgejahres geführt.
 
 `src/core/validation.ts` und `src/core/feedback.ts` werden nun beim Build in die Browser-App kompiliert. Alle Formular-Submits laufen durch eine zentrale Validierungsschicht. Harte Fehler blockieren das Speichern und markieren das Feld; ungewöhnliche, aber mögliche Werte verlangen eine bewusste Bestätigung. Erfolgreiche Speicher- und ausgewählte Export-/Importaktionen erhalten Toast-Feedback.
+
+## Phase 3: erste echte Fachmodule
+
+Die Kompatibilitätsschicht bleibt vorerst bestehen, aber zentrale Logik liegt nicht mehr nur in
+`src/legacy/`. Datum/State befinden sich in `src/core/date.ts` und `src/core/state.ts`; die
+reinen Zähler-Parsing- und Vergleichsfunktionen liegen in `src/domain/meter-parsing.ts`.
+
+Der Build verwendet esbuild mit `bundle: true`. Dadurch dürfen TypeScript-Module echte
+`import`/`export`-Beziehungen besitzen. Kleine Kompatibilitätsbrücken stellen die bisherigen
+Funktionsnamen innerhalb des bestehenden App-IIFE bereit, sodass die Migration schrittweise
+und ohne Big-Bang-Rewrite fortgesetzt werden kann.
+
+Neue Fachlogik soll nicht mehr in `src/legacy/` entstehen. Bestehende Bereiche werden
+domänenweise migriert und nach jedem Schritt mit der vollständigen E2E-Suite abgesichert.
+
