@@ -54,7 +54,8 @@ const typedRuntime = (
     compileModule("src/domain/quality.ts", "AppQuality"),
     compileModule("src/domain/smart-engine.ts", "AppSmartEngine"),
     compileModule("src/domain/v18-assistant.ts", "AppV18Assistant"),
-    compileModule("src/io/backup-codec.ts", "AppBackupCodec")
+    compileModule("src/io/backup-codec.ts", "AppBackupCodec"),
+    compileModule("src/ui/ui-core.ts", "AppUiCore")
   ])
 ).join("");
 

@@ -154,3 +154,25 @@ Die bislang zusammenhängenden Legacy-Bereiche für Intelligence, Datenqualität
 Die bisherigen Dateien `050-intelligence.js`, `060-quality.js`, `070-smart-engine.js` und `080-v18-billing-assistant-preview.js` bleiben nur als Laufzeitbrücken mit den bestehenden globalen Funktionsnamen erhalten. Die Migration ist bewusst semantikerhaltend; die vier stark dynamischen Module werden in dieser Strukturphase mit `@ts-nocheck` kompiliert. Das Verhaltensgate bleibt der vollständige Browser-E2E-Satz mit exakt 25/25 Tests. Eine spätere Phase kann die Typen dieser Module schrittweise härten, ohne gleichzeitig die Laufzeitstruktur zu verändern.
 
 Phase 8 verändert keine fachlichen Regeln, keine Rechtsdaten, keine Datenbank- oder Backup-Schemata und keine App-Version. `mietverwaltung-v6`, DB-Version `2`, State-Schlüssel `main`, WebAuthn-Schlüssel, Backup-Schemata, Rechtsstand `2026-09-05`, `DOMAIN_VERSION=1` und App-Version `18.0.0` bleiben unverändert. Der einmalige Phase-7-Migrationsworkflow wird erst mit dem erfolgreichen Phase-8-Commit entfernt.
+
+
+## Phase 9: UI-Infrastruktur
+
+Die zustandslosen, gemeinsam genutzten Browser-UI-Helfer liegen nun in `src/ui/ui-core.ts`.
+Dazu gehören DOM-Zugriff und HTML-Escaping, Fokus-Helfer und Fokusfalle, Formularfeld-Erzeugung
+sowie die zentrale Formularvalidierung mit Fehler-Markierung, Warnbestätigung und Toast-Feedback.
+Das zentrale Submit-Gate wird ebenfalls aus diesem TypeScript-Modul registriert.
+
+Die veränderlichen Dialogzustände `MODAL_RETURN_FOCUS`, `MODAL_INITIAL_FORM` und
+`MODAL_RETURN_FOCUS_OVERRIDE` bleiben zusammen mit `formSnapshot`, `closeModal` und `modal`
+absichtlich in `src/legacy/150-ui.js`. `src/legacy/160-app.js` setzt sowohl den Rückkehrfokus für
+Schnellaktionen als auch beim Wechsel vom Zähler-Editor zur Fotoerfassung direkt zurück. Diese
+Zustandsgrenze wird deshalb nicht künstlich über Modul-Live-Bindungen aufgebrochen; sie wird erst
+in Phase 10 gemeinsam mit dem App-/Ansichtsbereich migriert.
+
+`src/legacy/150-ui.js` bindet die bereits migrierten, zustandslosen Funktionen über `AppUiCore` ein.
+`tsconfig.json` prüft zusätzlich `src/ui/**/*.ts`, und der Build bündelt das Modul reproduzierbar.
+Routing, Ansichten, Fachlogik, Datenbank `mietverwaltung-v6`, DB-Version `2`, State-Schlüssel `main`,
+WebAuthn, Backup-Schemata, Rechtsstand `2026-09-05`, `DOMAIN_VERSION=1` und App-Version `18.0.0`
+bleiben unverändert. Die fehlgeschlagenen Phase-9-V1/V2-Workflows und der Phase-8-Migrationsworkflow
+werden erst mit dem erfolgreichen Phase-9-V6-Commit entfernt.

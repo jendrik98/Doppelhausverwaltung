@@ -16,6 +16,7 @@
   "include": [
     "src/core/**/*.ts",
     "src/domain/**/*.ts",
-    "src/io/**/*.ts"
+    "src/io/**/*.ts",
+    "src/ui/**/*.ts"
   ]
 }

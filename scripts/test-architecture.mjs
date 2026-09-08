@@ -24,6 +24,7 @@ const traceabilityLegacy = read("src/legacy/040-traceability.js");
 const db = read("src/legacy/110-db.js");
 const security = read("src/legacy/120-security.js");
 const backup = read("src/legacy/130-backup.js");
+const uiLegacy = read("src/legacy/150-ui.js");
 const buildScript = read("scripts/build-app.mjs");
 const state = read("src/core/state.ts");
 const persistence = read("src/core/persistence.ts");
@@ -39,6 +40,7 @@ const quality = read("src/domain/quality.ts");
 const smartEngine = read("src/domain/smart-engine.ts");
 const v18Assistant = read("src/domain/v18-assistant.ts");
 const backupCodec = read("src/io/backup-codec.ts");
+const uiCore = read("src/ui/ui-core.ts");
 const tsconfig = read("tsconfig.json");
 const app = read("app.js");
 
@@ -197,4 +199,23 @@ assert(app.includes("compiled src/domain/v18-assistant.ts"), "V18-Assistant-Type
 assert(app.includes("compiled src/io/backup-codec.ts"), "Backup-Codec-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes('APP_VERSION="18.0.0"'), "APP_VERSION wurde unerwartet verändert.");
 
-console.log("Architekturprüfung bestanden: Phase 8 migriert Intelligence, Quality, Smart Engine und V18-Assistent nach TypeScript; IndexedDB v2 und App-Version 18.0.0 bleiben unverändert.");
+assert(uiLegacy.includes('let MODAL_RETURN_FOCUS=null,MODAL_INITIAL_FORM="",MODAL_RETURN_FOCUS_OVERRIDE=null;'), "Dialogzustand wurde unerwartet aus der Legacy-Brücke entfernt.");
+assert(uiLegacy.includes("function formSnapshot("), "Dialog-Snapshot muss bis Phase 10 mit dem Dialogzustand zusammenbleiben.");
+assert(uiLegacy.includes("function closeModal("), "closeModal muss bis Phase 10 mit dem Dialogzustand zusammenbleiben.");
+assert(uiLegacy.includes("function modal("), "modal muss bis Phase 10 mit dem Dialogzustand zusammenbleiben.");
+assert(uiLegacy.includes("}=AppUiCore;"), "Legacy-Brücke zu AppUiCore fehlt.");
+assert(!uiLegacy.includes("function validateCentralForm("), "Zentrale Formularvalidierung liegt noch im Legacy-UI-Code.");
+assert(!uiLegacy.includes('document.addEventListener("submit"'), "Zentrales Submit-Gate liegt noch im Legacy-UI-Code.");
+assert(uiCore.includes("export const $=id=>"), "DOM-Helper liegt nicht im TypeScript-UI-Modul.");
+assert(uiCore.includes("export const esc=s=>"), "HTML-Escaping liegt nicht im TypeScript-UI-Modul.");
+assert(uiCore.includes("export function focusableIn("), "Fokus-Helfer liegt nicht im TypeScript-UI-Modul.");
+assert(uiCore.includes("export function trapFocusInDialog("), "Fokusfalle liegt nicht im TypeScript-UI-Modul.");
+assert(uiCore.includes("export function formField("), "Formularfeld-Erzeugung liegt nicht im TypeScript-UI-Modul.");
+assert(uiCore.includes("export function validateCentralForm("), "Zentrale Formularvalidierung liegt nicht im TypeScript-UI-Modul.");
+assert(uiCore.includes('document.addEventListener("submit"'), "Zentrales Submit-Gate fehlt im TypeScript-UI-Modul.");
+assert(!uiCore.includes("MODAL_RETURN_FOCUS"), "TypeScript-UI-Modul darf keine mutable Dialog-Live-Bindung voraussetzen.");
+assert(buildScript.includes('"AppUiCore"'), "AppUiCore wird nicht gebaut.");
+assert(tsconfig.includes('"src/ui/**/*.ts"'), "TypeScript-Konfiguration prüft src/ui nicht.");
+assert(app.includes("compiled src/ui/ui-core.ts"), "UI-TypeScript fehlt im Browser-Bundle.");
+
+console.log("Architekturprüfung bestanden: Phase 9 migriert zustandslose UI-Infrastruktur und zentrale Formularvalidierung nach TypeScript; Dialogzustand bleibt sicher für Phase 10 gekoppelt. IndexedDB v2 und App-Version 18.0.0 bleiben unverändert.");
