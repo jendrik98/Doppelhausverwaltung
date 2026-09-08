@@ -1189,6 +1189,810 @@ var AppMeterParsing = (() => {
 })();
 
 
+/* ===== compiled src/domain/property-domain.ts ===== */
+"use strict";
+var AppPropertyDomain = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/property-domain.ts
+  var property_domain_exports = {};
+  __export(property_domain_exports, {
+    addMeterReading: () => addMeterReading,
+    allocateCostPosition: () => allocateCostPosition,
+    analyzeMeterOCRText: () => analyzeMeterOCRText,
+    centralBillingAnalysis: () => centralBillingAnalysis,
+    ensureDefaultMeters: () => ensureDefaultMeters,
+    latestMeterReading: () => latestMeterReading,
+    matchMeterFromOCR: () => matchMeterFromOCR,
+    meterById: () => meterById,
+    meterCandidateHistoryScore: () => meterCandidateHistoryScore,
+    meterReadingPlausibility: () => meterReadingPlausibility,
+    migrateDomainState: () => migrateDomainState,
+    positionById: () => positionById,
+    positionDefaults: () => positionDefaults,
+    positionToEvents: () => positionToEvents,
+    rankMeterCandidates: () => rankMeterCandidates,
+    readingById: () => readingById,
+    replaceAssessmentPositions: () => replaceAssessmentPositions,
+    settlementByPeriod: () => settlementByPeriod,
+    settlementConsumption: () => settlementConsumption,
+    sourcePositions: () => sourcePositions,
+    syncSimpleSourcePosition: () => syncSimpleSourcePosition
+  });
+  function positionDefaults(p = {}) {
+    return {
+      id: p.id || uid(),
+      sourceId: p.sourceId || "",
+      documentId: p.documentId || "",
+      label: p.label || "Kostenposition",
+      category: p.category || "other",
+      amount: Number(p.amount || 0),
+      interval: p.interval || "once",
+      serviceStart: p.serviceStart || "",
+      serviceEnd: p.serviceEnd || "",
+      assignment: p.assignment || "house",
+      agreement: p.agreement || "auto",
+      confirmed: p.confirmed !== false,
+      origin: p.origin || "manual",
+      details: { quantity: null, unit: "", rate: null, vatRate: null, net: null, gross: null, ...p.details || {} },
+      decisionHistory: Array.isArray(p.decisionHistory) ? p.decisionHistory : [],
+      createdAt: p.createdAt || (/* @__PURE__ */ new Date()).toISOString(),
+      provenance: p.provenance || { origin: p.origin || "manual", documentId: p.documentId || "", sourceId: p.sourceId || "", evidence: "", confidence: null, confirmedAt: p.confirmed !== false ? (/* @__PURE__ */ new Date()).toISOString() : null, confirmedBy: "local-user" }
+    };
+  }
+  function sourcePositions(state, sourceId) {
+    return (state.costPositions || []).filter((p) => p.sourceId === sourceId);
+  }
+  function positionById(state, id) {
+    return (state.costPositions || []).find((p) => p.id === id);
+  }
+  function migrateDomainState(state) {
+    state.costPositions = Array.isArray(state.costPositions) ? state.costPositions.map(positionDefaults) : [];
+    state.meters = Array.isArray(state.meters) ? state.meters : [];
+    state.waterSettlements = Array.isArray(state.waterSettlements) ? state.waterSettlements : [];
+    state.containers = Array.isArray(state.containers) ? state.containers : [];
+    state.meta = state.meta || {};
+    if (Number(state.meta.domainVersion || 0) >= DOMAIN_VERSION) return state;
+    const existingKeys = new Set(state.costPositions.map((p) => `${p.sourceId}|${p.label}|${p.serviceStart}|${p.serviceEnd}`));
+    for (const s of state.sources || []) {
+      if (s.kind === "assessment") {
+        for (const li of s.items || []) {
+          const p = positionDefaults({
+            sourceId: s.id,
+            documentId: s.sourceDocumentId || "",
+            label: li.label || category(li.category).label,
+            category: li.category,
+            amount: li.amount,
+            interval: "once",
+            serviceStart: s.serviceStart || `${s.year}-01-01`,
+            serviceEnd: s.serviceEnd || `${s.year}-12-31`,
+            assignment: li.assignment || "house",
+            agreement: li.agreement || "auto",
+            origin: "migration"
+          });
+          const k = `${p.sourceId}|${p.label}|${p.serviceStart}|${p.serviceEnd}`;
+          if (!existingKeys.has(k)) {
+            state.costPositions.push(p);
+            existingKeys.add(k);
+          }
+        }
+        if (Number(s.waterCanalReference || 0) > 0) {
+          const p = positionDefaults({
+            sourceId: s.id,
+            documentId: s.sourceDocumentId || "",
+            label: "Wasser/Kanal",
+            category: "water",
+            amount: Number(s.waterCanalReference),
+            interval: "once",
+            serviceStart: s.serviceStart || `${s.year}-01-01`,
+            serviceEnd: s.serviceEnd || `${s.year}-12-31`,
+            assignment: "house",
+            agreement: "auto",
+            origin: "migration",
+            details: { note: "Aus früheren Daten übernommen" }
+          });
+          const k = `${p.sourceId}|${p.label}|${p.serviceStart}|${p.serviceEnd}`;
+          if (!existingKeys.has(k)) {
+            state.costPositions.push(p);
+            existingKeys.add(k);
+          }
+        }
+      } else {
+        const p = positionDefaults({
+          sourceId: s.id,
+          documentId: s.sourceDocumentId || "",
+          label: s.name || category(s.category).label,
+          category: s.category || "other",
+          amount: s.amount,
+          interval: s.interval || "once",
+          serviceStart: s.serviceStart || "",
+          serviceEnd: s.serviceEnd || "",
+          assignment: s.assignment || "house",
+          agreement: s.agreement || "auto",
+          origin: "migration",
+          details: { note: s.note || "" }
+        });
+        const k = `${p.sourceId}|${p.label}|${p.serviceStart}|${p.serviceEnd}`;
+        if (!existingKeys.has(k)) {
+          state.costPositions.push(p);
+          existingKeys.add(k);
+        }
+      }
+    }
+    ensureDefaultMeters(state);
+    if (!state.waterSettlements.length && Array.isArray(state.water)) {
+      for (const w of state.water) {
+        const py = Number(w.periodYear ?? w.year);
+        if (!py) continue;
+        const main = state.meters.find((m) => m.role === "mainWater"), owner = state.meters.find((m) => m.role === "ownerWater");
+        const ps = periodStart(py), pe = periodEnd(py);
+        const mainStart = addMeterReading(main, ps, 0, "migration", true);
+        const mainEnd = addMeterReading(main, pe, Number(w.houseConsumption || 0), "migration", true);
+        const ownerStart = addMeterReading(owner, ps, Number(w.ownerStart || 0), "migration", true);
+        const ownerEnd = addMeterReading(owner, pe, Number(w.ownerEnd || 0), "migration", true);
+        state.waterSettlements.push({
+          id: w.id || uid(),
+          periodYear: py,
+          mainMeterId: main.id,
+          ownerMeterId: owner.id,
+          mainStartReadingId: mainStart.id,
+          mainEndReadingId: mainEnd.id,
+          ownerStartReadingId: ownerStart.id,
+          ownerEndReadingId: ownerEnd.id,
+          migrated: true
+        });
+        if (Number(w.totalCost || 0) > 0 && !state.costPositions.some((p) => p.category === "water" && p.serviceStart === ps && p.serviceEnd === pe)) {
+          state.costPositions.push(positionDefaults({
+            sourceId: "legacy-water-" + py,
+            label: "Kaltwasser / Kanal",
+            category: "water",
+            amount: Number(w.totalCost),
+            serviceStart: ps,
+            serviceEnd: pe,
+            assignment: "house",
+            agreement: "auto",
+            origin: "migration"
+          }));
+        }
+      }
+    }
+    state.meta.domainVersion = DOMAIN_VERSION;
+    state.meta.domainMigratedAt = (/* @__PURE__ */ new Date()).toISOString();
+    return state;
+  }
+  function ensureDefaultMeters(state) {
+    state.meters = Array.isArray(state.meters) ? state.meters : [];
+    let main = state.meters.find((m) => m.role === "mainWater");
+    let owner = state.meters.find((m) => m.role === "ownerWater");
+    if (!main) {
+      main = { id: uid(), role: "mainWater", name: "Hauptwasserzähler", number: "", unit: "m³", readings: [] };
+      state.meters.push(main);
+    }
+    if (!owner) {
+      owner = { id: uid(), role: "ownerWater", name: "Zwischenzähler Eigennutzung", number: "", unit: "m³", readings: [] };
+      state.meters.push(owner);
+    }
+    main.readings = Array.isArray(main.readings) ? main.readings : [];
+    owner.readings = Array.isArray(owner.readings) ? owner.readings : [];
+    return { main, owner };
+  }
+  function meterById(state, id) {
+    return (state.meters || []).find((m) => m.id === id);
+  }
+  function readingById(meter, id) {
+    return (meter?.readings || []).find((r) => r.id === id);
+  }
+  function addMeterReading(meter, date, value, origin = "manual", synthetic = false) {
+    const same = (meter.readings || []).find((r2) => r2.date === date && Number(r2.value) === Number(value));
+    if (same) return same;
+    const r = { id: uid(), date, value: Number(value), origin, synthetic, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    meter.readings.push(r);
+    meter.readings.sort((a, b) => a.date.localeCompare(b.date));
+    return r;
+  }
+  var {
+    normalizeMeterNumber,
+    parseMeterReadingValue,
+    meterNumericInterpretations,
+    meterReadingCandidates,
+    detectedMeterSerialCandidates,
+    meterNumberComparable,
+    editDistance,
+    meterNumberSimilarity
+  } = AppMeterParsing;
+  function matchMeterFromOCR(s, text, preferredMeterId = "") {
+    const meters = s.meters || [];
+    if (preferredMeterId) {
+      const preferred = meters.find((m) => m.id === preferredMeterId);
+      if (preferred) return { meter: preferred, confidence: 1, reason: "Aufnahme direkt an diesem Zähler gestartet" };
+    }
+    const serials = detectedMeterSerialCandidates(text), matches = [];
+    for (const m of meters) {
+      if (!m.number) continue;
+      const best = serials.map((c) => ({ candidate: c, similarity: meterNumberSimilarity(c.raw, m.number) })).sort((a, b) => b.similarity - a.similarity)[0];
+      if (best?.similarity >= 0.78) matches.push({ meter: m, confidence: Math.min(0.98, 0.62 + best.similarity * 0.36), reason: best.similarity > 0.96 ? "gespeicherte Zählernummer erkannt" : "Zählernummer trotz kleiner OCR-Abweichung wiedererkannt" });
+    }
+    matches.sort((a, b) => b.confidence - a.confidence);
+    if (matches.length === 1 || matches[0]?.confidence - (matches[1]?.confidence || 0) > 0.08) return matches[0] || { meter: null, confidence: 0, reason: "keine gespeicherte Zählernummer erkannt" };
+    return { meter: null, confidence: 0, reason: matches.length ? "mehrere Zähler ähnlich erkannt" : "keine gespeicherte Zählernummer erkannt" };
+  }
+  function meterCandidateHistoryScore(meter, date, value) {
+    if (!meter || value == null) return 0;
+    const prev = (meter.readings || []).filter((r) => r.date <= date).sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
+    if (!prev) return 0;
+    const diff = Number(value) - Number(prev.value);
+    if (diff < 0) return -0.42;
+    let score = diff < 1 ? 0.12 : diff < 50 ? 0.2 : diff < 250 ? 0.08 : -0.24;
+    const trend = meterTrend(meter), last = trend.segments?.at(-1);
+    if (last && prev.date < date) {
+      const days = Math.max(1, calendarDayDiff(prev.date, date)), expected = Math.max(1e-3, last.perDay * days), ratio = diff / expected;
+      if (ratio >= 0.25 && ratio <= 4) score += 0.14;
+      else if (ratio > 12) score -= 0.18;
+    }
+    return score;
+  }
+  function rankMeterCandidates(s, meterId, date, candidates) {
+    const meter = meterById(s, meterId), groups = /* @__PURE__ */ new Map();
+    for (const c of candidates || []) {
+      if (c.value < 0 || c.value > 1e6) continue;
+      const key = Number(c.value).toFixed(4), g = groups.get(key) || { ...c, consensus: 0, sources: /* @__PURE__ */ new Set(), score: 0 };
+      g.consensus++;
+      g.sources.add(c.source);
+      g.score = Math.max(g.score, Number(c.score || 0));
+      groups.set(key, g);
+    }
+    return [...groups.values()].map((g) => {
+      let score = g.score + Math.min(0.16, (g.consensus - 1) * 0.055) + meterCandidateHistoryScore(meter, date, g.value);
+      if (g.sources.size >= 2) score += 0.05;
+      return { ...g, source: [...g.sources].join(" + "), score: Math.max(0.01, Math.min(0.995, score)) };
+    }).sort((a, b) => b.score - a.score);
+  }
+  function analyzeMeterOCRText(s, text, preferredMeterId = "", extraCandidates = [], date = smartToday()) {
+    const assignment = matchMeterFromOCR(s, text, preferredMeterId), base = meterReadingCandidates(text, "Vollbild", 0.48), serials = detectedMeterSerialCandidates(text), meterId = assignment.meter?.id || preferredMeterId || "", ranked = rankMeterCandidates(s, meterId, date, [...base, ...extraCandidates]), chosen = ranked[0] || null;
+    return { meterId, meterName: assignment.meter?.name || meterById(s, preferredMeterId)?.name || "", assignmentConfidence: assignment.confidence || 0, assignmentReason: assignment.reason, reading: chosen?.value ?? null, readingRaw: chosen?.raw || "", readingConfidence: chosen?.score || 0, readingEvidence: chosen?.line || "", serialCandidate: serials[0]?.raw || "", serialConfidence: serials[0]?.score || 0, candidates: ranked.slice(0, 10), text: String(text || "") };
+  }
+  function latestMeterReading(meter) {
+    return (meter?.readings || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0] || null;
+  }
+  function meterReadingPlausibility(meter, date, value) {
+    const all = (meter?.readings || []).filter((r) => r.date <= date).sort((a, b) => (b.date || "").localeCompare(a.date || "")), prev = all[0];
+    if (!prev) return { ok: true, message: "Keine frühere Ablesung zum Vergleich vorhanden." };
+    if (Number(value) < Number(prev.value)) return { ok: false, message: `Der neue Stand ${value} liegt unter der letzten Ablesung ${prev.value} vom ${prev.date}. Zählerwechsel oder OCR-Fehler prüfen.` };
+    return { ok: true, message: `Letzte Ablesung ${prev.value} am ${prev.date}; Differenz ${(Number(value) - Number(prev.value)).toFixed(3)} ${meter.unit || ""}.` };
+  }
+  function settlementByPeriod(state, year) {
+    return (state.waterSettlements || []).find((w) => Number(w.periodYear) === Number(year));
+  }
+  function settlementConsumption(state, settlement) {
+    if (!settlement) return null;
+    const main = meterById(state, settlement.mainMeterId), owner = meterById(state, settlement.ownerMeterId);
+    const ms = readingById(main, settlement.mainStartReadingId), me = readingById(main, settlement.mainEndReadingId);
+    const os = readingById(owner, settlement.ownerStartReadingId), oe = readingById(owner, settlement.ownerEndReadingId);
+    if (!ms || !me || !os || !oe) return null;
+    const house = Number(me.value) - Number(ms.value), own = Number(oe.value) - Number(os.value), tenant = house - own;
+    const bp = Number.isInteger(Number(settlement.periodYear)) ? billingPeriodInfo(state, Number(settlement.periodYear)) : null;
+    const periodAligned = !bp || ms.date === bp.start && os.date === bp.start && me.date === bp.end && oe.date === bp.end;
+    return {
+      house,
+      owner: own,
+      tenant,
+      share: house > 0 ? tenant / house : 0,
+      periodAligned,
+      valid: house >= 0 && own >= 0 && tenant >= 0 && periodAligned
+    };
+  }
+  function positionToEvents(s, position, periodYear) {
+    const p = positionDefaults(position), bp = billingPeriodInfo(s, periodYear);
+    if (!p.confirmed || !bp.active) return [];
+    const ps = bp.start, pe = bp.end, start = p.serviceStart || ps, end = p.serviceEnd || pe;
+    const ov = overlapDays(start, end, ps, pe);
+    if (!ov) return [];
+    const factor = ov / daysInclusive(start, end);
+    let amount = Number(p.amount || 0);
+    if (p.interval === "monthly") amount = amount * 12 * factor;
+    else if (p.interval === "quarterly") amount = amount * 4 * factor;
+    else if (p.interval === "yearly") amount = amount * factor;
+    else amount = amount * factor;
+    return [{
+      positionId: p.id,
+      sourceId: p.sourceId,
+      documentId: p.documentId,
+      label: p.label,
+      category: p.category,
+      amount,
+      assignment: p.assignment,
+      agreement: p.agreement,
+      serviceStart: start,
+      serviceEnd: end,
+      details: p.details
+    }];
+  }
+  function allocateCostPosition(s, event, periodYear) {
+    const settlement = settlementByPeriod(s, periodYear), cons = settlementConsumption(s, settlement), bp = billingPeriodInfo(s, periodYear);
+    const hasConsumption = event.category === "water" && !!cons?.valid;
+    let decision = event.assignment === "review" ? { status: "check", billable: true, rule: "manual", reason: "Zuordnung muss bestätigt werden.", basis: "Dokument-/Objektzuordnung" } : legalDecision(event, { hasConsumption, assignment: event.assignment, agreement: event.agreement });
+    let share = 0;
+    const area = shares(s, bp.start).area;
+    if (decision.rule === "area") share = area;
+    else if (decision.rule === "persons") share = personShareForPeriod(s, bp.start, bp.end);
+    else if (decision.rule === "rental") share = 1;
+    else if (decision.rule === "owner") share = 0;
+    else if (decision.rule === "consumption" && cons?.valid) share = cons.share;
+    return { ...event, decision, tenantShare: share, tenantAmount: Number(event.amount || 0) * share };
+  }
+  function centralBillingAnalysis(s, periodYear) {
+    const bp = billingPeriodInfo(s, periodYear);
+    const events = bp.active ? (s.costPositions || []).flatMap((p) => positionToEvents(s, p, periodYear)).map((e) => allocateCostPosition(s, e, periodYear)) : [];
+    const unresolved = events.filter((e) => e.decision.status === "check" || e.decision.rule === "manual");
+    const tenantCosts = events.reduce((sum, e) => sum + Number(e.tenantAmount || 0), 0);
+    const lease = s.leases[0], advanceEvidence = actualAdvanceEvidenceInPeriod(s, lease, periodYear), advances = advanceEvidence.amount;
+    return { events, unresolved, tenantCosts, advances, advanceEvidence, result: tenantCosts - advances, lease, period: bp };
+  }
+  function syncSimpleSourcePosition(state, source) {
+    if (!source || source.kind === "assessment") return;
+    let p = (state.costPositions || []).find((x) => x.sourceId === source.id && x.origin !== "document");
+    const data = positionDefaults({
+      ...p || {},
+      sourceId: source.id,
+      label: source.name || "Kostenquelle",
+      category: source.category || "other",
+      amount: Number(source.amount || 0),
+      interval: source.interval || "once",
+      serviceStart: source.serviceStart || "",
+      serviceEnd: source.serviceEnd || "",
+      assignment: source.assignment || "house",
+      agreement: source.agreement || "auto",
+      confirmed: true,
+      origin: p?.origin || "manual",
+      details: { ...p?.details || {}, note: source.note || "" }
+    });
+    if (p) Object.assign(p, data);
+    else state.costPositions.push(data);
+  }
+  function replaceAssessmentPositions(state, source, positions) {
+    const keep = (state.costPositions || []).filter((p) => p.sourceId !== source.id);
+    state.costPositions = keep.concat((positions || []).map((p) => positionDefaults({
+      ...p,
+      sourceId: source.id,
+      documentId: source.sourceDocumentId || p.documentId || "",
+      serviceStart: p.serviceStart || source.serviceStart,
+      serviceEnd: p.serviceEnd || source.serviceEnd,
+      confirmed: true
+    })));
+  }
+  return __toCommonJS(property_domain_exports);
+})();
+
+
+/* ===== compiled src/domain/legal-rules.ts ===== */
+"use strict";
+var AppLegalRules = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/legal-rules.ts
+  var legal_rules_exports = {};
+  __export(legal_rules_exports, {
+    CATEGORIES: () => CATEGORIES,
+    LAW_DATE: () => LAW_DATE,
+    LEGAL_SOURCES: () => LEGAL_SOURCES,
+    category: () => category,
+    legalDecision: () => legalDecision,
+    loadLegalPack: () => loadLegalPack
+  });
+  var LAW_DATE = "2026-09-05";
+  var LEGAL_SOURCES = [
+    { name: "§ 556 BGB", url: "https://www.gesetze-im-internet.de/bgb/__556.html", purpose: "Betriebskosten, Abrechnung, Frist, Belegeinsicht" },
+    { name: "§ 556a BGB", url: "https://www.gesetze-im-internet.de/bgb/__556a.html", purpose: "Abrechnungsmaßstab" },
+    { name: "§ 556b BGB", url: "https://www.gesetze-im-internet.de/bgb/__556b.html", purpose: "Regelfälligkeit der Miete" },
+    { name: "§ 560 BGB", url: "https://www.gesetze-im-internet.de/bgb/__560.html", purpose: "Anpassung von Vorauszahlungen" },
+    { name: "BetrKV", url: "https://www.gesetze-im-internet.de/betrkv/", purpose: "Umlagefähige Betriebskosten" }
+  ];
+  var CATEGORIES = {
+    propertyTax: { label: "Grundsteuer B", billable: true, basis: "§ 2 Nr. 1 BetrKV", defaultRule: "area" },
+    rainwater: { label: "Niederschlagswasser", billable: true, basis: "§ 2 Nr. 3 BetrKV", defaultRule: "area" },
+    street: { label: "Straßenreinigung / Winterdienst", billable: true, basis: "§ 2 Nr. 8 BetrKV", defaultRule: "area" },
+    waste: { label: "Abfall", billable: true, basis: "§ 2 Nr. 8 BetrKV", defaultRule: "area" },
+    insurance: { label: "Gebäudeversicherung", billable: true, basis: "§ 2 BetrKV", defaultRule: "area" },
+    chimney: { label: "Schornsteinfeger", billable: true, basis: "§ 2 BetrKV", defaultRule: "area" },
+    water: { label: "Kaltwasser / Kanal", billable: true, basis: "§ 2 Nr. 2/3 BetrKV", defaultRule: "consumption" },
+    garden: { label: "Gartenpflege", billable: true, basis: "§ 2 BetrKV", defaultRule: "area" },
+    cleaning: { label: "Gebäudereinigung", billable: true, basis: "§ 2 BetrKV", defaultRule: "area" },
+    other: { label: "Sonstige Betriebskosten", billable: "check", basis: "§ 2 Nr. 17 BetrKV", defaultRule: "area" },
+    admin: { label: "Verwaltungskosten", billable: false, basis: "§ 1 Abs. 2 Nr. 1 BetrKV", defaultRule: "owner" },
+    repair: { label: "Instandhaltung / Reparatur", billable: false, basis: "§ 1 Abs. 2 Nr. 2 BetrKV", defaultRule: "owner" },
+    internet: { label: "Internet Eigennutzung", billable: false, basis: "private Kosten", defaultRule: "owner" },
+    broadcasting: { label: "Rundfunkbeitrag", billable: false, basis: "private Kosten", defaultRule: "owner" },
+    financing: { label: "Hausfinanzierung", billable: false, basis: "keine Betriebskosten", defaultRule: "owner" }
+  };
+  function category(id) {
+    return ACTIVE_LEGAL_PACK?.categories?.[id] || CATEGORIES[id] || { label: id, billable: "check", basis: "manuell prüfen", defaultRule: "area" };
+  }
+  async function loadLegalPack() {
+    try {
+      const r = await fetch("./legal-rules.json?ts=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const p = await r.json();
+      if (p?.schema !== "mietverwaltung-legal-pack-v1" || !p.categories) throw new Error("Ungültiges Regelpaket");
+      ACTIVE_LEGAL_PACK = p;
+      return p;
+    } catch (e) {
+      console.warn("Regelpaket-Fallback aktiv", e);
+      return null;
+    }
+  }
+  function legalDecision(source, { hasConsumption = false, assignment = "house", agreement = "auto" } = {}) {
+    const c = category(source.category);
+    if (c.billable === false) return { status: "blocked", billable: false, rule: "owner", reason: "Diese Kostenart ist nicht auf die Mieterin umlagefähig.", basis: c.basis };
+    if (assignment === "owner") return { status: "ok", billable: false, rule: "owner", reason: "Die Kostenquelle ist ausschließlich der Eigennutzung zugeordnet.", basis: "Objektzuordnung" };
+    if (assignment === "rental") return { status: "ok", billable: true, rule: "rental", reason: "Die Kostenquelle betrifft ausschließlich die Mietwohnung.", basis: "Direktzuordnung" };
+    if (c.billable === "check") return { status: "check", billable: true, rule: agreement === "persons" ? "persons" : "area", reason: "Sonstige Betriebskosten müssen im konkreten Vertrag ausreichend erfasst sein.", basis: c.basis };
+    if (hasConsumption || c.defaultRule === "consumption") return { status: "ok", billable: true, rule: "consumption", reason: "Der Verbrauch wird erfasst; daher wird verbrauchsbezogen verteilt.", basis: `${c.basis}; § 556a Abs. 1 BGB` };
+    if (agreement === "persons") return { status: "ok", billable: true, rule: "persons", reason: "Personenschlüssel wurde als Vertragsvorgabe hinterlegt.", basis: "vertragliche Vereinbarung / § 556a BGB" };
+    if (agreement === "area" || agreement === "auto") return { status: "ok", billable: true, rule: "area", reason: "Wohnfläche ist der hinterlegte bzw. gesetzliche Standardmaßstab.", basis: `${c.basis}; § 556a BGB` };
+    return { status: "check", billable: true, rule: "manual", reason: "Individuelle Verteilung muss geprüft werden.", basis: c.basis };
+  }
+  return __toCommonJS(legal_rules_exports);
+})();
+
+
+/* ===== compiled src/domain/billing-domain.ts ===== */
+"use strict";
+var AppBillingDomain = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/billing-domain.ts
+  var billing_domain_exports = {};
+  __export(billing_domain_exports, {
+    actualAdvanceEvidenceInPeriod: () => actualAdvanceEvidenceInPeriod,
+    actualAdvanceInPeriod: () => actualAdvanceInPeriod,
+    actualCashflowByMonth: () => actualCashflowByMonth,
+    agreementLabel: () => agreementLabel,
+    assignmentLabel: () => assignmentLabel,
+    billingAnalysis: () => billingAnalysis,
+    billingPeriodContext: () => billingPeriodContext,
+    billingPeriodInfo: () => billingPeriodInfo,
+    billingPeriodLabel: () => billingPeriodLabel,
+    billingPeriodStart: () => billingPeriodStart,
+    billingReadiness: () => billingReadiness,
+    billingSelectableYears: () => billingSelectableYears,
+    billingTakeoverDate: () => billingTakeoverDate,
+    calendarDayDiff: () => calendarDayDiff,
+    confidencePercent: () => confidencePercent,
+    createBillingSnapshot: () => createBillingSnapshot,
+    currentPeriodYear: () => currentPeriodYear,
+    currentPersons: () => currentPersons,
+    dateDE: () => dateDE,
+    dateOnlyUtcValue: () => dateOnlyUtcValue,
+    daysInclusive: () => daysInclusive,
+    euro: () => euro,
+    intervalLabel: () => intervalLabel,
+    monthlyAdvanceInPeriod: () => monthlyAdvanceInPeriod,
+    overlapDays: () => overlapDays,
+    paymentAdvanceForLease: () => paymentAdvanceForLease,
+    paymentMonthKey: () => paymentMonthKey,
+    percent: () => percent,
+    periodBillingTarget: () => periodBillingTarget,
+    periodBillingTargetISO: () => periodBillingTargetISO,
+    periodDeadline: () => periodDeadline,
+    periodDeadlineISO: () => periodDeadlineISO,
+    periodEnd: () => periodEnd,
+    periodLabel: () => periodLabel,
+    periodStart: () => periodStart,
+    personDays: () => personDays,
+    personShareForPeriod: () => personShareForPeriod,
+    preferredBillingYear: () => preferredBillingYear,
+    selectedBillingYear: () => selectedBillingYear,
+    shares: () => shares,
+    snapshotFor: () => snapshotFor,
+    uid: () => uid,
+    unitByType: () => unitByType
+  });
+  var euro = (n) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(n) || 0);
+  var dateDE = (d) => {
+    if (!d) return "–";
+    const x = /* @__PURE__ */ new Date(String(d).slice(0, 10) + "T00:00:00");
+    return Number.isNaN(x.getTime()) ? String(d) : x.toLocaleDateString("de-DE");
+  };
+  var intervalLabel = (v) => ({ once: "einmalig", monthly: "monatlich", quarterly: "vierteljährlich", yearly: "jährlich" })[String(v)] || v || "–";
+  var assignmentLabel = (v) => ({ house: "gesamtes Haus", owner: "nur Eigennutzung", rental: "nur Mietwohnung", review: "noch prüfen" })[String(v)] || v || "–";
+  var agreementLabel = (v) => ({ auto: "automatischer Standard", area: "Wohnfläche", persons: "Personen", manual: "individuell prüfen", consumption: "Verbrauch", rental: "direkt Mietwohnung", owner: "Eigennutzung" })[String(v)] || v || "–";
+  var confidencePercent = (v) => {
+    const n = Number(v || 0);
+    return Math.max(0, Math.min(100, n <= 1 ? n * 100 : n));
+  };
+  var percent = (n) => new Intl.NumberFormat("de-DE", { style: "percent", maximumFractionDigits: 1 }).format(Number(n) || 0);
+  var uid = () => crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random();
+  var periodStart = (y) => `${y}-01-01`;
+  var periodEnd = (y) => `${y}-12-31`;
+  var periodLabel = (y) => `01.01.${y} – 31.12.${y}`;
+  var periodBillingTargetISO = (y) => `${y + 1}-03-31`;
+  var periodBillingTarget = (y) => dateDE(periodBillingTargetISO(y));
+  var periodDeadlineISO = (y) => `${y + 1}-12-31`;
+  var periodDeadline = (y) => dateDE(periodDeadlineISO(y));
+  function currentPeriodYear() {
+    return (/* @__PURE__ */ new Date()).getFullYear();
+  }
+  function preferredBillingYear() {
+    const d = /* @__PURE__ */ new Date(), y = d.getFullYear();
+    return d.getMonth() <= 2 ? y - 1 : y;
+  }
+  function billingSelectableYears(s = state) {
+    const years = /* @__PURE__ */ new Set([preferredBillingYear(), currentPeriodYear()]);
+    for (const snap of s.billingSnapshots || []) if (Number.isInteger(Number(snap.periodYear))) years.add(Number(snap.periodYear));
+    for (const sett of s.waterSettlements || []) if (Number.isInteger(Number(sett.periodYear))) years.add(Number(sett.periodYear));
+    for (const pos of s.costPositions || []) {
+      const d = String(pos.serviceStart || pos.serviceEnd || "").slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        const [yy] = d.split("-").map(Number);
+        years.add(yy);
+      }
+    }
+    const takeover = billingTakeoverDate(s);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(takeover)) {
+      const [yy] = takeover.split("-").map(Number), first = yy, last = currentPeriodYear();
+      for (let y = first; y <= last && y < first + 60; y++) if (billingPeriodInfo(s, y).active) years.add(y);
+    } else years.add(currentPeriodYear() - 1);
+    return [...years].filter((y) => Number.isInteger(y) && y > 1900 && billingPeriodInfo(s, y).active).sort((a, b) => b - a);
+  }
+  function selectedBillingYear(s = state) {
+    const options = billingSelectableYears(s), saved = Number(sessionStorage.getItem("billingSelectedYear")), preferred = preferredBillingYear();
+    if (options.includes(saved)) return saved;
+    if (options.includes(preferred)) return preferred;
+    return options[0] ?? currentPeriodYear();
+  }
+  function billingTakeoverDate(s = state) {
+    return String(s?.property?.billingTakeoverDate || s?.property?.ownershipEffective || "");
+  }
+  function billingPeriodInfo(s, year) {
+    const nominalStart = periodStart(year), end = periodEnd(year), takeover = billingTakeoverDate(s);
+    let start = nominalStart, active = true, isTakeoverPeriod = false;
+    if (takeover) {
+      if (takeover > end) active = false;
+      else if (takeover > nominalStart) {
+        start = takeover;
+        isTakeoverPeriod = true;
+      }
+    }
+    const predecessorEnd = s?.property?.predecessorBillingEnd || (takeover ? dateOnlyAddDays(takeover, -1) : "");
+    return {
+      year,
+      start,
+      end,
+      nominalStart,
+      takeover,
+      predecessorEnd,
+      active,
+      isTakeoverPeriod,
+      days: active ? daysInclusive(start, end) : 0,
+      nominalDays: daysInclusive(nominalStart, end)
+    };
+  }
+  function billingPeriodStart(s, year) {
+    return billingPeriodInfo(s, year).start;
+  }
+  function billingPeriodLabel(s, year) {
+    const p = billingPeriodInfo(s, year), f = (d) => d ? (/* @__PURE__ */ new Date(d + "T00:00:00")).toLocaleDateString("de-DE") : "–";
+    return `${f(p.start)} – ${f(p.end)}`;
+  }
+  function billingPeriodContext(s, year) {
+    const p = billingPeriodInfo(s, year);
+    if (!p.active) return { kind: "before-takeover", message: "Diese Periode liegt vollständig vor der Verwaltungsübernahme." };
+    if (p.isTakeoverPeriod) return { kind: "takeover", message: `Erste eigene Abrechnungsperiode ab ${(/* @__PURE__ */ new Date(p.start + "T00:00:00")).toLocaleDateString("de-DE")}. Der Voreigentümer rechnet bis ${(/* @__PURE__ */ new Date(p.predecessorEnd + "T00:00:00")).toLocaleDateString("de-DE")} selbst ab.` };
+    return { kind: "annual", message: "Reguläre jährliche Abrechnungsperiode 01.01.–31.12." };
+  }
+  function dateOnlyUtcValue(v) {
+    const m = String(v || "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return NaN;
+    return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  function calendarDayDiff(start, end) {
+    const a = dateOnlyUtcValue(start), b = dateOnlyUtcValue(end);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return NaN;
+    return Math.round((b - a) / 864e5);
+  }
+  function overlapDays(aStart, aEnd, bStart, bEnd) {
+    const s = aStart > bStart ? aStart : bStart, e = aEnd < bEnd ? aEnd : bEnd;
+    if (!s || !e || s > e) return 0;
+    return daysInclusive(s, e);
+  }
+  function daysInclusive(start, end) {
+    const d = calendarDayDiff(start, end);
+    return Number.isFinite(d) && d >= 0 ? d + 1 : 0;
+  }
+  function unitByType(state2, type) {
+    return state2.units.find((u) => u.type === type);
+  }
+  function currentPersons(unit, date = localDateISO()) {
+    const h = (unit?.occupancy || []).filter((x) => (!x.from || x.from <= date) && (!x.to || x.to >= date)).sort((a, b) => (b.from || "").localeCompare(a.from || ""));
+    return h.length ? Number(h[0].count) || 0 : 0;
+  }
+  function shares(state2, date) {
+    const owner = unitByType(state2, "owner"), rental = unitByType(state2, "rental");
+    const totalArea = Number(state2.property.totalArea) || state2.units.reduce((s, u) => s + Number(u.area || 0), 0);
+    const area = totalArea ? Number(rental?.area || 0) / totalArea : 0;
+    const op = currentPersons(owner, date), rp = currentPersons(rental, date), pt = op + rp;
+    return { area, persons: pt ? rp / pt : 0, ownerPersons: op, rentalPersons: rp };
+  }
+  function personDays(unit, start, end) {
+    return (unit?.occupancy || []).reduce((sum, o) => {
+      const os = o.from || start, oe = o.to || end, days = overlapDays(os, oe, start, end);
+      return sum + days * Number(o.count || 0);
+    }, 0);
+  }
+  function personShareForPeriod(state2, start, end) {
+    const owner = unitByType(state2, "owner"), rental = unitByType(state2, "rental"), op = personDays(owner, start, end), rp = personDays(rental, start, end), total = op + rp;
+    return total ? rp / total : 0;
+  }
+  function monthlyAdvanceInPeriod(s, lease, periodYear) {
+    if (!lease) return 0;
+    const bp = billingPeriodInfo(s, periodYear);
+    if (!bp.active) return 0;
+    const ps = bp.start, pe = bp.end, ls = lease.start || ps, le = lease.end || pe;
+    let total = 0, [y, m] = ps.slice(0, 7).split("-").map(Number);
+    const endMonth = pe.slice(0, 7), pad = (n) => String(n).padStart(2, "0");
+    while (`${y}-${pad(m)}` <= endMonth) {
+      const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const ms = `${y}-${pad(m)}-01`, me = `${y}-${pad(m)}-${pad(days)}`, start = ls > ms ? ls : ms, end = le < me ? le : me;
+      if (start <= end) {
+        const active = daysInclusive(start, end);
+        total += Number(lease.advance || 0) * (active / days);
+      }
+      m++;
+      if (m === 13) {
+        m = 1;
+        y++;
+      }
+    }
+    return total;
+  }
+  function paymentAdvanceForLease(payment, lease) {
+    if (!payment || payment.direction !== "income" || !lease) return { recognized: false, amount: 0 };
+    if (payment.leaseId && lease.id && payment.leaseId !== lease.id) return { recognized: false, amount: 0 };
+    const amount = Number(payment.amount || 0), rent = Number(lease.rent || 0), advance = Number(lease.advance || 0);
+    if (!Number.isFinite(amount) || amount < 0) return { recognized: false, amount: 0 };
+    const label = normalizeLabelText(payment.label || ""), tenant = normalizeLabelText(lease.tenantName || "");
+    const looksRent = /\bmiete\b|mietzahlung|monatsmiete/.test(label) || tenant && label.includes(tenant);
+    const looksAdvance = /betriebskosten|nebenkosten|vorauszahlung|\bbk\b|abschlag/.test(label);
+    if (payment.advanceAmount !== void 0 && payment.advanceAmount !== null && payment.advanceAmount !== "") {
+      const explicit = Number(payment.advanceAmount);
+      return { recognized: looksRent || looksAdvance || !!payment.leaseId, amount: Number.isFinite(explicit) ? Math.max(0, explicit) : 0 };
+    }
+    if (looksAdvance && !looksRent && advance > 0 && amount <= advance * 1.5 + 0.01) return { recognized: true, amount: Math.max(0, amount) };
+    if (!looksRent) return { recognized: false, amount: 0 };
+    return { recognized: true, amount: Math.max(0, Math.min(advance, amount - rent)) };
+  }
+  function actualAdvanceEvidenceInPeriod(s, lease, periodYear) {
+    if (!lease) return { amount: 0, recognizedPayments: 0 };
+    const bp = billingPeriodInfo(s, periodYear);
+    if (!bp.active) return { amount: 0, recognizedPayments: 0 };
+    const start = lease.start && lease.start > bp.start ? lease.start : bp.start, end = lease.end && lease.end < bp.end ? lease.end : bp.end;
+    let amount = 0, recognizedPayments = 0;
+    for (const payment of s.payments || []) {
+      const date = String(payment.date || "").slice(0, 10);
+      if (!date || date < start || date > end) continue;
+      const part = paymentAdvanceForLease(payment, lease);
+      if (!part.recognized) continue;
+      recognizedPayments++;
+      amount += Number(part.amount || 0);
+    }
+    return { amount, recognizedPayments };
+  }
+  function actualAdvanceInPeriod(s, lease, periodYear) {
+    return actualAdvanceEvidenceInPeriod(s, lease, periodYear).amount;
+  }
+  function billingAnalysis(state2, periodYear) {
+    return centralBillingAnalysis(state2, periodYear);
+  }
+  function billingReadiness(s, periodYear) {
+    const analysis = billingAnalysis(s, periodYear), bp = billingPeriodInfo(s, periodYear);
+    const relevant = (s.costPositions || []).some((p) => p.confirmed && positionToEvents(s, p, periodYear).length > 0);
+    const waterPositions = (s.costPositions || []).some((p) => p.confirmed && p.category === "water" && positionToEvents(s, p, periodYear).length > 0);
+    const settlement = settlementByPeriod(s, periodYear), cons = settlementConsumption(s, settlement);
+    return [
+      { id: "period", ok: bp.active, label: "Abrechnungsperiode liegt vor der Verwaltungsübernahme", route: "data", sub: "property" },
+      { id: "objectName", ok: !!s.property.name, label: "Objektname fehlt", route: "data", sub: "property" },
+      { id: "totalArea", ok: Number(s.property.totalArea) > 0, label: "Gesamtwohnfläche fehlt", route: "data", sub: "property" },
+      { id: "ownerUnit", ok: !!unitByType(s, "owner"), label: "Eigennutzungs-Einheit fehlt", route: "data", sub: "units" },
+      { id: "rentalUnit", ok: !!unitByType(s, "rental"), label: "Mietwohnung fehlt", route: "data", sub: "units" },
+      { id: "lease", ok: !!s.leases.length, label: "Mietvertrag fehlt", route: "rental", sub: "overview" },
+      { id: "positions", ok: relevant, label: "Keine bestätigte Kostenposition für diese Abrechnungsperiode", route: "data", sub: "positions" },
+      { id: "water", ok: !waterPositions || !!cons?.valid, label: "Wasserzähler / Verbrauchsdaten fehlen", route: "rental", sub: "water" },
+      { id: "allocation", ok: analysis.unresolved.length === 0, label: "Ungeklärte Umlageentscheidungen", route: "data", sub: "positions" }
+    ];
+  }
+  function paymentMonthKey(date) {
+    return String(date || "").slice(0, 7);
+  }
+  function actualCashflowByMonth(state2, months = 12) {
+    const rows = [], now = /* @__PURE__ */ new Date();
+    for (let i = 0; i < months; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1), key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const income = (state2.payments || []).filter((p) => p.direction === "income" && paymentMonthKey(p.date) === key).reduce((s, p) => s + Number(p.amount || 0), 0);
+      const outflow = (state2.payments || []).filter((p) => p.direction === "outflow" && paymentMonthKey(p.date) === key).reduce((s, p) => s + Number(p.amount || 0), 0);
+      rows.push({ key, label: d.toLocaleDateString("de-DE", { month: "short", year: "2-digit" }), income, outflow, net: income - outflow });
+    }
+    return rows;
+  }
+  function snapshotFor(state2, periodYear) {
+    return (state2.billingSnapshots || []).find((s) => Number(s.periodYear) === Number(periodYear));
+  }
+  function createBillingSnapshot(state2, periodYear) {
+    const analysis = billingAnalysis(state2, periodYear), waterConsumption = settlementConsumption(state2, settlementByPeriod(state2, periodYear));
+    return {
+      id: uid(),
+      periodYear: Number(periodYear),
+      period: structuredClone(analysis.period),
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      legalPackVersion: ACTIVE_LEGAL_PACK?.version || "Fallback",
+      legalEffectiveDate: ACTIVE_LEGAL_PACK?.effectiveDate || LAW_DATE,
+      domainVersion: DOMAIN_VERSION,
+      schemaVersion: SCHEMA_VERSION,
+      property: structuredClone(state2.property),
+      correspondence: structuredClone(state2.correspondence || {}),
+      units: structuredClone(state2.units),
+      lease: structuredClone(analysis.lease || null),
+      events: structuredClone(analysis.events),
+      waterConsumption: structuredClone(waterConsumption || null),
+      allocationBases: { totalArea: Number(state2.property?.totalArea || 0), rentalArea: Number(unitByType(state2, "rental")?.area || 0) },
+      unresolved: structuredClone(analysis.unresolved),
+      tenantCosts: Number(analysis.tenantCosts || 0),
+      advances: Number(analysis.advances || 0),
+      result: Number(analysis.result || 0),
+      frozen: true
+    };
+  }
+  return __toCommonJS(billing_domain_exports);
+})();
+
+
 /* ===== compiled src/io/backup-codec.ts ===== */
 "use strict";
 var AppBackupCodec = (() => {
@@ -1372,128 +2176,6 @@ const SERVICE_WORKER_REGISTRATION=("serviceWorker" in navigator)
 /* ===== domain.js ===== */
 const DOMAIN_VERSION=1;
 
-function positionDefaults(p={}){
-  return {
-    id:p.id||uid(), sourceId:p.sourceId||"", documentId:p.documentId||"",
-    label:p.label||"Kostenposition", category:p.category||"other",
-    amount:Number(p.amount||0), interval:p.interval||"once",
-    serviceStart:p.serviceStart||"", serviceEnd:p.serviceEnd||"",
-    assignment:p.assignment||"house", agreement:p.agreement||"auto",
-    confirmed:p.confirmed!==false, origin:p.origin||"manual",
-    details:{quantity:null,unit:"",rate:null,vatRate:null,net:null,gross:null,...(p.details||{})},
-    decisionHistory:Array.isArray(p.decisionHistory)?p.decisionHistory:[],
-    createdAt:p.createdAt||new Date().toISOString(),
-    provenance:p.provenance||{origin:p.origin||"manual",documentId:p.documentId||"",sourceId:p.sourceId||"",evidence:"",confidence:null,confirmedAt:p.confirmed!==false?new Date().toISOString():null,confirmedBy:"local-user"}
-  }
-}
-function sourcePositions(state,sourceId){return (state.costPositions||[]).filter(p=>p.sourceId===sourceId)}
-function positionById(state,id){return (state.costPositions||[]).find(p=>p.id===id)}
-
-function migrateDomainState(state){
-  state.costPositions=Array.isArray(state.costPositions)?state.costPositions.map(positionDefaults):[];
-  state.meters=Array.isArray(state.meters)?state.meters:[];
-  state.waterSettlements=Array.isArray(state.waterSettlements)?state.waterSettlements:[];
-  state.containers=Array.isArray(state.containers)?state.containers:[];
-  state.meta=state.meta||{};
-  if(Number(state.meta.domainVersion||0)>=DOMAIN_VERSION)return state;
-
-  // Legacy source/assessment -> central cost positions exactly once.
-  const existingKeys=new Set(state.costPositions.map(p=>`${p.sourceId}|${p.label}|${p.serviceStart}|${p.serviceEnd}`));
-  for(const s of state.sources||[]){
-    if(s.kind==="assessment"){
-      for(const li of s.items||[]){
-        const p=positionDefaults({
-          sourceId:s.id, documentId:s.sourceDocumentId||"",
-          label:li.label||category(li.category).label, category:li.category,
-          amount:li.amount, interval:"once",
-          serviceStart:s.serviceStart||`${s.year}-01-01`,
-          serviceEnd:s.serviceEnd||`${s.year}-12-31`,
-          assignment:li.assignment||"house", agreement:li.agreement||"auto",
-          origin:"migration"
-        });
-        const k=`${p.sourceId}|${p.label}|${p.serviceStart}|${p.serviceEnd}`;
-        if(!existingKeys.has(k)){state.costPositions.push(p);existingKeys.add(k)}
-      }
-      if(Number(s.waterCanalReference||0)>0){
-        const p=positionDefaults({
-          sourceId:s.id, documentId:s.sourceDocumentId||"",
-          label:"Wasser/Kanal", category:"water",
-          amount:Number(s.waterCanalReference), interval:"once",
-          serviceStart:s.serviceStart||`${s.year}-01-01`,
-          serviceEnd:s.serviceEnd||`${s.year}-12-31`,
-          assignment:"house", agreement:"auto", origin:"migration",
-          details:{note:"Aus früheren Daten übernommen"}
-        });
-        const k=`${p.sourceId}|${p.label}|${p.serviceStart}|${p.serviceEnd}`;
-        if(!existingKeys.has(k)){state.costPositions.push(p);existingKeys.add(k)}
-      }
-    }else{
-      const p=positionDefaults({
-        sourceId:s.id, documentId:s.sourceDocumentId||"",
-        label:s.name||category(s.category).label, category:s.category||"other",
-        amount:s.amount, interval:s.interval||"once",
-        serviceStart:s.serviceStart||"", serviceEnd:s.serviceEnd||"",
-        assignment:s.assignment||"house", agreement:s.agreement||"auto",
-        origin:"migration", details:{note:s.note||""}
-      });
-      const k=`${p.sourceId}|${p.label}|${p.serviceStart}|${p.serviceEnd}`;
-      if(!existingKeys.has(k)){state.costPositions.push(p);existingKeys.add(k)}
-    }
-  }
-
-  // Legacy water settlements -> meter registry + new settlement references.
-  ensureDefaultMeters(state);
-  if(!state.waterSettlements.length && Array.isArray(state.water)){
-    for(const w of state.water){
-      const py=Number(w.periodYear??w.year);
-      if(!py)continue;
-      const main=state.meters.find(m=>m.role==="mainWater"),owner=state.meters.find(m=>m.role==="ownerWater");
-      const ps=periodStart(py),pe=periodEnd(py);
-      // Old data may only contain total consumption, so represent it as synthetic readings.
-      const mainStart=addMeterReading(main,ps,0,"migration",true);
-      const mainEnd=addMeterReading(main,pe,Number(w.houseConsumption||0),"migration",true);
-      const ownerStart=addMeterReading(owner,ps,Number(w.ownerStart||0),"migration",true);
-      const ownerEnd=addMeterReading(owner,pe,Number(w.ownerEnd||0),"migration",true);
-      state.waterSettlements.push({
-        id:w.id||uid(),periodYear:py,mainMeterId:main.id,ownerMeterId:owner.id,
-        mainStartReadingId:mainStart.id,mainEndReadingId:mainEnd.id,
-        ownerStartReadingId:ownerStart.id,ownerEndReadingId:ownerEnd.id,
-        migrated:true
-      });
-      // If old totalCost existed and no water cost position covers period, preserve it.
-      if(Number(w.totalCost||0)>0 && !state.costPositions.some(p=>p.category==="water"&&p.serviceStart===ps&&p.serviceEnd===pe)){
-        state.costPositions.push(positionDefaults({
-          sourceId:"legacy-water-"+py,label:"Kaltwasser / Kanal",
-          category:"water",amount:Number(w.totalCost),serviceStart:ps,serviceEnd:pe,
-          assignment:"house",agreement:"auto",origin:"migration"
-        }))
-      }
-    }
-  }
-  state.meta.domainVersion=DOMAIN_VERSION;
-  state.meta.domainMigratedAt=new Date().toISOString();
-  return state
-}
-
-function ensureDefaultMeters(state){
-  state.meters=Array.isArray(state.meters)?state.meters:[];
-  let main=state.meters.find(m=>m.role==="mainWater");
-  let owner=state.meters.find(m=>m.role==="ownerWater");
-  if(!main){main={id:uid(),role:"mainWater",name:"Hauptwasserzähler",number:"",unit:"m³",readings:[]};state.meters.push(main)}
-  if(!owner){owner={id:uid(),role:"ownerWater",name:"Zwischenzähler Eigennutzung",number:"",unit:"m³",readings:[]};state.meters.push(owner)}
-  main.readings=Array.isArray(main.readings)?main.readings:[];
-  owner.readings=Array.isArray(owner.readings)?owner.readings:[];
-  return {main,owner}
-}
-function meterById(state,id){return (state.meters||[]).find(m=>m.id===id)}
-function readingById(meter,id){return (meter?.readings||[]).find(r=>r.id===id)}
-function addMeterReading(meter,date,value,origin="manual",synthetic=false){
-  const same=(meter.readings||[]).find(r=>r.date===date&&Number(r.value)===Number(value));
-  if(same)return same;
-  const r={id:uid(),date,value:Number(value),origin,synthetic,createdAt:new Date().toISOString()};
-  meter.readings.push(r);meter.readings.sort((a,b)=>a.date.localeCompare(b.date));return r
-}
-
 const {
   normalizeMeterNumber,
   parseMeterReadingValue,
@@ -1505,105 +2187,29 @@ const {
   meterNumberSimilarity
 }=AppMeterParsing;
 
-function matchMeterFromOCR(s,text,preferredMeterId=""){
-  const meters=s.meters||[];if(preferredMeterId){const preferred=meters.find(m=>m.id===preferredMeterId);if(preferred)return{meter:preferred,confidence:1,reason:"Aufnahme direkt an diesem Zähler gestartet"}}
-  const serials=detectedMeterSerialCandidates(text),matches=[];
-  for(const m of meters){if(!m.number)continue;const best=serials.map(c=>({candidate:c,similarity:meterNumberSimilarity(c.raw,m.number)})).sort((a,b)=>b.similarity-a.similarity)[0];if(best?.similarity>=.78)matches.push({meter:m,confidence:Math.min(.98,.62+best.similarity*.36),reason:best.similarity>.96?"gespeicherte Zählernummer erkannt":"Zählernummer trotz kleiner OCR-Abweichung wiedererkannt"})}
-  matches.sort((a,b)=>b.confidence-a.confidence);if(matches.length===1||matches[0]?.confidence-(matches[1]?.confidence||0)>.08)return matches[0]||{meter:null,confidence:0,reason:"keine gespeicherte Zählernummer erkannt"};
-  return {meter:null,confidence:0,reason:matches.length?"mehrere Zähler ähnlich erkannt":"keine gespeicherte Zählernummer erkannt"}
-}
-function meterCandidateHistoryScore(meter,date,value){
-  if(!meter||value==null)return 0;const prev=(meter.readings||[]).filter(r=>r.date<=date).sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0];if(!prev)return 0;
-  const diff=Number(value)-Number(prev.value);if(diff<0)return-.42;let score=diff<1?.12:diff<50?.20:diff<250?.08:-.24;
-  const trend=meterTrend(meter),last=trend.segments?.at(-1);if(last&&prev.date<date){const days=Math.max(1,calendarDayDiff(prev.date,date)),expected=Math.max(.001,last.perDay*days),ratio=diff/expected;if(ratio>=.25&&ratio<=4)score+=.14;else if(ratio>12)score-=.18}return score
-}
-function rankMeterCandidates(s,meterId,date,candidates){
-  const meter=meterById(s,meterId),groups=new Map();
-  for(const c of candidates||[]){if(c.value<0||c.value>1000000)continue;const key=Number(c.value).toFixed(4),g=groups.get(key)||{...c,consensus:0,sources:new Set(),score:0};g.consensus++;g.sources.add(c.source);g.score=Math.max(g.score,Number(c.score||0));groups.set(key,g)}
-  return [...groups.values()].map(g=>{let score=g.score+Math.min(.16,(g.consensus-1)*.055)+meterCandidateHistoryScore(meter,date,g.value);if(g.sources.size>=2)score+=.05;return{...g,source:[...g.sources].join(" + "),score:Math.max(.01,Math.min(.995,score))}}).sort((a,b)=>b.score-a.score)
-}
-function analyzeMeterOCRText(s,text,preferredMeterId="",extraCandidates=[],date=smartToday()){
-  const assignment=matchMeterFromOCR(s,text,preferredMeterId),base=meterReadingCandidates(text,"Vollbild",.48),serials=detectedMeterSerialCandidates(text),meterId=assignment.meter?.id||preferredMeterId||"",ranked=rankMeterCandidates(s,meterId,date,[...base,...extraCandidates]),chosen=ranked[0]||null;
-  return{meterId,meterName:assignment.meter?.name||meterById(s,preferredMeterId)?.name||"",assignmentConfidence:assignment.confidence||0,assignmentReason:assignment.reason,reading:chosen?.value??null,readingRaw:chosen?.raw||"",readingConfidence:chosen?.score||0,readingEvidence:chosen?.line||"",serialCandidate:serials[0]?.raw||"",serialConfidence:serials[0]?.score||0,candidates:ranked.slice(0,10),text:String(text||"")}
-}
-function latestMeterReading(meter){return (meter?.readings||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||""))[0]||null}
-function meterReadingPlausibility(meter,date,value){
-  const all=(meter?.readings||[]).filter(r=>r.date<=date).sort((a,b)=>(b.date||"").localeCompare(a.date||"")),prev=all[0];
-  if(!prev)return {ok:true,message:"Keine frühere Ablesung zum Vergleich vorhanden."};
-  if(Number(value)<Number(prev.value))return {ok:false,message:`Der neue Stand ${value} liegt unter der letzten Ablesung ${prev.value} vom ${prev.date}. Zählerwechsel oder OCR-Fehler prüfen.`};
-  return {ok:true,message:`Letzte Ablesung ${prev.value} am ${prev.date}; Differenz ${(Number(value)-Number(prev.value)).toFixed(3)} ${meter.unit||""}.`}
-}
-
-function settlementByPeriod(state,year){return (state.waterSettlements||[]).find(w=>Number(w.periodYear)===Number(year))}
-function settlementConsumption(state,settlement){
-  if(!settlement)return null;
-  const main=meterById(state,settlement.mainMeterId),owner=meterById(state,settlement.ownerMeterId);
-  const ms=readingById(main,settlement.mainStartReadingId),me=readingById(main,settlement.mainEndReadingId);
-  const os=readingById(owner,settlement.ownerStartReadingId),oe=readingById(owner,settlement.ownerEndReadingId);
-  if(!ms||!me||!os||!oe)return null;
-  const house=Number(me.value)-Number(ms.value),own=Number(oe.value)-Number(os.value),tenant=house-own;
-  const bp=Number.isInteger(Number(settlement.periodYear))?billingPeriodInfo(state,Number(settlement.periodYear)):null;
-  const periodAligned=!bp||(ms.date===bp.start&&os.date===bp.start&&me.date===bp.end&&oe.date===bp.end);
-  return {house,owner:own,tenant,share:house>0?tenant/house:0,periodAligned,
-    valid:house>=0&&own>=0&&tenant>=0&&periodAligned}
-}
-
-function positionToEvents(s,position,periodYear){
-  const p=positionDefaults(position),bp=billingPeriodInfo(s,periodYear);
-  if(!p.confirmed||!bp.active)return [];
-  const ps=bp.start,pe=bp.end,start=p.serviceStart||ps,end=p.serviceEnd||pe;
-  const ov=overlapDays(start,end,ps,pe);if(!ov)return [];
-  const factor=ov/daysInclusive(start,end);let amount=Number(p.amount||0);
-  if(p.interval==="monthly")amount=amount*12*factor;
-  else if(p.interval==="quarterly")amount=amount*4*factor;
-  else if(p.interval==="yearly")amount=amount*factor;
-  else amount=amount*factor;
-  return [{positionId:p.id,sourceId:p.sourceId,documentId:p.documentId,label:p.label,category:p.category,amount,
-    assignment:p.assignment,agreement:p.agreement,serviceStart:start,serviceEnd:end,details:p.details}]
-}
-function allocateCostPosition(s,event,periodYear){
-  const settlement=settlementByPeriod(s,periodYear),cons=settlementConsumption(s,settlement),bp=billingPeriodInfo(s,periodYear);
-  const hasConsumption=event.category==="water"&&!!cons?.valid;
-  let decision=event.assignment==="review"
-    ?{status:"check",billable:true,rule:"manual",reason:"Zuordnung muss bestätigt werden.",basis:"Dokument-/Objektzuordnung"}
-    :legalDecision(event,{hasConsumption,assignment:event.assignment,agreement:event.agreement});
-  let share=0;const area=shares(s,bp.start).area;
-  if(decision.rule==="area")share=area;
-  else if(decision.rule==="persons")share=personShareForPeriod(s,bp.start,bp.end);
-  else if(decision.rule==="rental")share=1;
-  else if(decision.rule==="owner")share=0;
-  else if(decision.rule==="consumption"&&cons?.valid)share=cons.share;
-  return {...event,decision,tenantShare:share,tenantAmount:Number(event.amount||0)*share}
-}
-function centralBillingAnalysis(s,periodYear){
-  const bp=billingPeriodInfo(s,periodYear);
-  const events=bp.active?(s.costPositions||[]).flatMap(p=>positionToEvents(s,p,periodYear)).map(e=>allocateCostPosition(s,e,periodYear)):[];
-  const unresolved=events.filter(e=>e.decision.status==="check"||e.decision.rule==="manual");
-  const tenantCosts=events.reduce((sum,e)=>sum+Number(e.tenantAmount||0),0);
-  const lease=s.leases[0],advanceEvidence=actualAdvanceEvidenceInPeriod(s,lease,periodYear),advances=advanceEvidence.amount;
-  return {events,unresolved,tenantCosts,advances,advanceEvidence,result:tenantCosts-advances,lease,period:bp}
-}
-function syncSimpleSourcePosition(state,source){
-  if(!source||source.kind==="assessment")return;
-  let p=(state.costPositions||[]).find(x=>x.sourceId===source.id&&x.origin!=="document");
-  const data=positionDefaults({
-    ...(p||{}),sourceId:source.id,label:source.name||"Kostenquelle",category:source.category||"other",
-    amount:Number(source.amount||0),interval:source.interval||"once",
-    serviceStart:source.serviceStart||"",serviceEnd:source.serviceEnd||"",
-    assignment:source.assignment||"house",agreement:source.agreement||"auto",
-    confirmed:true,origin:p?.origin||"manual",details:{...(p?.details||{}),note:source.note||""}
-  });
-  if(p)Object.assign(p,data);else state.costPositions.push(data)
-}
-function replaceAssessmentPositions(state,source,positions){
-  const keep=(state.costPositions||[]).filter(p=>p.sourceId!==source.id);
-  state.costPositions=keep.concat((positions||[]).map(p=>positionDefaults({
-    ...p,sourceId:source.id,documentId:source.sourceDocumentId||p.documentId||"",
-    serviceStart:p.serviceStart||source.serviceStart,serviceEnd:p.serviceEnd||source.serviceEnd,
-    confirmed:true
-  })))
-}
-
+const {
+  positionDefaults,
+  sourcePositions,
+  positionById,
+  migrateDomainState,
+  ensureDefaultMeters,
+  meterById,
+  readingById,
+  addMeterReading,
+  matchMeterFromOCR,
+  meterCandidateHistoryScore,
+  rankMeterCandidates,
+  analyzeMeterOCRText,
+  latestMeterReading,
+  meterReadingPlausibility,
+  settlementByPeriod,
+  settlementConsumption,
+  positionToEvents,
+  allocateCostPosition,
+  centralBillingAnalysis,
+  syncSimpleSourcePosition,
+  replaceAssessmentPositions
+}=AppPropertyDomain;
 
 /* ===== integrity.js ===== */
 const APP_VERSION="18.0.0";
@@ -2282,289 +2888,63 @@ function smartAnswer(state,query){
 }
 
 /* ===== legal-rules.js ===== */
-const LAW_DATE="2026-09-05";
-
-const LEGAL_SOURCES=[
-  {name:"§ 556 BGB",url:"https://www.gesetze-im-internet.de/bgb/__556.html",purpose:"Betriebskosten, Abrechnung, Frist, Belegeinsicht"},
-  {name:"§ 556a BGB",url:"https://www.gesetze-im-internet.de/bgb/__556a.html",purpose:"Abrechnungsmaßstab"},
-  {name:"§ 556b BGB",url:"https://www.gesetze-im-internet.de/bgb/__556b.html",purpose:"Regelfälligkeit der Miete"},
-  {name:"§ 560 BGB",url:"https://www.gesetze-im-internet.de/bgb/__560.html",purpose:"Anpassung von Vorauszahlungen"},
-  {name:"BetrKV",url:"https://www.gesetze-im-internet.de/betrkv/",purpose:"Umlagefähige Betriebskosten"}
-];
-
-const CATEGORIES={
-  propertyTax:{label:"Grundsteuer B",billable:true,basis:"§ 2 Nr. 1 BetrKV",defaultRule:"area"},
-  rainwater:{label:"Niederschlagswasser",billable:true,basis:"§ 2 Nr. 3 BetrKV",defaultRule:"area"},
-  street:{label:"Straßenreinigung / Winterdienst",billable:true,basis:"§ 2 Nr. 8 BetrKV",defaultRule:"area"},
-  waste:{label:"Abfall",billable:true,basis:"§ 2 Nr. 8 BetrKV",defaultRule:"area"},
-  insurance:{label:"Gebäudeversicherung",billable:true,basis:"§ 2 BetrKV",defaultRule:"area"},
-  chimney:{label:"Schornsteinfeger",billable:true,basis:"§ 2 BetrKV",defaultRule:"area"},
-  water:{label:"Kaltwasser / Kanal",billable:true,basis:"§ 2 Nr. 2/3 BetrKV",defaultRule:"consumption"},
-  garden:{label:"Gartenpflege",billable:true,basis:"§ 2 BetrKV",defaultRule:"area"},
-  cleaning:{label:"Gebäudereinigung",billable:true,basis:"§ 2 BetrKV",defaultRule:"area"},
-  other:{label:"Sonstige Betriebskosten",billable:"check",basis:"§ 2 Nr. 17 BetrKV",defaultRule:"area"},
-  admin:{label:"Verwaltungskosten",billable:false,basis:"§ 1 Abs. 2 Nr. 1 BetrKV",defaultRule:"owner"},
-  repair:{label:"Instandhaltung / Reparatur",billable:false,basis:"§ 1 Abs. 2 Nr. 2 BetrKV",defaultRule:"owner"},
-  internet:{label:"Internet Eigennutzung",billable:false,basis:"private Kosten",defaultRule:"owner"},
-  broadcasting:{label:"Rundfunkbeitrag",billable:false,basis:"private Kosten",defaultRule:"owner"},
-  financing:{label:"Hausfinanzierung",billable:false,basis:"keine Betriebskosten",defaultRule:"owner"}
-};
-
+const LAW_DATE=AppLegalRules.LAW_DATE;
+const LEGAL_SOURCES=AppLegalRules.LEGAL_SOURCES;
+const CATEGORIES=AppLegalRules.CATEGORIES;
 let ACTIVE_LEGAL_PACK=null;
-function category(id){
-  return ACTIVE_LEGAL_PACK?.categories?.[id]||CATEGORIES[id]||{label:id,billable:"check",basis:"manuell prüfen",defaultRule:"area"}
-}
-async function loadLegalPack(){
-  try{
-    const r=await fetch("./legal-rules.json?ts="+Date.now(),{cache:"no-store"});
-    if(!r.ok)throw new Error("HTTP "+r.status);
-    const p=await r.json();
-    if(p?.schema!=="mietverwaltung-legal-pack-v1"||!p.categories)throw new Error("Ungültiges Regelpaket");
-    ACTIVE_LEGAL_PACK=p;return p
-  }catch(e){
-    console.warn("Regelpaket-Fallback aktiv",e);return null
-  }
-}
-
-function legalDecision(source,{hasConsumption=false,assignment="house",agreement="auto"}={}){
-  const c=category(source.category);
-  if(c.billable===false) return {status:"blocked",billable:false,rule:"owner",reason:"Diese Kostenart ist nicht auf die Mieterin umlagefähig.",basis:c.basis};
-  if(assignment==="owner") return {status:"ok",billable:false,rule:"owner",reason:"Die Kostenquelle ist ausschließlich der Eigennutzung zugeordnet.",basis:"Objektzuordnung"};
-  if(assignment==="rental") return {status:"ok",billable:true,rule:"rental",reason:"Die Kostenquelle betrifft ausschließlich die Mietwohnung.",basis:"Direktzuordnung"};
-  if(c.billable==="check") return {status:"check",billable:true,rule:agreement==="persons"?"persons":"area",reason:"Sonstige Betriebskosten müssen im konkreten Vertrag ausreichend erfasst sein.",basis:c.basis};
-  if(hasConsumption || c.defaultRule==="consumption") return {status:"ok",billable:true,rule:"consumption",reason:"Der Verbrauch wird erfasst; daher wird verbrauchsbezogen verteilt.",basis:`${c.basis}; § 556a Abs. 1 BGB`};
-  if(agreement==="persons") return {status:"ok",billable:true,rule:"persons",reason:"Personenschlüssel wurde als Vertragsvorgabe hinterlegt.",basis:"vertragliche Vereinbarung / § 556a BGB"};
-  if(agreement==="area" || agreement==="auto") return {status:"ok",billable:true,rule:"area",reason:"Wohnfläche ist der hinterlegte bzw. gesetzliche Standardmaßstab.",basis:`${c.basis}; § 556a BGB`};
-  return {status:"check",billable:true,rule:"manual",reason:"Individuelle Verteilung muss geprüft werden.",basis:c.basis};
-}
-
+const {
+  category,
+  loadLegalPack,
+  legalDecision
+}=AppLegalRules;
 
 /* ===== domain.js ===== */
 
-const euro=n=>new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(Number(n)||0);
-
-const dateDE=d=>{if(!d)return"–";const x=new Date(String(d).slice(0,10)+"T00:00:00");return Number.isNaN(x.getTime())?String(d):x.toLocaleDateString("de-DE")};
-const intervalLabel=v=>({once:"einmalig",monthly:"monatlich",quarterly:"vierteljährlich",yearly:"jährlich"}[v]||v||"–");
-const assignmentLabel=v=>({house:"gesamtes Haus",owner:"nur Eigennutzung",rental:"nur Mietwohnung",review:"noch prüfen"}[v]||v||"–");
-const agreementLabel=v=>({auto:"automatischer Standard",area:"Wohnfläche",persons:"Personen",manual:"individuell prüfen",consumption:"Verbrauch",rental:"direkt Mietwohnung",owner:"Eigennutzung"}[v]||v||"–");
-const confidencePercent=v=>{const n=Number(v||0);return Math.max(0,Math.min(100,n<=1?n*100:n))};
-
-const percent=n=>new Intl.NumberFormat("de-DE",{style:"percent",maximumFractionDigits:1}).format(Number(n)||0);
-const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random();
-
-const periodStart=y=>`${y}-01-01`;
-const periodEnd=y=>`${y}-12-31`;
-const periodLabel=y=>`01.01.${y} – 31.12.${y}`;
-// Eigene Arbeitszielfrist: Endabrechnung des Kalenderjahres bis 31.03. des Folgejahres fertigstellen.
-const periodBillingTargetISO=y=>`${y+1}-03-31`;
-const periodBillingTarget=y=>dateDE(periodBillingTargetISO(y));
-// Gesetzliche Abrechnungsfrist nach § 556 Abs. 3 BGB: grundsätzlich 12 Monate nach Periodenende.
-const periodDeadlineISO=y=>`${y+1}-12-31`;
-const periodDeadline=y=>dateDE(periodDeadlineISO(y));
-function currentPeriodYear(){return new Date().getFullYear()}
-function preferredBillingYear(){
-  const d=new Date(),y=d.getFullYear();
-  return d.getMonth()<=2?y-1:y
-}
-function billingSelectableYears(s=state){
-  const years=new Set([preferredBillingYear(),currentPeriodYear()]);
-  for(const snap of s.billingSnapshots||[])if(Number.isInteger(Number(snap.periodYear)))years.add(Number(snap.periodYear));
-  for(const sett of s.waterSettlements||[])if(Number.isInteger(Number(sett.periodYear)))years.add(Number(sett.periodYear));
-  for(const pos of s.costPositions||[]){
-    const d=String(pos.serviceStart||pos.serviceEnd||"").slice(0,10);
-    if(/^\d{4}-\d{2}-\d{2}$/.test(d)){
-      const [yy]=d.split("-").map(Number);
-      years.add(yy)
-    }
-  }
-  const takeover=billingTakeoverDate(s);
-  if(/^\d{4}-\d{2}-\d{2}$/.test(takeover)){
-    const [yy]=takeover.split("-").map(Number),first=yy,last=currentPeriodYear();
-    for(let y=first;y<=last&&y<first+60;y++)if(billingPeriodInfo(s,y).active)years.add(y)
-  }else years.add(currentPeriodYear()-1);
-  return [...years].filter(y=>Number.isInteger(y)&&y>1900&&billingPeriodInfo(s,y).active).sort((a,b)=>b-a)
-}
-function selectedBillingYear(s=state){
-  const options=billingSelectableYears(s),saved=Number(sessionStorage.getItem("billingSelectedYear")),preferred=preferredBillingYear();
-  if(options.includes(saved))return saved;
-  if(options.includes(preferred))return preferred;
-  return options[0]??currentPeriodYear()
-}
-
-function billingTakeoverDate(s=state){return String(s?.property?.billingTakeoverDate||s?.property?.ownershipEffective||"")}
-function billingPeriodInfo(s,year){
-  const nominalStart=periodStart(year),end=periodEnd(year),takeover=billingTakeoverDate(s);
-  let start=nominalStart,active=true,isTakeoverPeriod=false;
-  if(takeover){
-    if(takeover>end)active=false;
-    else if(takeover>nominalStart){start=takeover;isTakeoverPeriod=true}
-  }
-  const predecessorEnd=s?.property?.predecessorBillingEnd||(
-    takeover?dateOnlyAddDays(takeover,-1):""
-  );
-  return {year,start,end,nominalStart,takeover,predecessorEnd,active,isTakeoverPeriod,
-    days:active?daysInclusive(start,end):0,nominalDays:daysInclusive(nominalStart,end)}
-}
-function billingPeriodStart(s,year){return billingPeriodInfo(s,year).start}
-
-function billingPeriodLabel(s,year){
-  const p=billingPeriodInfo(s,year),f=d=>d?new Date(d+"T00:00:00").toLocaleDateString("de-DE"):"–";
-  return `${f(p.start)} – ${f(p.end)}`
-}
-function billingPeriodContext(s,year){
-  const p=billingPeriodInfo(s,year);
-  if(!p.active)return {kind:"before-takeover",message:"Diese Periode liegt vollständig vor der Verwaltungsübernahme."};
-  if(p.isTakeoverPeriod)return {kind:"takeover",message:`Erste eigene Abrechnungsperiode ab ${new Date(p.start+"T00:00:00").toLocaleDateString("de-DE")}. Der Voreigentümer rechnet bis ${new Date(p.predecessorEnd+"T00:00:00").toLocaleDateString("de-DE")} selbst ab.`};
-  return {kind:"annual",message:"Reguläre jährliche Abrechnungsperiode 01.01.–31.12."}
-}
-
-
-function dateOnlyUtcValue(v){
-  const m=String(v||"").slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if(!m)return NaN;
-  return Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]))
-}
-function calendarDayDiff(start,end){
-  const a=dateOnlyUtcValue(start),b=dateOnlyUtcValue(end);
-  if(!Number.isFinite(a)||!Number.isFinite(b))return NaN;
-  return Math.round((b-a)/86400000)
-}
-function overlapDays(aStart,aEnd,bStart,bEnd){
-  const s=aStart>bStart?aStart:bStart,e=aEnd<bEnd?aEnd:bEnd;
-  if(!s||!e||s>e)return 0;
-  return daysInclusive(s,e)
-}
-function daysInclusive(start,end){
-  const d=calendarDayDiff(start,end);
-  return Number.isFinite(d)&&d>=0?d+1:0
-}
-
-function unitByType(state,type){return state.units.find(u=>u.type===type)}
-function currentPersons(unit,date=localDateISO()){
-  const h=(unit?.occupancy||[]).filter(x=>(!x.from||x.from<=date)&&(!x.to||x.to>=date)).sort((a,b)=>(b.from||"").localeCompare(a.from||""));
-  return h.length?Number(h[0].count)||0:0
-}
-function shares(state,date){
-  const owner=unitByType(state,"owner"),rental=unitByType(state,"rental");
-  const totalArea=Number(state.property.totalArea)||state.units.reduce((s,u)=>s+Number(u.area||0),0);
-  const area=totalArea?Number(rental?.area||0)/totalArea:0;
-  const op=currentPersons(owner,date),rp=currentPersons(rental,date),pt=op+rp;
-  return {area,persons:pt?rp/pt:0,ownerPersons:op,rentalPersons:rp}
-}
-function personDays(unit,start,end){
-  return (unit?.occupancy||[]).reduce((sum,o)=>{
-    const os=o.from||start,oe=o.to||end,days=overlapDays(os,oe,start,end);
-    return sum+days*Number(o.count||0)
-  },0)
-}
-function personShareForPeriod(state,start,end){
-  const owner=unitByType(state,"owner"),rental=unitByType(state,"rental"),op=personDays(owner,start,end),rp=personDays(rental,start,end),total=op+rp;
-  return total?rp/total:0
-}
-
-
-
-
-
-
-
-function monthlyAdvanceInPeriod(s,lease,periodYear){
-  if(!lease)return 0;const bp=billingPeriodInfo(s,periodYear);if(!bp.active)return 0;
-  const ps=bp.start,pe=bp.end,ls=lease.start||ps,le=lease.end||pe;
-  let total=0,[y,m]=ps.slice(0,7).split("-").map(Number);
-  const endMonth=pe.slice(0,7),pad=n=>String(n).padStart(2,"0");
-  while(`${y}-${pad(m)}`<=endMonth){
-    const days=new Date(Date.UTC(y,m,0)).getUTCDate();
-    const ms=`${y}-${pad(m)}-01`,me=`${y}-${pad(m)}-${pad(days)}`,start=ls>ms?ls:ms,end=le<me?le:me;
-    if(start<=end){const active=daysInclusive(start,end);total+=Number(lease.advance||0)*(active/days)}
-    m++;if(m===13){m=1;y++}
-  }
-  return total
-}
-
-function paymentAdvanceForLease(payment,lease){
-  if(!payment||payment.direction!=="income"||!lease)return{recognized:false,amount:0};
-  if(payment.leaseId&&lease.id&&payment.leaseId!==lease.id)return{recognized:false,amount:0};
-  const amount=Number(payment.amount||0),rent=Number(lease.rent||0),advance=Number(lease.advance||0);
-  if(!Number.isFinite(amount)||amount<0)return{recognized:false,amount:0};
-  const label=normalizeLabelText(payment.label||""),tenant=normalizeLabelText(lease.tenantName||"");
-  const looksRent=/\bmiete\b|mietzahlung|monatsmiete/.test(label)||(tenant&&label.includes(tenant));
-  const looksAdvance=/betriebskosten|nebenkosten|vorauszahlung|\bbk\b|abschlag/.test(label);
-  if(payment.advanceAmount!==undefined&&payment.advanceAmount!==null&&payment.advanceAmount!==""){
-    const explicit=Number(payment.advanceAmount);
-    return {recognized:looksRent||looksAdvance||!!payment.leaseId,amount:Number.isFinite(explicit)?Math.max(0,explicit):0}
-  }
-  if(looksAdvance&&!looksRent&&advance>0&&amount<=advance*1.5+0.01)return{recognized:true,amount:Math.max(0,amount)};
-  if(!looksRent)return{recognized:false,amount:0};
-  return {recognized:true,amount:Math.max(0,Math.min(advance,amount-rent))}
-}
-function actualAdvanceEvidenceInPeriod(s,lease,periodYear){
-  if(!lease)return{amount:0,recognizedPayments:0};
-  const bp=billingPeriodInfo(s,periodYear);if(!bp.active)return{amount:0,recognizedPayments:0};
-  const start=lease.start&&lease.start>bp.start?lease.start:bp.start,end=lease.end&&lease.end<bp.end?lease.end:bp.end;
-  let amount=0,recognizedPayments=0;
-  for(const payment of s.payments||[]){
-    const date=String(payment.date||"").slice(0,10);
-    if(!date||date<start||date>end)continue;
-    const part=paymentAdvanceForLease(payment,lease);
-    if(!part.recognized)continue;
-    recognizedPayments++;
-    amount+=Number(part.amount||0)
-  }
-  return {amount,recognizedPayments}
-}
-function actualAdvanceInPeriod(s,lease,periodYear){return actualAdvanceEvidenceInPeriod(s,lease,periodYear).amount}
-
-function billingAnalysis(state,periodYear){return centralBillingAnalysis(state,periodYear)}
-
-function billingReadiness(s,periodYear){
-  const analysis=billingAnalysis(s,periodYear),bp=billingPeriodInfo(s,periodYear);
-  const relevant=(s.costPositions||[]).some(p=>p.confirmed&&positionToEvents(s,p,periodYear).length>0);
-  const waterPositions=(s.costPositions||[]).some(p=>p.confirmed&&p.category==="water"&&positionToEvents(s,p,periodYear).length>0);
-  const settlement=settlementByPeriod(s,periodYear),cons=settlementConsumption(s,settlement);
-  return [
-    {id:"period",ok:bp.active,label:"Abrechnungsperiode liegt vor der Verwaltungsübernahme",route:"data",sub:"property"},
-    {id:"objectName",ok:!!s.property.name,label:"Objektname fehlt",route:"data",sub:"property"},
-    {id:"totalArea",ok:Number(s.property.totalArea)>0,label:"Gesamtwohnfläche fehlt",route:"data",sub:"property"},
-    {id:"ownerUnit",ok:!!unitByType(s,"owner"),label:"Eigennutzungs-Einheit fehlt",route:"data",sub:"units"},
-    {id:"rentalUnit",ok:!!unitByType(s,"rental"),label:"Mietwohnung fehlt",route:"data",sub:"units"},
-    {id:"lease",ok:!!s.leases.length,label:"Mietvertrag fehlt",route:"rental",sub:"overview"},
-    {id:"positions",ok:relevant,label:"Keine bestätigte Kostenposition für diese Abrechnungsperiode",route:"data",sub:"positions"},
-    {id:"water",ok:!waterPositions||!!cons?.valid,label:"Wasserzähler / Verbrauchsdaten fehlen",route:"rental",sub:"water"},
-    {id:"allocation",ok:analysis.unresolved.length===0,label:"Ungeklärte Umlageentscheidungen",route:"data",sub:"positions"}
-  ]
-}
-
-
-
-function paymentMonthKey(date){return String(date||"").slice(0,7)}
-function actualCashflowByMonth(state,months=12){
-  const rows=[],now=new Date();
-  for(let i=0;i<months;i++){
-    const d=new Date(now.getFullYear(),now.getMonth()+i,1),key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    const income=(state.payments||[]).filter(p=>p.direction==="income"&&paymentMonthKey(p.date)===key).reduce((s,p)=>s+Number(p.amount||0),0);
-    const outflow=(state.payments||[]).filter(p=>p.direction==="outflow"&&paymentMonthKey(p.date)===key).reduce((s,p)=>s+Number(p.amount||0),0);
-    rows.push({key,label:d.toLocaleDateString("de-DE",{month:"short",year:"2-digit"}),income,outflow,net:income-outflow})
-  }
-  return rows
-}
-function snapshotFor(state,periodYear){return (state.billingSnapshots||[]).find(s=>Number(s.periodYear)===Number(periodYear))}
-function createBillingSnapshot(state,periodYear){
-  const analysis=billingAnalysis(state,periodYear),waterConsumption=settlementConsumption(state,settlementByPeriod(state,periodYear));
-  return {
-    id:uid(),periodYear:Number(periodYear),period:structuredClone(analysis.period),createdAt:new Date().toISOString(),
-    legalPackVersion:ACTIVE_LEGAL_PACK?.version||"Fallback",
-    legalEffectiveDate:ACTIVE_LEGAL_PACK?.effectiveDate||LAW_DATE,domainVersion:DOMAIN_VERSION,schemaVersion:SCHEMA_VERSION,
-    property:structuredClone(state.property),correspondence:structuredClone(state.correspondence||{}),units:structuredClone(state.units),
-    lease:structuredClone(analysis.lease||null),events:structuredClone(analysis.events),
-    waterConsumption:structuredClone(waterConsumption||null),allocationBases:{totalArea:Number(state.property?.totalArea||0),rentalArea:Number(unitByType(state,"rental")?.area||0)},
-    unresolved:structuredClone(analysis.unresolved),tenantCosts:Number(analysis.tenantCosts||0),
-    advances:Number(analysis.advances||0),result:Number(analysis.result||0),frozen:true
-  }
-}
-
-
-
+const {
+  euro,
+  dateDE,
+  intervalLabel,
+  assignmentLabel,
+  agreementLabel,
+  confidencePercent,
+  percent,
+  uid,
+  periodStart,
+  periodEnd,
+  periodLabel,
+  periodBillingTargetISO,
+  periodBillingTarget,
+  periodDeadlineISO,
+  periodDeadline,
+  currentPeriodYear,
+  preferredBillingYear,
+  billingSelectableYears,
+  selectedBillingYear,
+  billingTakeoverDate,
+  billingPeriodInfo,
+  billingPeriodStart,
+  billingPeriodLabel,
+  billingPeriodContext,
+  dateOnlyUtcValue,
+  calendarDayDiff,
+  overlapDays,
+  daysInclusive,
+  unitByType,
+  currentPersons,
+  shares,
+  personDays,
+  personShareForPeriod,
+  monthlyAdvanceInPeriod,
+  paymentAdvanceForLease,
+  actualAdvanceEvidenceInPeriod,
+  actualAdvanceInPeriod,
+  billingAnalysis,
+  billingReadiness,
+  paymentMonthKey,
+  actualCashflowByMonth,
+  snapshotFor,
+  createBillingSnapshot
+}=AppBillingDomain;
 
 /* ===== db.js ===== */
 

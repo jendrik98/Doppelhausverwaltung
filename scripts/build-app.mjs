@@ -47,6 +47,9 @@ const typedRuntime = (
     compileModule("src/core/integrity.ts", "AppIntegrity"),
     compileModule("src/core/traceability.ts", "AppTraceability"),
     compileModule("src/domain/meter-parsing.ts", "AppMeterParsing"),
+    compileModule("src/domain/property-domain.ts", "AppPropertyDomain"),
+    compileModule("src/domain/legal-rules.ts", "AppLegalRules"),
+    compileModule("src/domain/billing-domain.ts", "AppBillingDomain"),
     compileModule("src/io/backup-codec.ts", "AppBackupCodec")
   ])
 ).join("");

@@ -13,6 +13,8 @@ function assert(condition, message) {
 
 const schema = read("src/legacy/010-schema.js");
 const domain = read("src/legacy/020-domain.js");
+const legalLegacy = read("src/legacy/090-legal-rules.js");
+const domain2 = read("src/legacy/100-domain-2.js");
 const integrityLegacy = read("src/legacy/030-integrity.js");
 const traceabilityLegacy = read("src/legacy/040-traceability.js");
 const db = read("src/legacy/110-db.js");
@@ -25,6 +27,9 @@ const auth = read("src/core/auth.ts");
 const integrity = read("src/core/integrity.ts");
 const traceability = read("src/core/traceability.ts");
 const meter = read("src/domain/meter-parsing.ts");
+const propertyDomain = read("src/domain/property-domain.ts");
+const legalRules = read("src/domain/legal-rules.ts");
+const billingDomain = read("src/domain/billing-domain.ts");
 const backupCodec = read("src/io/backup-codec.ts");
 const tsconfig = read("tsconfig.json");
 const app = read("app.js");
@@ -39,6 +44,40 @@ assert(domain.includes("}=AppMeterParsing;"), "Legacy-Kompatibilitätsbrücke zu
 
 assert(state.includes('from "./date"'), "state.ts verwendet das eigenständige date-Modul nicht.");
 assert(meter.includes("export function parseMeterReadingValue"), "meter-parsing.ts exportiert den Parser nicht.");
+
+assert(!domain.includes("function positionDefaults"), "Kostenpositionslogik liegt noch im Legacy-Domain-Code.");
+assert(!domain.includes("function migrateDomainState"), "Domain-Migrationslogik liegt noch im Legacy-Domain-Code.");
+assert(!domain.includes("function settlementConsumption"), "Wasserabrechnungslogik liegt noch im Legacy-Domain-Code.");
+assert(!domain.includes("function centralBillingAnalysis"), "Zentrale Abrechnungsanalyse liegt noch im Legacy-Domain-Code.");
+assert(domain.includes("}=AppPropertyDomain;"), "Legacy-Brücke zu AppPropertyDomain fehlt.");
+assert(domain.includes("const DOMAIN_VERSION=1;"), "DOMAIN_VERSION wurde verändert oder aus der Laufzeitbrücke entfernt.");
+assert(propertyDomain.includes("export function positionDefaults"), "positionDefaults liegt nicht im TypeScript-Domainmodul.");
+assert(propertyDomain.includes("export function settlementConsumption"), "settlementConsumption liegt nicht im TypeScript-Domainmodul.");
+assert(propertyDomain.includes("export function centralBillingAnalysis"), "centralBillingAnalysis liegt nicht im TypeScript-Domainmodul.");
+assert(propertyDomain.includes("declare const DOMAIN_VERSION: number;"), "TypeScript-Domainmodul nutzt die bestehende DOMAIN_VERSION-Bindung nicht.");
+
+assert(!legalLegacy.includes("function category"), "Kategorie-Regellogik liegt noch im Legacy-Rechtscode.");
+assert(!legalLegacy.includes("async function loadLegalPack"), "Regelpaket-Lader liegt noch im Legacy-Rechtscode.");
+assert(!legalLegacy.includes("function legalDecision"), "Umlageentscheidung liegt noch im Legacy-Rechtscode.");
+assert(legalLegacy.includes("let ACTIVE_LEGAL_PACK=null;"), "ACTIVE_LEGAL_PACK-Live-Bindung fehlt in der Laufzeitbrücke.");
+assert(legalLegacy.includes("}=AppLegalRules;"), "Legacy-Brücke zu AppLegalRules fehlt.");
+assert(legalRules.includes('export const LAW_DATE="2026-09-05"'), "LAW_DATE wurde bei der Migration verändert.");
+assert(legalRules.includes("declare let ACTIVE_LEGAL_PACK: any;"), "TypeScript-Rechtsmodul nutzt die Live-Bindung ACTIVE_LEGAL_PACK nicht.");
+assert(legalRules.includes("ACTIVE_LEGAL_PACK=p;return p"), "Geladenes Regelpaket aktualisiert ACTIVE_LEGAL_PACK nicht mehr.");
+assert(legalRules.includes('mietverwaltung-legal-pack-v1'), "Aktuelles Regelpaket-Schema fehlt im TypeScript-Rechtsmodul.");
+assert(legalRules.includes("export function legalDecision"), "legalDecision liegt nicht im TypeScript-Rechtsmodul.");
+
+assert(!domain2.includes("const euro=n=>"), "Format-/Domain-Helfer liegen noch im zweiten Legacy-Domain-Code.");
+assert(!domain2.includes("function billingPeriodInfo"), "Abrechnungsperiodenlogik liegt noch im zweiten Legacy-Domain-Code.");
+assert(!domain2.includes("function actualAdvanceEvidenceInPeriod"), "Vorauszahlungslogik liegt noch im zweiten Legacy-Domain-Code.");
+assert(!domain2.includes("function billingReadiness"), "Abrechnungsbereitschaft liegt noch im zweiten Legacy-Domain-Code.");
+assert(!domain2.includes("function createBillingSnapshot"), "Snapshot-Erstellung liegt noch im zweiten Legacy-Domain-Code.");
+assert(domain2.includes("}=AppBillingDomain;"), "Legacy-Brücke zu AppBillingDomain fehlt.");
+assert(billingDomain.includes("export function billingPeriodInfo"), "billingPeriodInfo liegt nicht im TypeScript-Billingmodul.");
+assert(billingDomain.includes("export function actualAdvanceEvidenceInPeriod"), "Vorauszahlungslogik liegt nicht im TypeScript-Billingmodul.");
+assert(billingDomain.includes("export function billingReadiness"), "billingReadiness liegt nicht im TypeScript-Billingmodul.");
+assert(billingDomain.includes("export function createBillingSnapshot"), "createBillingSnapshot liegt nicht im TypeScript-Billingmodul.");
+assert(billingDomain.includes("ACTIVE_LEGAL_PACK?.version"), "Snapshots verwenden das aktive Regelpaket nicht mehr dynamisch.");
 
 assert(!integrityLegacy.includes("function cloneState"), "cloneState liegt noch im Legacy-Integritätscode.");
 assert(!integrityLegacy.includes("function validateDomainState"), "Domain-Validierung liegt noch im Legacy-Integritätscode.");
@@ -93,6 +132,9 @@ assert(buildScript.includes('"AppAuth"'), "AppAuth wird nicht gebaut.");
 assert(buildScript.includes('"AppIntegrity"'), "AppIntegrity wird nicht gebaut.");
 assert(buildScript.includes('"AppTraceability"'), "AppTraceability wird nicht gebaut.");
 assert(buildScript.includes('"AppMeterParsing"'), "AppMeterParsing wird nicht gebaut.");
+assert(buildScript.includes('"AppPropertyDomain"'), "AppPropertyDomain wird nicht gebaut.");
+assert(buildScript.includes('"AppLegalRules"'), "AppLegalRules wird nicht gebaut.");
+assert(buildScript.includes('"AppBillingDomain"'), "AppBillingDomain wird nicht gebaut.");
 assert(buildScript.includes('"AppBackupCodec"'), "AppBackupCodec wird nicht gebaut.");
 assert(tsconfig.includes('"src/io/**/*.ts"'), "TypeScript-Prüfung umfasst src/io nicht.");
 
@@ -102,7 +144,10 @@ assert(app.includes("compiled src/core/auth.ts"), "Auth-TypeScript fehlt im Brow
 assert(app.includes("compiled src/core/integrity.ts"), "Integritäts-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/core/traceability.ts"), "Traceability-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/domain/meter-parsing.ts"), "Meter-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/domain/property-domain.ts"), "Property-Domain-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/domain/legal-rules.ts"), "Legal-Rules-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/domain/billing-domain.ts"), "Billing-Domain-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/io/backup-codec.ts"), "Backup-Codec-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes('APP_VERSION="18.0.0"'), "APP_VERSION wurde unerwartet verändert.");
 
-console.log("Architekturprüfung bestanden: Phase 6 migriert Integrität und Nachvollziehbarkeit nach TypeScript; IndexedDB v2 bleibt unverändert.");
+console.log("Architekturprüfung bestanden: Phase 7 migriert Kern-Fachlogik und Rechtsregeln nach TypeScript; IndexedDB v2 und App-Version 18.0.0 bleiben unverändert.");

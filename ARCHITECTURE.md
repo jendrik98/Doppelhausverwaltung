@@ -115,3 +115,28 @@ nicht migrierten Fach- und UI-Bereiche dieselben Laufzeitnamen weiterverwenden.
 Phase 6 verändert weder das State-Schema noch IndexedDB: `mietverwaltung-v6`, DB-Version `2` und
 State-Schlüssel `main` bleiben unverändert. Auch die App-Version bleibt `18.0.0`. Der einmalige
 Phase-5-Migrationsworkflow wird erst im erfolgreichen Phase-6-Commit entfernt.
+
+
+## Phase 7: Kern-Fachlogik
+
+Die fachliche Basis ist nun in drei TypeScript-Module getrennt. `src/domain/property-domain.ts`
+enthält Kostenpositionen, Wasser-/Zählerlogik einschließlich OCR-Zuordnung, die zentrale
+Kostenallokation sowie die bestehende Domain-Migration. `src/domain/billing-domain.ts` bündelt
+Kalender- und Abrechnungsperioden, Flächen-/Personenanteile, die Erkennung tatsächlich geleisteter
+Betriebskostenvorauszahlungen, Readiness, Cashflow-Helfer und eingefrorene Abrechnungssnapshots.
+
+`src/domain/legal-rules.ts` enthält unverändert die bisherige Kategorien- und Umlagelogik sowie das
+Laden von `legal-rules.json`. Die äußere Laufzeitvariable `ACTIVE_LEGAL_PACK` bleibt absichtlich als
+Live-Bindung in `src/legacy/090-legal-rules.js`; das TypeScript-Modul liest und aktualisiert genau
+diese Bindung. Dadurch sehen Rechtsansicht und neu erzeugte Snapshots nach einem Regelpaket-Reload
+weiterhin denselben aktuellen Stand. `LAW_DATE` bleibt `2026-09-05`, das Regelpaket-Schema bleibt
+`mietverwaltung-legal-pack-v1`.
+
+Die bisherigen Dateien `src/legacy/020-domain.js`, `src/legacy/090-legal-rules.js` und
+`src/legacy/100-domain-2.js` sind nur noch Laufzeitbrücken. `DOMAIN_VERSION` bleibt `1`; vorhandene
+Funktionsnamen bleiben für die noch nicht migrierten Intelligence-, Quality-, Smart- und UI-Bereiche
+erhalten. Phase 7 verändert weder fachliche Berechnungsregeln noch State-Schema, IndexedDB, Backup-
+formate oder App-Version. Datenbank `mietverwaltung-v6`, DB-Version `2`, State-Schlüssel `main` und
+App-Version `18.0.0` bleiben unverändert.
+
+Der einmalige Phase-6-Migrationsworkflow wird erst mit dem erfolgreichen Phase-7-Commit entfernt.
