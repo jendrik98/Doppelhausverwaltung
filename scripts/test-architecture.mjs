@@ -13,6 +13,8 @@ function assert(condition, message) {
 
 const schema = read("src/legacy/010-schema.js");
 const domain = read("src/legacy/020-domain.js");
+const integrityLegacy = read("src/legacy/030-integrity.js");
+const traceabilityLegacy = read("src/legacy/040-traceability.js");
 const db = read("src/legacy/110-db.js");
 const security = read("src/legacy/120-security.js");
 const backup = read("src/legacy/130-backup.js");
@@ -20,6 +22,8 @@ const buildScript = read("scripts/build-app.mjs");
 const state = read("src/core/state.ts");
 const persistence = read("src/core/persistence.ts");
 const auth = read("src/core/auth.ts");
+const integrity = read("src/core/integrity.ts");
+const traceability = read("src/core/traceability.ts");
 const meter = read("src/domain/meter-parsing.ts");
 const backupCodec = read("src/io/backup-codec.ts");
 const tsconfig = read("tsconfig.json");
@@ -35,6 +39,28 @@ assert(domain.includes("}=AppMeterParsing;"), "Legacy-Kompatibilitätsbrücke zu
 
 assert(state.includes('from "./date"'), "state.ts verwendet das eigenständige date-Modul nicht.");
 assert(meter.includes("export function parseMeterReadingValue"), "meter-parsing.ts exportiert den Parser nicht.");
+
+assert(!integrityLegacy.includes("function cloneState"), "cloneState liegt noch im Legacy-Integritätscode.");
+assert(!integrityLegacy.includes("function validateDomainState"), "Domain-Validierung liegt noch im Legacy-Integritätscode.");
+assert(!integrityLegacy.includes("async function sha256Text"), "Prüfsummenlogik liegt noch im Legacy-Integritätscode.");
+assert(integrityLegacy.includes("}=AppIntegrity;"), "Legacy-Brücke zu AppIntegrity fehlt.");
+assert(integrityLegacy.includes('const APP_VERSION="18.0.0"'), "APP_VERSION wurde aus der Laufzeitbrücke entfernt oder verändert.");
+assert(integrityLegacy.includes("let LAST_STABLE_STATE=null"), "LAST_STABLE_STATE fehlt in der Laufzeitbrücke.");
+assert(integrity.includes("export function validateDomainState"), "validateDomainState liegt nicht im TypeScript-Integritätsmodul.");
+assert(integrity.includes("export function repairDomainState"), "repairDomainState liegt nicht im TypeScript-Integritätsmodul.");
+assert(integrity.includes("export async function finalizeSnapshotIntegrity"), "Snapshot-Prüfsumme liegt nicht im TypeScript-Integritätsmodul.");
+assert(integrity.includes("export async function documentFingerprint"), "Dokument-Fingerprint liegt nicht im TypeScript-Integritätsmodul.");
+
+assert(!traceabilityLegacy.includes("function ensureTraceShape"), "Trace-Form liegt noch im Legacy-Traceability-Code.");
+assert(!traceabilityLegacy.includes("async function executeCommand"), "Command-Ausführung liegt noch im Legacy-Traceability-Code.");
+assert(!traceabilityLegacy.includes("function billingClosureChecklist"), "Abschluss-Checkliste liegt noch im Legacy-Traceability-Code.");
+assert(traceabilityLegacy.includes("}=AppTraceability;"), "Legacy-Brücke zu AppTraceability fehlt.");
+assert(traceabilityLegacy.includes("const TRACE_VERSION=1"), "TRACE_VERSION wurde verändert.");
+assert(traceabilityLegacy.includes("const COMMAND_VERSION=1"), "COMMAND_VERSION wurde verändert.");
+assert(traceability.includes("export function ensureTraceShape"), "ensureTraceShape liegt nicht im TypeScript-Traceability-Modul.");
+assert(traceability.includes("export async function restoreFromPoint"), "Restore-Point-Wiederherstellung liegt nicht im TypeScript-Traceability-Modul.");
+assert(traceability.includes("export async function executeCommand"), "executeCommand liegt nicht im TypeScript-Traceability-Modul.");
+assert(traceability.includes("export function billingClosureChecklist"), "billingClosureChecklist liegt nicht im TypeScript-Traceability-Modul.");
 
 assert(!db.includes("indexedDB."), "IndexedDB-Zugriffe liegen noch im Legacy-DB-Code.");
 assert(!db.includes("migrateLegacyStorage"), "Alte LocalStorage-Migration liegt noch im DB-Pfad.");
@@ -64,6 +90,8 @@ assert(buildScript.includes("bundle: true"), "Build bündelt TypeScript-Importe 
 assert(buildScript.includes('"AppState"'), "AppState wird nicht gebaut.");
 assert(buildScript.includes('"AppPersistence"'), "AppPersistence wird nicht gebaut.");
 assert(buildScript.includes('"AppAuth"'), "AppAuth wird nicht gebaut.");
+assert(buildScript.includes('"AppIntegrity"'), "AppIntegrity wird nicht gebaut.");
+assert(buildScript.includes('"AppTraceability"'), "AppTraceability wird nicht gebaut.");
 assert(buildScript.includes('"AppMeterParsing"'), "AppMeterParsing wird nicht gebaut.");
 assert(buildScript.includes('"AppBackupCodec"'), "AppBackupCodec wird nicht gebaut.");
 assert(tsconfig.includes('"src/io/**/*.ts"'), "TypeScript-Prüfung umfasst src/io nicht.");
@@ -71,8 +99,10 @@ assert(tsconfig.includes('"src/io/**/*.ts"'), "TypeScript-Prüfung umfasst src/i
 assert(app.includes("compiled src/core/state.ts"), "State-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/core/persistence.ts"), "Persistenz-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/core/auth.ts"), "Auth-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/core/integrity.ts"), "Integritäts-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/core/traceability.ts"), "Traceability-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/domain/meter-parsing.ts"), "Meter-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/io/backup-codec.ts"), "Backup-Codec-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes('APP_VERSION="18.0.0"'), "APP_VERSION wurde unerwartet verändert.");
 
-console.log("Architekturprüfung bestanden: Phase 5 migriert WebAuthn nach TypeScript; Persistenz und IndexedDB v2 bleiben unverändert.");
+console.log("Architekturprüfung bestanden: Phase 6 migriert Integrität und Nachvollziehbarkeit nach TypeScript; IndexedDB v2 bleibt unverändert.");

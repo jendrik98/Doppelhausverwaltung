@@ -98,3 +98,20 @@ bestehenden Laufzeitnamen (`authCredentialId`, `authEnabled`, `registerDevice`, 
 `disableAuth`), sodass die noch nicht migrierte UI unverändert weiterarbeiten kann.
 
 Der einmalige Phase-4-Migrationsworkflow wird mit dem erfolgreichen Phase-5-Commit entfernt.
+
+## Phase 6: Integrität und Nachvollziehbarkeit
+
+Die Integritätslogik liegt nun in `src/core/integrity.ts`. Dazu gehören Domain-Validierung und
+-Reparatur, Fehlerprotokollierung, stabile JSON-Serialisierung, SHA-256-Prüfsummen für Snapshots
+und Dokumente sowie die Zahlungs-/Kosten-Abstimmung. `src/legacy/030-integrity.js` hält nur noch
+die unveränderten Laufzeitkonstanten (`APP_VERSION = 18.0.0`, Fehlerlog-Limit und
+`LAST_STABLE_STATE`) und bindet die bisherigen Funktionsnamen an `AppIntegrity`.
+
+Restore-Points, Command-/Audit-Nachvollziehbarkeit, Dokument-Workflowstatus und die
+Abschluss-Checkliste liegen in `src/core/traceability.ts`. `src/legacy/040-traceability.js` bleibt
+als schmale Brücke mit den bisherigen Trace-/Command-Versionen bestehen. Dadurch können die noch
+nicht migrierten Fach- und UI-Bereiche dieselben Laufzeitnamen weiterverwenden.
+
+Phase 6 verändert weder das State-Schema noch IndexedDB: `mietverwaltung-v6`, DB-Version `2` und
+State-Schlüssel `main` bleiben unverändert. Auch die App-Version bleibt `18.0.0`. Der einmalige
+Phase-5-Migrationsworkflow wird erst im erfolgreichen Phase-6-Commit entfernt.

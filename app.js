@@ -613,6 +613,419 @@ var AppAuth = (() => {
 })();
 
 
+/* ===== compiled src/core/integrity.ts ===== */
+"use strict";
+var AppIntegrity = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/core/integrity.ts
+  var integrity_exports = {};
+  __export(integrity_exports, {
+    blobSha256: () => blobSha256,
+    cloneState: () => cloneState,
+    documentFingerprint: () => documentFingerprint,
+    finalizeSnapshotIntegrity: () => finalizeSnapshotIntegrity,
+    integritySummary: () => integritySummary,
+    reconciliationSummary: () => reconciliationSummary,
+    recordClientError: () => recordClientError,
+    repairDomainState: () => repairDomainState,
+    sha256Text: () => sha256Text,
+    stableJSON: () => stableJSON,
+    validateDomainState: () => validateDomainState
+  });
+  function cloneState(value) {
+    return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+  }
+  function uniqueIds(items, label, issues) {
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of items || []) {
+      if (!item?.id) {
+        issues.errors.push(`${label}: Datensatz ohne ID`);
+        continue;
+      }
+      if (seen.has(item.id)) issues.errors.push(`${label}: doppelte ID ${item.id}`);
+      seen.add(item.id);
+    }
+  }
+  function validateDomainState(value) {
+    const issues = { errors: [], warnings: [] };
+    const base = validateState(value);
+    issues.errors.push(...base.errors);
+    if (!value || typeof value !== "object") return issues;
+    for (const [key, label] of [
+      ["units", "Einheiten"],
+      ["leases", "Mietverträge"],
+      ["sources", "Quellen"],
+      ["costPositions", "Kostenpositionen"],
+      ["meters", "Zähler"],
+      ["waterSettlements", "Wasserperioden"],
+      ["containers", "Behälter"],
+      ["tasks", "Aufgaben"],
+      ["payments", "Zahlungen"],
+      ["billingSnapshots", "Snapshots"]
+    ]) {
+      uniqueIds(value[key], label, issues);
+    }
+    const sourceIds = new Set((value.sources || []).map((item) => item.id));
+    const meterIds = new Set((value.meters || []).map((item) => item.id));
+    for (const position of value.costPositions || []) {
+      if (!position.label) issues.errors.push(`Kostenposition ${position.id}: Bezeichnung fehlt`);
+      if (Number(position.amount) < 0) issues.errors.push(`Kostenposition ${position.label}: negativer Betrag`);
+      if (position.serviceStart && position.serviceEnd && position.serviceEnd < position.serviceStart) {
+        issues.errors.push(`Kostenposition ${position.label}: Leistungszeitraum ungültig`);
+      }
+      if (position.sourceId && !sourceIds.has(position.sourceId) && !String(position.sourceId).startsWith("legacy-")) {
+        issues.warnings.push(`Kostenposition ${position.label}: Quelle nicht mehr vorhanden`);
+      }
+      if (!["house", "owner", "rental", "review"].includes(position.assignment)) {
+        issues.errors.push(`Kostenposition ${position.label}: ungültige Zuordnung`);
+      }
+    }
+    for (const settlement of value.waterSettlements || []) {
+      if (!meterIds.has(settlement.mainMeterId) || !meterIds.has(settlement.ownerMeterId)) {
+        issues.errors.push(`Wasserperiode ${settlement.periodYear}: Zählerreferenz fehlt`);
+      }
+      const consumption = settlementConsumption(value, settlement);
+      if (consumption && !consumption.valid) {
+        issues.errors.push(`Wasserperiode ${settlement.periodYear}: unplausible Verbräuche`);
+      }
+    }
+    for (const lease of value.leases || []) {
+      if (lease.start && lease.end && lease.end < lease.start) {
+        issues.errors.push("Mietvertrag: Enddatum liegt vor Beginn");
+      }
+      if (Number(lease.rent || 0) < 0 || Number(lease.advance || 0) < 0) {
+        issues.errors.push("Mietvertrag: negativer Betrag");
+      }
+    }
+    const ownerUnits = (value.units || []).filter((unit) => unit.type == "owner").length;
+    const rentalUnits = (value.units || []).filter((unit) => unit.type == "rental").length;
+    if (ownerUnits > 1) issues.warnings.push("Mehr als eine Eigennutzungs-Einheit hinterlegt");
+    if (rentalUnits > 1) issues.warnings.push("Mehr als eine Mietwohnung hinterlegt");
+    return issues;
+  }
+  function repairDomainState(value) {
+    let repaired = normalizeState(value);
+    repaired = migrateDomainState(repaired);
+    ensureDefaultMeters(repaired);
+    for (const meter of repaired.meters || []) {
+      meter.readings = Array.isArray(meter.readings) ? meter.readings : [];
+      const seen = /* @__PURE__ */ new Set();
+      meter.readings = meter.readings.filter((reading) => {
+        const key = `${reading.date}|${Number(reading.value)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    }
+    repaired.schemaVersion = SCHEMA_VERSION;
+    repaired.meta.appVersion = APP_VERSION;
+    repaired.meta.revision = Number(repaired.meta.revision || 0);
+    repaired.meta.errorLog = Array.isArray(repaired.meta.errorLog) ? repaired.meta.errorLog : [];
+    return typeof ensureTraceShape === "function" ? ensureTraceShape(repaired) : repaired;
+  }
+  function recordClientError(context, error) {
+    try {
+      const entry = {
+        id: uid(),
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        context,
+        message: String(error?.message || error),
+        stack: String(error?.stack || "").slice(0, 3e3)
+      };
+      state.meta.errorLog = Array.isArray(state.meta.errorLog) ? state.meta.errorLog : [];
+      state.meta.errorLog.unshift(entry);
+      state.meta.errorLog = state.meta.errorLog.slice(0, MAX_ERROR_LOG);
+    } catch {
+    }
+  }
+  function integritySummary(value) {
+    const validation = validateDomainState(value);
+    return {
+      ok: validation.errors.length === 0,
+      errors: validation.errors,
+      warnings: validation.warnings,
+      revision: Number(value.meta?.revision || 0)
+    };
+  }
+  async function sha256Text(text) {
+    if (!crypto?.subtle) return "";
+    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  function stableJSON(value) {
+    const sort = (input) => Array.isArray(input) ? input.map(sort) : input && typeof input === "object" ? Object.fromEntries(Object.keys(input).sort().map((key) => [key, sort(input[key])])) : input;
+    return JSON.stringify(sort(value));
+  }
+  async function finalizeSnapshotIntegrity(snapshot) {
+    snapshot.integrityHash = await sha256Text(stableJSON({ ...snapshot, integrityHash: void 0 }));
+    return snapshot;
+  }
+  async function blobSha256(blob) {
+    if (!crypto?.subtle) return "";
+    const hash = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  async function documentFingerprint(pages) {
+    const hashes = [];
+    for (const page of pages || []) hashes.push(await blobSha256(page.blob));
+    return sha256Text(hashes.join("|"));
+  }
+  function reconciliationSummary(currentState) {
+    const positionPaid = /* @__PURE__ */ new Map();
+    for (const payment of currentState.payments || []) {
+      if (!payment.positionId) continue;
+      positionPaid.set(
+        payment.positionId,
+        (positionPaid.get(payment.positionId) || 0) + (payment.direction == "outflow" ? Number(payment.amount || 0) : -Number(payment.amount || 0))
+      );
+    }
+    const rows = (currentState.costPositions || []).filter((position) => position.confirmed).map((position) => ({
+      position,
+      paid: positionPaid.get(position.id) || 0,
+      difference: Number(position.amount || 0) - (positionPaid.get(position.id) || 0)
+    }));
+    return {
+      rows,
+      unmatchedPayments: (currentState.payments || []).filter(
+        (payment) => !payment.positionId && !payment.sourceId
+      )
+    };
+  }
+  return __toCommonJS(integrity_exports);
+})();
+
+
+/* ===== compiled src/core/traceability.ts ===== */
+"use strict";
+var AppTraceability = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/core/traceability.ts
+  var traceability_exports = {};
+  __export(traceability_exports, {
+    billingClosureChecklist: () => billingClosureChecklist,
+    commandResult: () => commandResult,
+    createRestorePoint: () => createRestorePoint,
+    documentWorkflowLabel: () => documentWorkflowLabel,
+    documentWorkflowState: () => documentWorkflowState,
+    documentsByWorkflow: () => documentsByWorkflow,
+    ensureTraceShape: () => ensureTraceShape,
+    executeCommand: () => executeCommand,
+    provenanceLabel: () => provenanceLabel,
+    restoreFromPoint: () => restoreFromPoint,
+    safeCommandSummary: () => safeCommandSummary,
+    snapshotVerification: () => snapshotVerification,
+    traceForPosition: () => traceForPosition
+  });
+  function ensureTraceShape(value) {
+    value.meta = value.meta || {};
+    value.meta.traceVersion = TRACE_VERSION;
+    value.meta.importHistory = Array.isArray(value.meta.importHistory) ? value.meta.importHistory : [];
+    value.meta.commandVersion = COMMAND_VERSION;
+    value.meta.commandLog = Array.isArray(value.meta.commandLog) ? value.meta.commandLog : [];
+    value.meta.restorePoints = Array.isArray(value.meta.restorePoints) ? value.meta.restorePoints : [];
+    for (const position of value.costPositions || []) {
+      position.provenance = position.provenance || {
+        origin: position.origin || "manual",
+        documentId: position.documentId || "",
+        sourceId: position.sourceId || "",
+        evidence: "",
+        confidence: null,
+        confirmedAt: position.confirmed ? (/* @__PURE__ */ new Date()).toISOString() : null,
+        confirmedBy: "local-user"
+      };
+    }
+    return value;
+  }
+  function provenanceLabel(position) {
+    const origin = position?.provenance?.origin || position?.origin || "manual";
+    return origin == "document" ? "aus Dokument" : origin == "migration" ? "übernommen" : origin == "photo" ? "aus Foto" : origin == "assessment" ? "aus Bescheid" : "manuell";
+  }
+  function createRestorePoint(label) {
+    const snapshot = cloneState(state);
+    delete snapshot.meta.restorePoints;
+    const point = {
+      id: uid(),
+      at: (/* @__PURE__ */ new Date()).toISOString(),
+      label,
+      schemaVersion: SCHEMA_VERSION,
+      appVersion: APP_VERSION,
+      state: snapshot
+    };
+    state.meta.restorePoints.unshift(point);
+    state.meta.restorePoints = state.meta.restorePoints.slice(0, 5);
+    return point;
+  }
+  async function restoreFromPoint(id) {
+    const point = (state.meta?.restorePoints || []).find((item) => item.id === id);
+    if (!point) throw new Error("Sicherungspunkt nicht gefunden.");
+    const current = cloneState(state);
+    const currentSnapshot = cloneState(state);
+    delete currentSnapshot.meta.restorePoints;
+    const undo = {
+      id: uid(),
+      at: (/* @__PURE__ */ new Date()).toISOString(),
+      label: "Vor Wiederherstellung",
+      schemaVersion: SCHEMA_VERSION,
+      appVersion: APP_VERSION,
+      state: currentSnapshot
+    };
+    const restored = ensureTraceShape(repairDomainState(cloneState(point.state)));
+    restored.meta.restorePoints = [undo, ...restored.meta.restorePoints || []].slice(0, 5);
+    try {
+      state = restored;
+      LAST_STABLE_STATE = cloneState(state);
+      await saveState(state);
+      return true;
+    } catch (error) {
+      state = current;
+      LAST_STABLE_STATE = cloneState(current);
+      throw error;
+    }
+  }
+  function commandResult(ok, message = "", data = null) {
+    return { ok, message, data };
+  }
+  async function executeCommand(type, payload, handler, { auditText = null, restorePoint = false } = {}) {
+    if (restorePoint) createRestorePoint(`Vor ${type}`);
+    const before = cloneState(state);
+    try {
+      const result = await handler(payload);
+      state = ensureTraceShape(repairDomainState(state));
+      const check = validateDomainState(state);
+      if (check.errors.length) throw new Error(check.errors.join(" · "));
+      state.meta.commandLog.unshift({
+        id: uid(),
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        type,
+        payloadSummary: safeCommandSummary(payload),
+        revisionBefore: Number(before.meta?.revision || 0),
+        revisionAfter: Number(before.meta?.revision || 0) + 1
+      });
+      state.meta.commandLog = state.meta.commandLog.slice(0, 250);
+      const saved = await persist(auditText || type, safeCommandSummary(payload));
+      if (!saved) throw new Error("Speichern fehlgeschlagen.");
+      return commandResult(true, "Gespeichert", result);
+    } catch (error) {
+      state = before;
+      LAST_STABLE_STATE = cloneState(before);
+      recordClientError(`command:${type}`, error);
+      return commandResult(false, String(error.message || error));
+    }
+  }
+  function safeCommandSummary(payload) {
+    if (payload == null) return "";
+    if (typeof payload === "string") return payload.slice(0, 180);
+    const out = {};
+    for (const key of Object.keys(payload)) {
+      if (/blob|pages|text|image/i.test(key)) continue;
+      const value = payload[key];
+      out[key] = typeof value === "string" ? value.slice(0, 120) : value;
+    }
+    try {
+      return JSON.stringify(out);
+    } catch {
+      return "Command";
+    }
+  }
+  function documentWorkflowState(document) {
+    const analysis = document.analysis || {};
+    const fields = analysis.fields || {};
+    if (analysis.status == "error") return "review";
+    if (analysis.status != "done") return "new";
+    const proposals = fields.positionProposals || [];
+    if (proposals.length && !analysis.acceptedAt) return "review";
+    if (document.sourceId || analysis.acceptedAt) return "done";
+    return "review";
+  }
+  function documentWorkflowLabel(document) {
+    const workflowState = documentWorkflowState(document);
+    return workflowState == "new" ? "Neu" : workflowState == "review" ? "Prüfen" : "Erledigt";
+  }
+  function documentsByWorkflow(documents) {
+    return {
+      new: documents.filter((document) => documentWorkflowState(document) == "new"),
+      review: documents.filter((document) => documentWorkflowState(document) == "review"),
+      done: documents.filter((document) => documentWorkflowState(document) == "done")
+    };
+  }
+  function traceForPosition(currentState, position) {
+    const source = (currentState.sources || []).find((item) => item.id === position.sourceId) || null;
+    const documentId = position.provenance?.documentId || position.documentId || source?.sourceDocumentId || "";
+    return {
+      position,
+      source,
+      documentId,
+      origin: provenanceLabel(position),
+      evidence: position.provenance?.evidence || "",
+      confidence: position.provenance?.confidence,
+      confirmedAt: position.provenance?.confirmedAt || null
+    };
+  }
+  function billingClosureChecklist(currentState, year) {
+    const readiness = billingReadiness(currentState, year);
+    const analysis = billingAnalysis(currentState, year);
+    const lease = currentState.leases?.[0] || null;
+    const relevant = analysis.events || [];
+    const waterNeeded = relevant.some((event) => event.category == "water");
+    const waterOK = !waterNeeded || !!settlementConsumption(currentState, settlementByPeriod(currentState, year))?.valid;
+    const allConfirmed = (currentState.costPositions || []).filter((position) => positionToEvents(currentState, position, year).length).every((position) => position.confirmed);
+    const allAssigned = analysis.unresolved.length === 0;
+    const periodEnded = !!analysis.period?.end && smartToday() > analysis.period.end;
+    const advanceOK = lease ? Number(lease.advance || 0) <= 0 || Number(analysis.advanceEvidence?.recognizedPayments || 0) > 0 : false;
+    const noErrors = readiness.every((item) => item.ok);
+    const points = [
+      { id: "period", label: "Abrechnungsperiode und Mietvertrag vorhanden", ok: !!lease },
+      { id: "periodComplete", label: "Abrechnungsperiode vollständig beendet", ok: periodEnded },
+      { id: "costs", label: "Alle relevanten Kostenpositionen bestätigt", ok: allConfirmed && relevant.length > 0 },
+      { id: "assignment", label: "Alle Umlageentscheidungen geklärt", ok: allAssigned },
+      { id: "water", label: "Verbrauchsdaten vollständig", ok: waterOK },
+      { id: "advance", label: "Vorauszahlungen ermittelt", ok: advanceOK },
+      { id: "readiness", label: "Datenqualitätsprüfung ohne offene Pflichtpunkte", ok: noErrors }
+    ];
+    return { points, ok: points.every((item) => item.ok), analysis };
+  }
+  function snapshotVerification(snapshot) {
+    if (!snapshot?.integrityHash) return { status: "unknown", label: "Keine Prüfsumme" };
+    return { status: "stored", label: `SHA-256 ${String(snapshot.integrityHash).slice(0, 12)}…` };
+  }
+  return __toCommonJS(traceability_exports);
+})();
+
+
 /* ===== compiled src/domain/meter-parsing.ts ===== */
 "use strict";
 var AppMeterParsing = (() => {
@@ -1197,230 +1610,39 @@ const APP_VERSION="18.0.0";
 const MAX_ERROR_LOG=100;
 let LAST_STABLE_STATE=null;
 
-function cloneState(s){return typeof structuredClone==="function"?structuredClone(s):JSON.parse(JSON.stringify(s))}
-function uniqueIds(items,label,issues){
-  const seen=new Set();
-  for(const x of items||[]){
-    if(!x?.id){issues.errors.push(`${label}: Datensatz ohne ID`);continue}
-    if(seen.has(x.id))issues.errors.push(`${label}: doppelte ID ${x.id}`);
-    seen.add(x.id)
-  }
-}
-function validateDomainState(s){
-  const issues={errors:[],warnings:[]},base=validateState(s);issues.errors.push(...base.errors);
-  if(!s||typeof s!=="object")return issues;
-  for(const [key,label] of [["units","Einheiten"],["leases","Mietverträge"],["sources","Quellen"],["costPositions","Kostenpositionen"],["meters","Zähler"],["waterSettlements","Wasserperioden"],["containers","Behälter"],["tasks","Aufgaben"],["payments","Zahlungen"],["billingSnapshots","Snapshots"]])uniqueIds(s[key],label,issues);
-  const sourceIds=new Set((s.sources||[]).map(x=>x.id)),meterIds=new Set((s.meters||[]).map(x=>x.id));
-  for(const p of s.costPositions||[]){
-    if(!p.label)issues.errors.push(`Kostenposition ${p.id}: Bezeichnung fehlt`);
-    if(Number(p.amount)<0)issues.errors.push(`Kostenposition ${p.label}: negativer Betrag`);
-    if(p.serviceStart&&p.serviceEnd&&p.serviceEnd<p.serviceStart)issues.errors.push(`Kostenposition ${p.label}: Leistungszeitraum ungültig`);
-    if(p.sourceId&&!sourceIds.has(p.sourceId)&&!String(p.sourceId).startsWith("legacy-"))issues.warnings.push(`Kostenposition ${p.label}: Quelle nicht mehr vorhanden`);
-    if(!["house","owner","rental","review"].includes(p.assignment))issues.errors.push(`Kostenposition ${p.label}: ungültige Zuordnung`)
-  }
-  for(const w of s.waterSettlements||[]){
-    if(!meterIds.has(w.mainMeterId)||!meterIds.has(w.ownerMeterId))issues.errors.push(`Wasserperiode ${w.periodYear}: Zählerreferenz fehlt`);
-    const c=settlementConsumption(s,w);if(c&&!c.valid)issues.errors.push(`Wasserperiode ${w.periodYear}: unplausible Verbräuche`)
-  }
-  for(const l of s.leases||[]){
-    if(l.start&&l.end&&l.end<l.start)issues.errors.push("Mietvertrag: Enddatum liegt vor Beginn");
-    if(Number(l.rent||0)<0||Number(l.advance||0)<0)issues.errors.push("Mietvertrag: negativer Betrag")
-  }
-  const ownerUnits=(s.units||[]).filter(u=>u.type==="owner").length,rentalUnits=(s.units||[]).filter(u=>u.type==="rental").length;
-  if(ownerUnits>1)issues.warnings.push("Mehr als eine Eigennutzungs-Einheit hinterlegt");
-  if(rentalUnits>1)issues.warnings.push("Mehr als eine Mietwohnung hinterlegt");
-  return issues
-}
-function repairDomainState(s){
-  s=normalizeState(s);s=migrateDomainState(s);ensureDefaultMeters(s);
-  for(const m of s.meters||[]){
-    m.readings=Array.isArray(m.readings)?m.readings:[];
-    const seen=new Set();
-    m.readings=m.readings.filter(r=>{const k=`${r.date}|${Number(r.value)}`;if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>(a.date||"").localeCompare(b.date||""))
-  }
-  s.schemaVersion=SCHEMA_VERSION;s.meta.appVersion=APP_VERSION;s.meta.revision=Number(s.meta.revision||0);s.meta.errorLog=Array.isArray(s.meta.errorLog)?s.meta.errorLog:[];
-  return typeof ensureTraceShape==="function"?ensureTraceShape(s):s
-}
-function recordClientError(context,error){
-  try{
-    const entry={id:uid(),at:new Date().toISOString(),context,message:String(error?.message||error),stack:String(error?.stack||"").slice(0,3000)};
-    state.meta.errorLog=Array.isArray(state.meta.errorLog)?state.meta.errorLog:[];
-    state.meta.errorLog.unshift(entry);state.meta.errorLog=state.meta.errorLog.slice(0,MAX_ERROR_LOG)
-  }catch{}
-}
-function integritySummary(s){const v=validateDomainState(s);return{ok:v.errors.length===0,errors:v.errors,warnings:v.warnings,revision:Number(s.meta?.revision||0)}}
-
-async function sha256Text(text){
-  if(!crypto?.subtle)return "";
-  const h=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text));
-  return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("")
-}
-function stableJSON(value){
-  const sort=v=>Array.isArray(v)?v.map(sort):(v&&typeof v==="object"?Object.fromEntries(Object.keys(v).sort().map(k=>[k,sort(v[k])])):v);
-  return JSON.stringify(sort(value))
-}
-async function finalizeSnapshotIntegrity(snapshot){snapshot.integrityHash=await sha256Text(stableJSON({...snapshot,integrityHash:undefined}));return snapshot}
-async function blobSha256(blob){
-  if(!crypto?.subtle)return "";
-  const h=await crypto.subtle.digest("SHA-256",await blob.arrayBuffer());
-  return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("")
-}
-async function documentFingerprint(pages){const hashes=[];for(const p of pages||[])hashes.push(await blobSha256(p.blob));return sha256Text(hashes.join("|"))}
-function reconciliationSummary(state){
-  const positionPaid=new Map();
-  for(const p of state.payments||[]){if(!p.positionId)continue;positionPaid.set(p.positionId,(positionPaid.get(p.positionId)||0)+(p.direction==="outflow"?Number(p.amount||0):-Number(p.amount||0)))}
-  const rows=(state.costPositions||[]).filter(p=>p.confirmed).map(p=>({position:p,paid:positionPaid.get(p.id)||0,difference:Number(p.amount||0)-(positionPaid.get(p.id)||0)}));
-  return {rows,unmatchedPayments:(state.payments||[]).filter(p=>!p.positionId&&!p.sourceId)}
-}
-
+const {
+  cloneState,
+  validateDomainState,
+  repairDomainState,
+  recordClientError,
+  integritySummary,
+  sha256Text,
+  stableJSON,
+  finalizeSnapshotIntegrity,
+  blobSha256,
+  documentFingerprint,
+  reconciliationSummary
+}=AppIntegrity;
 
 /* ===== traceability.js ===== */
 const TRACE_VERSION=1;
 const COMMAND_VERSION=1;
 
-function ensureTraceShape(s){
-  s.meta=s.meta||{};
-  s.meta.traceVersion=TRACE_VERSION;s.meta.importHistory=Array.isArray(s.meta.importHistory)?s.meta.importHistory:[];
-  s.meta.commandVersion=COMMAND_VERSION;
-  s.meta.commandLog=Array.isArray(s.meta.commandLog)?s.meta.commandLog:[];
-  s.meta.restorePoints=Array.isArray(s.meta.restorePoints)?s.meta.restorePoints:[];
-  for(const p of s.costPositions||[]){
-    p.provenance=p.provenance||{
-      origin:p.origin||"manual",
-      documentId:p.documentId||"",
-      sourceId:p.sourceId||"",
-      evidence:"",
-      confidence:null,
-      confirmedAt:p.confirmed?new Date().toISOString():null,
-      confirmedBy:"local-user"
-    };
-  }
-  return s
-}
-
-function provenanceLabel(p){
-  const o=p?.provenance?.origin||p?.origin||"manual";
-  return o==="document"?"aus Dokument":o==="migration"?"übernommen":o==="photo"?"aus Foto":o==="assessment"?"aus Bescheid":"manuell";
-}
-
-function createRestorePoint(label){
-  const snapshot=cloneState(state);
-  delete snapshot.meta.restorePoints;
-  const point={id:uid(),at:new Date().toISOString(),label,schemaVersion:SCHEMA_VERSION,appVersion:APP_VERSION,state:snapshot};
-  state.meta.restorePoints.unshift(point);
-  state.meta.restorePoints=state.meta.restorePoints.slice(0,5);
-  return point;
-}
-
-async function restoreFromPoint(id){
-  const point=(state.meta?.restorePoints||[]).find(x=>x.id===id);if(!point)throw new Error("Sicherungspunkt nicht gefunden.");
-  const current=cloneState(state),currentSnapshot=cloneState(state);delete currentSnapshot.meta.restorePoints;
-  const undo={id:uid(),at:new Date().toISOString(),label:"Vor Wiederherstellung",schemaVersion:SCHEMA_VERSION,appVersion:APP_VERSION,state:currentSnapshot};
-  const restored=ensureTraceShape(repairDomainState(cloneState(point.state)));
-  restored.meta.restorePoints=[undo,...(restored.meta.restorePoints||[])].slice(0,5);
-  try{state=restored;LAST_STABLE_STATE=cloneState(state);await saveState(state);return true}
-  catch(e){state=current;LAST_STABLE_STATE=cloneState(current);throw e}
-}
-
-function commandResult(ok,message="",data=null){return {ok,message,data}}
-
-async function executeCommand(type,payload,handler,{auditText=null,restorePoint=false}={}){
-  if(restorePoint)createRestorePoint(`Vor ${type}`);
-  const before=cloneState(state);
-  try{
-    const result=await handler(payload);
-    state=ensureTraceShape(repairDomainState(state));
-    const check=validateDomainState(state);
-    if(check.errors.length)throw new Error(check.errors.join(" · "));
-    state.meta.commandLog.unshift({
-      id:uid(),at:new Date().toISOString(),type,payloadSummary:safeCommandSummary(payload),
-      revisionBefore:Number(before.meta?.revision||0),revisionAfter:Number(before.meta?.revision||0)+1
-    });
-    state.meta.commandLog=state.meta.commandLog.slice(0,250);
-    const saved=await persist(auditText||type,safeCommandSummary(payload));
-    if(!saved)throw new Error("Speichern fehlgeschlagen.");
-    return commandResult(true,"Gespeichert",result)
-  }catch(e){
-    state=before;LAST_STABLE_STATE=cloneState(before);
-    recordClientError(`command:${type}`,e);
-    return commandResult(false,String(e.message||e))
-  }
-}
-function safeCommandSummary(payload){
-  if(payload==null)return "";
-  if(typeof payload==="string")return payload.slice(0,180);
-  const out={};
-  for(const k of Object.keys(payload)){
-    if(/blob|pages|text|image/i.test(k))continue;
-    const v=payload[k];
-    out[k]=typeof v==="string"?v.slice(0,120):v;
-  }
-  try{return JSON.stringify(out)}catch{return "Command"}
-}
-
-function documentWorkflowState(doc){
-  const a=doc.analysis||{},f=a.fields||{};
-  if(a.status==="error")return "review";
-  if(a.status!=="done")return "new";
-  const proposals=f.positionProposals||[];
-  if(proposals.length&&!a.acceptedAt)return "review";
-  if(doc.sourceId||a.acceptedAt)return "done";
-  return "review";
-}
-function documentWorkflowLabel(doc){
-  const s=documentWorkflowState(doc);
-  return s==="new"?"Neu":s==="review"?"Prüfen":"Erledigt";
-}
-function documentsByWorkflow(docs){
-  return {
-    new:docs.filter(d=>documentWorkflowState(d)==="new"),
-    review:docs.filter(d=>documentWorkflowState(d)==="review"),
-    done:docs.filter(d=>documentWorkflowState(d)==="done")
-  }
-}
-
-function traceForPosition(state,position){
-  const source=(state.sources||[]).find(s=>s.id===position.sourceId)||null;
-  const docId=position.provenance?.documentId||position.documentId||source?.sourceDocumentId||"";
-  return {
-    position,
-    source,
-    documentId:docId,
-    origin:provenanceLabel(position),
-    evidence:position.provenance?.evidence||"",
-    confidence:position.provenance?.confidence,
-    confirmedAt:position.provenance?.confirmedAt||null
-  }
-}
-
-function billingClosureChecklist(state,year){
-  const readiness=billingReadiness(state,year),analysis=billingAnalysis(state,year),lease=state.leases?.[0]||null;
-  const relevant=analysis.events||[];
-  const docs=(state.documentsCache||[]);
-  const waterNeeded=relevant.some(e=>e.category==="water");
-  const waterOK=!waterNeeded||!!settlementConsumption(state,settlementByPeriod(state,year))?.valid;
-  const allConfirmed=(state.costPositions||[]).filter(p=>positionToEvents(state,p,year).length).every(p=>p.confirmed);
-  const allAssigned=analysis.unresolved.length===0;
-  const periodEnded=!!analysis.period?.end&&smartToday()>analysis.period.end;
-  const advanceOK=lease?(Number(lease.advance||0)<=0||Number(analysis.advanceEvidence?.recognizedPayments||0)>0):false;
-  const noErrors=readiness.every(x=>x.ok);
-  const points=[
-    {id:"period",label:"Abrechnungsperiode und Mietvertrag vorhanden",ok:!!lease},
-    {id:"periodComplete",label:"Abrechnungsperiode vollständig beendet",ok:periodEnded},
-    {id:"costs",label:"Alle relevanten Kostenpositionen bestätigt",ok:allConfirmed&&relevant.length>0},
-    {id:"assignment",label:"Alle Umlageentscheidungen geklärt",ok:allAssigned},
-    {id:"water",label:"Verbrauchsdaten vollständig",ok:waterOK},
-    {id:"advance",label:"Vorauszahlungen ermittelt",ok:advanceOK},
-    {id:"readiness",label:"Datenqualitätsprüfung ohne offene Pflichtpunkte",ok:noErrors}
-  ];
-  return {points,ok:points.every(x=>x.ok),analysis}
-}
-
-function snapshotVerification(snapshot){
-  if(!snapshot?.integrityHash)return {status:"unknown",label:"Keine Prüfsumme"};
-  return {status:"stored",label:`SHA-256 ${String(snapshot.integrityHash).slice(0,12)}…`}
-}
-
+const {
+  ensureTraceShape,
+  provenanceLabel,
+  createRestorePoint,
+  restoreFromPoint,
+  commandResult,
+  executeCommand,
+  safeCommandSummary,
+  documentWorkflowState,
+  documentWorkflowLabel,
+  documentsByWorkflow,
+  traceForPosition,
+  billingClosureChecklist,
+  snapshotVerification
+}=AppTraceability;
 
 /* ===== intelligence.js ===== */
 const INTELLIGENCE_VERSION=1;
