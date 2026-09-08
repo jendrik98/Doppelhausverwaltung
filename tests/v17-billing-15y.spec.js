@@ -55,14 +55,13 @@ function contextOptions() {
 async function openBillingYear(page, year) {
   await page.clock.setFixedTime(new Date(`${year + 1}-06-15T12:00:00+02:00`));
 
-  // Wichtig: Hash-Navigation allein lädt den extern in IndexedDB geschriebenen
-  // State nicht neu in den RAM der App. Deshalb zuerst Zielroute setzen und
-  // anschließend einen echten Dokument-Reload ausführen.
   if (!page.url().endsWith('#rental/billing')) {
-    await page.goto('./#rental/billing', { waitUntil: 'domcontentloaded' });
+    await page.goto('./#rental/billing', {waitUntil:'domcontentloaded'});
   }
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.evaluate(y => sessionStorage.setItem('billingSelectedYear', String(y)), year);
+  await page.reload({waitUntil:'domcontentloaded'});
   await expect(page.locator('#app')).not.toBeEmpty();
+  await expect(page.locator('#billingYearSelect')).toHaveValue(String(year));
   await page.waitForTimeout(450);
 }
 
@@ -77,8 +76,8 @@ function buildRealBillingHistory(base) {
     address: 'Langzeitweg 15, 12345 Teststadt',
     totalArea: 200,
     year: '1965',
-    billingTakeoverDate: `${startYear}-04-01`,
-    predecessorBillingEnd: `${startYear}-03-31`
+    billingTakeoverDate: `${startYear}-01-01`,
+    predecessorBillingEnd: `${startYear - 1}-12-31`
   };
   s.correspondence = {
     ...(s.correspondence || {}),
@@ -96,7 +95,7 @@ function buildRealBillingHistory(base) {
       area: 100,
       year: 1965,
       part: 'Doppelhaushälfte A',
-      occupancy: [{ from: `${startYear}-04-01`, to: '', count: 2 }]
+      occupancy: [{ from: `${startYear}-01-01`, to: '', count: 2 }]
     },
     {
       id: 'lt-rental-unit',
@@ -105,14 +104,14 @@ function buildRealBillingHistory(base) {
       area: 100,
       year: 1965,
       part: 'Doppelhaushälfte B',
-      occupancy: [{ from: `${startYear}-04-01`, to: '', count: 2 }]
+      occupancy: [{ from: `${startYear}-01-01`, to: '', count: 2 }]
     }
   ];
   s.leases = [{
     id: 'lt-lease',
     tenantName: 'Langzeit Testperson',
     tenantAddress: 'Langzeitweg 15',
-    start: `${startYear}-04-01`,
+    start: `${startYear}-01-01`,
     end: '',
     rent: 500,
     advance: 150,
@@ -155,8 +154,8 @@ function buildRealBillingHistory(base) {
 
   for (let i = 0; i < years; i++) {
     const y = startYear + i;
-    const periodStart = `${y}-04-01`;
-    const periodEnd = `${y + 1}-03-31`;
+    const periodStart = `${y}-01-01`;
+    const periodEnd = `${y}-12-31`;
     const houseM3 = 100 + i * 3;
     const ownerM3 = 40 + i;
     const tenantM3 = houseM3 - ownerM3;
@@ -229,9 +228,9 @@ function buildRealBillingHistory(base) {
       }
     );
 
-    // 12 reale monatliche Mietzahlungen je Abrechnungsjahr (April bis März).
+    // 12 reale monatliche Mietzahlungen je Kalenderjahr (Januar bis Dezember).
     for (let offset = 0; offset < 12; offset++) {
-      const d = new Date(Date.UTC(y, 3 + offset, 3));
+      const d = new Date(Date.UTC(y, offset, 3));
       const yy = d.getUTCFullYear();
       const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
       s.payments.push({
@@ -396,7 +395,7 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   const pdfPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'PDF erstellen' }).click();
   const pdf = await pdfPromise;
-  expect(pdf.suggestedFilename()).toBe('Betriebskostenabrechnung_2041-2042.pdf');
+  expect(pdf.suggestedFilename()).toBe('Betriebskostenabrechnung_2041.pdf');
   const pdfPath = 'test-results/v17-15y-billing-2041.pdf';
   await pdf.saveAs(pdfPath);
   const pdfBytes = fs.readFileSync(pdfPath);
@@ -446,6 +445,7 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   expect(restored2041.integrityHash).toMatch(/^[a-f0-9]{64}$/);
   expect(restored2041.events.some(x => x.category === 'water' && x.decision?.rule === 'consumption')).toBe(true);
 
+  await page2.evaluate(() => sessionStorage.setItem('billingSelectedYear', '2041'));
   await page2.goto('./#rental/billing', { waitUntil: 'domcontentloaded' });
   await page2.waitForTimeout(350);
   await expect(page2.getByText('Abrechnung eingefroren')).toBeVisible();

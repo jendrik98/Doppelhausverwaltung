@@ -202,7 +202,10 @@ function settlementConsumption(state,settlement){
   const os=readingById(owner,settlement.ownerStartReadingId),oe=readingById(owner,settlement.ownerEndReadingId);
   if(!ms||!me||!os||!oe)return null;
   const house=Number(me.value)-Number(ms.value),own=Number(oe.value)-Number(os.value),tenant=house-own;
-  return {house,owner:own,tenant,share:house>0?tenant/house:0,valid:house>=0&&own>=0&&tenant>=0}
+  const bp=Number.isInteger(Number(settlement.periodYear))?billingPeriodInfo(state,Number(settlement.periodYear)):null;
+  const periodAligned=!bp||(ms.date===bp.start&&os.date===bp.start&&me.date===bp.end&&oe.date===bp.end);
+  return {house,owner:own,tenant,share:house>0?tenant/house:0,periodAligned,
+    valid:house>=0&&own>=0&&tenant>=0&&periodAligned}
 }
 
 function positionToEvents(s,position,periodYear){

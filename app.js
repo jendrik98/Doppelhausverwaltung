@@ -2,6 +2,198 @@
 "use strict";
 try{
 
+
+/* ===== compiled src/core/validation.ts ===== */
+var AppValidation = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+  var stdin_exports = {};
+  __export(stdin_exports, {
+    normalizeIban: () => normalizeIban,
+    parseGermanNumber: () => parseGermanNumber,
+    validateArea: () => validateArea,
+    validateDateRange: () => validateDateRange,
+    validateEmail: () => validateEmail,
+    validateIban: () => validateIban,
+    validateIsoDate: () => validateIsoDate,
+    validateMeterReading: () => validateMeterReading,
+    validateMoney: () => validateMoney,
+    validatePositiveNumber: () => validatePositiveNumber,
+    validatePostalCodeDE: () => validatePostalCodeDE,
+    validateYear: () => validateYear
+  });
+  const valid = (value) => ({ ok: true, level: "ok", value });
+  const invalid = (message) => ({ ok: false, level: "error", message });
+  function normalizeIban(input) {
+    return String(input ?? "").replace(/\s+/g, "").toUpperCase();
+  }
+  function validateIban(input, required = false) {
+    const iban = normalizeIban(input);
+    if (!iban) return required ? invalid("IBAN fehlt.") : valid("");
+    if (!/^[A-Z]{2}\d{2}[A-Z0-9]+$/.test(iban)) {
+      return invalid("Die IBAN hat kein gültiges Format.");
+    }
+    if (iban.length < 15 || iban.length > 34) {
+      return invalid("Die IBAN hat eine unplausible Länge.");
+    }
+    if (iban.startsWith("DE") && iban.length !== 22) {
+      return invalid("Eine deutsche IBAN muss 22 Stellen haben.");
+    }
+    const rearranged = iban.slice(4) + iban.slice(0, 4);
+    let remainder = 0;
+    for (const ch of rearranged) {
+      const digits = /[A-Z]/.test(ch) ? String(ch.charCodeAt(0) - 55) : ch;
+      for (const digit of digits) remainder = (remainder * 10 + Number(digit)) % 97;
+    }
+    return remainder === 1 ? valid(iban) : invalid("Die Prüfsumme der IBAN ist ungültig.");
+  }
+  function parseGermanNumber(input) {
+    let text = String(input ?? "").trim().replace(/\s+/g, "");
+    if (!text) return null;
+    if (text.includes(",") && text.includes(".")) {
+      if (text.lastIndexOf(",") > text.lastIndexOf(".")) text = text.replace(/\./g, "").replace(",", ".");
+      else text = text.replace(/,/g, "");
+    } else if (text.includes(",")) {
+      text = text.replace(",", ".");
+    }
+    if (!/^-?\d+(?:\.\d+)?$/.test(text)) return null;
+    const value = Number(text);
+    return Number.isFinite(value) ? value : null;
+  }
+  function validateMoney(input, options = {}) {
+    const text = String(input ?? "").trim();
+    if (!text) return options.required ? invalid("Betrag fehlt.") : valid(null);
+    const value = parseGermanNumber(text);
+    if (value === null) return invalid("Der Betrag ist keine gültige Zahl.");
+    if (options.min !== void 0 && value < options.min) return invalid(`Der Betrag muss mindestens ${options.min} sein.`);
+    if (options.max !== void 0 && value > options.max) return invalid(`Der Betrag darf höchstens ${options.max} sein.`);
+    return valid(value);
+  }
+  function validatePositiveNumber(input, label, allowZero = false) {
+    const value = parseGermanNumber(input);
+    if (value === null) return invalid(`${label} ist keine gültige Zahl.`);
+    if (allowZero ? value < 0 : value <= 0) return invalid(`${label} muss ${allowZero ? "mindestens 0" : "größer als 0"} sein.`);
+    return valid(value);
+  }
+  function validateArea(input) {
+    const result = validatePositiveNumber(input, "Wohnfläche");
+    if (!result.ok) return result;
+    if ((result.value ?? 0) > 1e4) return invalid("Die Wohnfläche ist unplausibel groß.");
+    return result;
+  }
+  function validateYear(input, min = 1800, max = (/* @__PURE__ */ new Date()).getFullYear() + 5) {
+    const value = Number(input);
+    if (!Number.isInteger(value)) return invalid("Das Jahr ist ungültig.");
+    if (value < min || value > max) return invalid(`Das Jahr muss zwischen ${min} und ${max} liegen.`);
+    return valid(value);
+  }
+  function validateIsoDate(input, required = false) {
+    const value = String(input ?? "").trim();
+    if (!value) return required ? invalid("Datum fehlt.") : valid("");
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return invalid("Das Datum hat kein gültiges Format.");
+    const [, y, m, d] = match;
+    const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+    const same = date.getUTCFullYear() === Number(y) && date.getUTCMonth() + 1 === Number(m) && date.getUTCDate() === Number(d);
+    return same ? valid(value) : invalid("Das Datum existiert nicht.");
+  }
+  function validateDateRange(start, end) {
+    const a = validateIsoDate(start, true);
+    if (!a.ok) return invalid(`Startdatum: ${a.message}`);
+    const b = validateIsoDate(end, true);
+    if (!b.ok) return invalid(`Enddatum: ${b.message}`);
+    if (start > end) return invalid("Das Enddatum liegt vor dem Startdatum.");
+    return valid({ start, end });
+  }
+  function validateMeterReading(input, previous) {
+    const current = parseGermanNumber(input);
+    if (current === null || current < 0) return invalid("Der Zählerstand ist ungültig.");
+    if (previous !== void 0 && current < previous) {
+      return {
+        ok: true,
+        level: "warning",
+        value: current,
+        message: "Der neue Zählerstand ist kleiner als der vorherige. Bitte Zählerwechsel oder Eingabe prüfen."
+      };
+    }
+    return valid(current);
+  }
+  function validateEmail(input, required = false) {
+    const value = String(input ?? "").trim();
+    if (!value) return required ? invalid("E-Mail-Adresse fehlt.") : valid("");
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? valid(value) : invalid("Die E-Mail-Adresse ist ungültig.");
+  }
+  function validatePostalCodeDE(input, required = false) {
+    const value = String(input ?? "").trim();
+    if (!value) return required ? invalid("Postleitzahl fehlt.") : valid("");
+    return /^\d{5}$/.test(value) ? valid(value) : invalid("Eine deutsche Postleitzahl muss aus 5 Ziffern bestehen.");
+  }
+  return __toCommonJS(stdin_exports);
+})();
+
+
+/* ===== compiled src/core/feedback.ts ===== */
+var AppFeedback = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+  var stdin_exports = {};
+  __export(stdin_exports, {
+    showToast: () => showToast
+  });
+  function showToast(message, options = {}) {
+    const kind = options.kind ?? "success";
+    const timeoutMs = options.timeoutMs ?? 2600;
+    let region = document.getElementById("app-feedback-region");
+    if (!region) {
+      region = document.createElement("div");
+      region.id = "app-feedback-region";
+      region.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+      region.setAttribute("aria-atomic", "true");
+      document.body.appendChild(region);
+    }
+    const toast = document.createElement("div");
+    toast.className = `app-toast app-toast-${kind}`;
+    toast.setAttribute("role", kind === "error" ? "alert" : "status");
+    toast.textContent = message;
+    region.appendChild(toast);
+    window.setTimeout(() => {
+      toast.classList.add("is-leaving");
+      window.setTimeout(() => toast.remove(), 180);
+    }, timeoutMs);
+  }
+  return __toCommonJS(stdin_exports);
+})();
+
 /* ===== schema.js ===== */
 const SCHEMA_VERSION=13;
 
@@ -286,7 +478,10 @@ function settlementConsumption(state,settlement){
   const os=readingById(owner,settlement.ownerStartReadingId),oe=readingById(owner,settlement.ownerEndReadingId);
   if(!ms||!me||!os||!oe)return null;
   const house=Number(me.value)-Number(ms.value),own=Number(oe.value)-Number(os.value),tenant=house-own;
-  return {house,owner:own,tenant,share:house>0?tenant/house:0,valid:house>=0&&own>=0&&tenant>=0}
+  const bp=Number.isInteger(Number(settlement.periodYear))?billingPeriodInfo(state,Number(settlement.periodYear)):null;
+  const periodAligned=!bp||(ms.date===bp.start&&os.date===bp.start&&me.date===bp.end&&oe.date===bp.end);
+  return {house,owner:own,tenant,share:house>0?tenant/house:0,periodAligned,
+    valid:house>=0&&own>=0&&tenant>=0&&periodAligned}
 }
 
 function positionToEvents(s,position,periodYear){
@@ -1015,13 +1210,19 @@ function advanceAdjustmentSuggestion(state){
   return {periodYear:snap.periodYear,current,recommended,diff,relative:current?diff/current:0,material:Math.abs(diff)>=5&&Math.abs(diff/current)>=.05,basis:"Rechnerischer Richtwert aus der letzten abgeschlossenen Abrechnung; eine Anpassung nach einer Abrechnung ist nach § 560 Abs. 4 BGB grundsätzlich möglich, die angemessene Höhe ist im Einzelfall zu prüfen."}
 }
 function billingDeadlineInsights(state){
-  const out=[],today=smartToday(),cy=currentPeriodYear();
-  for(let y=cy-4;y<cy;y++){
-    const lease=state.leases?.[0];if(!lease||!activeLeaseInMonth(lease,`${y+1}-03`))continue;
-    if(periodEnd(y)>=today||snapshotFor(state,y))continue;
-    const deadline=periodDeadlineISO(y),days=calendarDayDiff(today,deadline);
-    if(days<0)out.push({id:`deadline-${y}`,severity:"bad",title:`Abrechnung ${billingPeriodLabel(state,y)} ohne gespeicherten Abschluss`,detail:`Die reguläre 12-Monats-Frist endete am ${new Date(deadline+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"calculation"});
-    else if(days<=120)out.push({id:`deadline-${y}`,severity:days<=30?"bad":"warn",title:`Abrechnung ${billingPeriodLabel(state,y)} abschließen`,detail:`Noch ${days} Tage bis zum regulären Fristende ${new Date(deadline+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"calculation"})
+  const out=[],today=smartToday(),cy=currentPeriodYear(),lease=state.leases?.[0];
+  for(let y=cy-4;y<=cy;y++){
+    const p=billingPeriodInfo(state,y);if(!lease||!p.active||snapshotFor(state,y)||p.end>=today)continue;
+    const leaseStart=lease.start||p.start,leaseEnd=lease.end||p.end;
+    if(leaseStart>p.end||leaseEnd<p.start)continue;
+    const target=periodBillingTargetISO(y),legal=periodDeadlineISO(y),targetDays=calendarDayDiff(today,target),legalDays=calendarDayDiff(today,legal);
+    if(targetDays>=0&&targetDays<=120){
+      out.push({id:`target-${y}`,severity:targetDays<=30?"warn":"info",title:`Endabrechnung ${billingPeriodLabel(state,y)} vorbereiten`,detail:`Eigene Zielfrist: ${new Date(target+"T00:00:00").toLocaleDateString("de-DE")} · noch ${targetDays} Tage.`,why:"Eigene Arbeitszielfrist",confidence:100,route:"rental",sub:"billing"})
+    }else if(targetDays<0&&legalDays>=0){
+      out.push({id:`target-${y}`,severity:"warn",title:`Eigene Zielfrist für ${billingPeriodLabel(state,y)} überschritten`,detail:`Die Endabrechnung sollte bis ${new Date(target+"T00:00:00").toLocaleDateString("de-DE")} fertig sein. Die gesetzliche Abrechnungsfrist läuft bis ${new Date(legal+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"Interne Zielfrist; gesetzliche Frist separat",confidence:100,route:"rental",sub:"billing"})
+    }else if(legalDays<0){
+      out.push({id:`deadline-${y}`,severity:"bad",title:`Gesetzliche Abrechnungsfrist ${billingPeriodLabel(state,y)} überschritten`,detail:`Die reguläre Frist endete am ${new Date(legal+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"billing"})
+    }
   }
   return out
 }
@@ -1278,15 +1479,19 @@ const confidencePercent=v=>{const n=Number(v||0);return Math.max(0,Math.min(100,
 const percent=n=>new Intl.NumberFormat("de-DE",{style:"percent",maximumFractionDigits:1}).format(Number(n)||0);
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random();
 
-const periodStart=y=>`${y}-04-01`;
-const periodEnd=y=>`${y+1}-03-31`;
-const periodLabel=y=>`01.04.${y} – 31.03.${y+1}`;
-const periodDeadlineISO=y=>`${y+2}-03-31`;
+const periodStart=y=>`${y}-01-01`;
+const periodEnd=y=>`${y}-12-31`;
+const periodLabel=y=>`01.01.${y} – 31.12.${y}`;
+// Eigene Arbeitszielfrist: Endabrechnung des Kalenderjahres bis 31.03. des Folgejahres fertigstellen.
+const periodBillingTargetISO=y=>`${y+1}-03-31`;
+const periodBillingTarget=y=>dateDE(periodBillingTargetISO(y));
+// Gesetzliche Abrechnungsfrist nach § 556 Abs. 3 BGB: grundsätzlich 12 Monate nach Periodenende.
+const periodDeadlineISO=y=>`${y+1}-12-31`;
 const periodDeadline=y=>dateDE(periodDeadlineISO(y));
-function currentPeriodYear(){const d=new Date();return d.getMonth()>=3?d.getFullYear():d.getFullYear()-1}
+function currentPeriodYear(){return new Date().getFullYear()}
 function preferredBillingYear(){
-  const d=new Date(),m=d.getMonth();
-  return m>=3&&m<=5?d.getFullYear()-1:currentPeriodYear()
+  const d=new Date(),y=d.getFullYear();
+  return d.getMonth()<=2?y-1:y
 }
 function billingSelectableYears(s=state){
   const years=new Set([preferredBillingYear(),currentPeriodYear()]);
@@ -1295,13 +1500,13 @@ function billingSelectableYears(s=state){
   for(const pos of s.costPositions||[]){
     const d=String(pos.serviceStart||pos.serviceEnd||"").slice(0,10);
     if(/^\d{4}-\d{2}-\d{2}$/.test(d)){
-      const [yy,mm]=d.split("-").map(Number);
-      years.add(mm>=4?yy:yy-1)
+      const [yy]=d.split("-").map(Number);
+      years.add(yy)
     }
   }
   const takeover=billingTakeoverDate(s);
   if(/^\d{4}-\d{2}-\d{2}$/.test(takeover)){
-    const [yy,mm]=takeover.split("-").map(Number),first=mm>=4?yy:yy-1,last=currentPeriodYear();
+    const [yy]=takeover.split("-").map(Number),first=yy,last=currentPeriodYear();
     for(let y=first;y<=last&&y<first+60;y++)if(billingPeriodInfo(s,y).active)years.add(y)
   }else years.add(currentPeriodYear()-1);
   return [...years].filter(y=>Number.isInteger(y)&&y>1900&&billingPeriodInfo(s,y).active).sort((a,b)=>b-a)
@@ -1337,7 +1542,7 @@ function billingPeriodContext(s,year){
   const p=billingPeriodInfo(s,year);
   if(!p.active)return {kind:"before-takeover",message:"Diese Periode liegt vollständig vor der Verwaltungsübernahme."};
   if(p.isTakeoverPeriod)return {kind:"takeover",message:`Erste eigene Abrechnungsperiode ab ${new Date(p.start+"T00:00:00").toLocaleDateString("de-DE")}. Der Voreigentümer rechnet bis ${new Date(p.predecessorEnd+"T00:00:00").toLocaleDateString("de-DE")} selbst ab.`};
-  return {kind:"annual",message:"Reguläre jährliche Abrechnungsperiode 01.04.–31.03."}
+  return {kind:"annual",message:"Reguläre jährliche Abrechnungsperiode 01.01.–31.12."}
 }
 
 
@@ -1760,6 +1965,69 @@ function formField({name,label,type="text",value="",options=[],full=false,step,m
 }
 
 
+function clearCentralValidation(form){
+  form.querySelectorAll(".field-error").forEach(x=>x.remove());
+  form.querySelectorAll('[aria-invalid="true"]').forEach(x=>x.removeAttribute("aria-invalid"))
+}
+function centralFieldLabel(el){
+  const label=el.closest("label");if(!label)return el.name||"Eingabe";
+  const text=[...label.childNodes].filter(n=>n.nodeType===Node.TEXT_NODE).map(n=>n.textContent).join(" ").trim();
+  return text||el.name||"Eingabe"
+}
+function markCentralError(el,message){
+  el.setAttribute("aria-invalid","true");
+  const label=el.closest("label");if(label){const note=document.createElement("small");note.className="field-error";note.textContent=message;label.appendChild(note)}
+}
+function validateCentralForm(form){
+  clearCentralValidation(form);
+  const values=Object.fromEntries(new FormData(form)),errors=[],warnings=[];
+  const fail=(el,msg)=>{if(!el)return;errors.push({el,msg});markCentralError(el,msg)};
+  const warn=(el,msg)=>warnings.push({el,msg});
+  const byName=name=>form.elements.namedItem(name);
+
+  for(const el of form.querySelectorAll("input[name],select[name],textarea[name]")){
+    if(el.disabled)continue;const name=el.name,value=String(el.value??"").trim();
+    if(el.type==="date"&&value){const r=AppValidation.validateIsoDate(value,false);if(!r.ok)fail(el,r.message||"Ungültiges Datum.")}
+    if(el.type==="number"&&value!==""){
+      const n=AppValidation.parseGermanNumber(value);if(n===null){fail(el,"Bitte eine gültige Zahl eingeben.");continue}
+      if(el.min!==""&&n<Number(el.min))fail(el,`Der Wert muss mindestens ${el.min} sein.`);
+      if(el.max!==""&&n>Number(el.max))fail(el,`Der Wert darf höchstens ${el.max} sein.`)
+    }
+    if(name==="iban"&&value){const r=AppValidation.validateIban(value,false);if(!r.ok)fail(el,r.message||"IBAN prüfen.")}
+    if((name==="area"||name==="totalArea")&&value){const r=AppValidation.validateArea(value);if(!r.ok)fail(el,r.message||"Wohnfläche prüfen.");else if(Number(r.value)>1000)warn(el,"Die eingegebene Wohnfläche ist ungewöhnlich groß.")}
+    if((name==="year"||name==="constructionYear"||name==="periodYear")&&value){const r=AppValidation.validateYear(value);if(!r.ok)fail(el,r.message||"Jahr prüfen.")}
+    if(["rent","advance","amount","repayment","fixed"].includes(name)&&value){const r=AppValidation.validateMoney(value,{min:0});if(!r.ok)fail(el,r.message||"Betrag prüfen.");else if(Number(r.value)>100000)warn(el,"Der Betrag ist ungewöhnlich hoch.")}
+    if(name==="persons"&&value!==""&&Number(value)>20)warn(el,"Die Personenzahl ist ungewöhnlich hoch.")
+    if(["mainStart","mainEnd","ownerStart","ownerEnd"].includes(name)&&value!==""){
+      const r=AppValidation.validateMeterReading(value);if(!r.ok)fail(el,r.message||"Zählerstand prüfen.")
+    }
+  }
+
+  const datePair=(a,b,label)=>{const A=String(values[a]||""),B=String(values[b]||"");if(A&&B&&A>B)fail(byName(b),`${label}: Das Enddatum liegt vor dem Startdatum.`)};
+  datePair("start","end","Vertragszeitraum");
+  datePair("serviceStart","serviceEnd","Leistungszeitraum");
+  datePair("mainStartDate","mainEndDate","Hauptzähler-Zeitraum");
+  datePair("ownerStartDate","ownerEndDate","Zwischenzähler-Zeitraum");
+  if(values.billingTakeoverDate&&values.predecessorBillingEnd&&values.predecessorBillingEnd>=values.billingTakeoverDate)fail(byName("predecessorBillingEnd"),"Der Abrechnungszeitraum des Voreigentümers muss vor der eigenen Übernahme enden.");
+  if(values.mainStart!==undefined&&values.mainEnd!==undefined&&values.mainStart!==""&&values.mainEnd!==""&&Number(values.mainEnd)<Number(values.mainStart))fail(byName("mainEnd"),"Der Endstand des Hauptzählers darf nicht kleiner als der Anfangsstand sein.");
+  if(values.ownerStart!==undefined&&values.ownerEnd!==undefined&&values.ownerStart!==""&&values.ownerEnd!==""&&Number(values.ownerEnd)<Number(values.ownerStart))fail(byName("ownerEnd"),"Der Endstand des Zwischenzählers darf nicht kleiner als der Anfangsstand sein.");
+
+  if(errors.length){
+    AppFeedback.showToast("Bitte markierte Eingaben prüfen.",{kind:"error",timeoutMs:4200});
+    errors[0].el.focus();return false
+  }
+  if(warnings.length){
+    const text=warnings.map(x=>`• ${centralFieldLabel(x.el)}: ${x.msg}`).join("\n");
+    if(!confirm(`Ungewöhnliche Eingabe erkannt:\n\n${text}\n\nTrotzdem speichern?`)){warnings[0].el.focus();return false}
+  }
+  return true
+}
+document.addEventListener("submit",e=>{
+  const form=e.target;if(!(form instanceof HTMLFormElement)||form.dataset.skipCentralValidation==="true")return;
+  if(!validateCentralForm(form)){e.preventDefault();e.stopImmediatePropagation()}
+},true);
+
+
 
 /* ===== app.js ===== */
 
@@ -1828,10 +2096,11 @@ async function persist(action,detail){
     const check=validateDomainState(state);if(check.errors.length)throw new Error("Datenintegrität: "+check.errors.join(" · "));
     if(action)audit(action,detail);
     state.meta.revision=Number(state.meta.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
-    await saveState(state);LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};return true
+    await saveState(state);LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};if(action)AppFeedback.showToast(action,{kind:"success"});return true
   }catch(e){
     recordClientError("persist",e);storageError=e;console.error("Speicher-/Integritätsfehler:",e);
     if(before){state=before;LAST_STABLE_STATE=cloneState(before)}
+    AppFeedback.showToast("Speichern fehlgeschlagen – Änderung wurde zurückgenommen.",{kind:"error",timeoutMs:5000});
     alert("Die Änderung wurde nicht gespeichert und zurückgenommen: "+String(e.message||e));try{render()}catch{};return false
   }
 }
@@ -1855,14 +2124,14 @@ function taskList(){
   for(let y=cy-3;y<=cy;y++){
     const info=billingPeriodInfo(state,y);
     if(!info.active||info.end>=today||snapshotFor(state,y))continue;
-    push({id:`billing-${y}`,title:`Betriebskostenabrechnung ${billingPeriodLabel(state,y)}`,due:periodDeadlineISO(y),lead:30,origin:"billing",periodYear:y})
+    push({id:`billing-${y}`,title:`Endabrechnung ${billingPeriodLabel(state,y)} fertigstellen`,due:periodBillingTargetISO(y),lead:30,origin:"billing",periodYear:y})
   }
   for(const t of state.tasks||[])push(t);
   return out.sort((a,b)=>(a.due||"").localeCompare(b.due||""))
 }
 function daysUntil(d){const x=calendarDayDiff(smartToday(),d);return Number.isFinite(x)?x:0}
 function taskHTML(t){
-  const d=daysUntil(t.due),cls=d<0?"bad":d<=Number(t.lead||30)?"warn":"good",origin=t.origin==="source"?"aus Fälligkeit":t.origin==="billing"?"Abrechnungsfrist":t.origin==="smart"?"vorgeschlagen":"eigene Erinnerung";
+  const d=daysUntil(t.due),cls=d<0?"bad":d<=Number(t.lead||30)?"warn":"good",origin=t.origin==="source"?"aus Fälligkeit":t.origin==="billing"?"eigene Zielfrist 31.03.":t.origin==="smart"?"vorgeschlagen":"eigene Erinnerung";
   return `<div class="task premium-task"><div><h4>${esc(t.title)}</h4><small>${dateDE(t.due)} · ${esc(origin)}</small></div><span class="pill ${cls}">${d<0?`${Math.abs(d)} Tage überfällig`:d===0?"heute":`in ${d} Tagen`}</span></div>`
 }
 
@@ -2071,7 +2340,7 @@ function propertyView(){
     ${formField({name:"address",label:"Adresse",value:state.property.address||"",placeholder:"Straße, Hausnummer, Ort"})}
     ${formField({name:"totalArea",label:"Gesamtwohnfläche m²",type:"number",step:"0.01",min:0,value:state.property.totalArea||""})}
     ${formField({name:"year",label:"Baujahr Stammgebäude",type:"number",min:1800,value:state.property.year||""})}
-    <div class="full section-separator"><h3>Abrechnungsrhythmus</h3><p class="muted">Standard ist 01.04.–31.03. Bei einer Übernahme mitten im Zyklus beginnt nur die erste eigene Periode später; danach läuft der normale Jahresrhythmus.</p></div>
+    <div class="full section-separator"><h3>Abrechnungsrhythmus</h3><p class="muted">Abgerechnet wird immer nach Kalenderjahr 01.01.–31.12. Bei einer Übernahme mitten im Jahr beginnt nur die erste eigene Periode am Übernahmedatum; ab dem Folgejahr gilt wieder 01.01.–31.12.</p></div>
     ${formField({name:"billingTakeoverDate",label:"Abrechnung übernommen am",type:"date",value:takeover})}
     ${formField({name:"predecessorBillingEnd",label:"Voreigentümer rechnet bis",type:"date",value:pred})}
     <div class="full" id="billingPeriodPreview"></div>
@@ -2084,7 +2353,7 @@ function propertyView(){
     <div class="full"><button class="primary">Objektdaten speichern</button></div>
   </form>`;
   const preview=()=>{const v=Object.fromEntries(new FormData($("propertyForm"))),tmp=structuredClone(state);tmp.property.billingTakeoverDate=v.billingTakeoverDate||"";tmp.property.predecessorBillingEnd=v.predecessorBillingEnd||"";
-    const y=currentPeriodYear(),ctx=billingPeriodContext(tmp,y),p=billingPeriodInfo(tmp,y);$("billingPeriodPreview").innerHTML=`<div class="${ctx.kind==="takeover"?"info":"legal-ok"}"><strong>${esc(billingPeriodLabel(tmp,y))}</strong><br>${esc(ctx.message)}${p.isTakeoverPeriod?`<br><small>Danach: ${esc(billingPeriodLabel(tmp,y+1))}</small>`:""}</div>`};
+    const y=currentPeriodYear(),ctx=billingPeriodContext(tmp,y),p=billingPeriodInfo(tmp,y);$("billingPeriodPreview").innerHTML=`<div class="${ctx.kind==="takeover"?"info":"legal-ok"}"><strong>${esc(billingPeriodLabel(tmp,y))}</strong><br>${esc(ctx.message)}${p.isTakeoverPeriod?`<br><small>Danach: ${esc(billingPeriodLabel(tmp,y+1))}</small>`:""}<br><small>Endabrechnung intern bis ${periodBillingTarget(y)} · gesetzliche Abrechnungsfrist ${periodDeadline(y)}</small></div>`};
   $("propertyForm").oninput=preview;preview();
   $("propertyForm").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target));state.property={...state.property,name:v.name.trim(),address:v.address.trim(),totalArea:Number(v.totalArea)||0,year:v.year,billingTakeoverDate:v.billingTakeoverDate||"",predecessorBillingEnd:v.predecessorBillingEnd||""};if(state.property.billingTakeoverDate&&!state.property.ownershipEffective)state.property.ownershipEffective=state.property.billingTakeoverDate;
     state.correspondence={landlordName:v.landlordName.trim(),landlordAddress:v.landlordAddress.trim(),iban:v.iban.trim(),paymentReference:v.paymentReference.trim(),contact:v.contact.trim()};await persist("Objektdaten geändert",state.property.name||"Objekt");propertyView()}
@@ -2865,7 +3134,7 @@ function rentalOverview(){
       <div id="leaseDocumentSlot"><span class="muted">Dokument wird geladen …</span></div>
     </div>
   </section>
-  <div class="${ctx.kind==="takeover"?"info":"legal-ok"}"><strong>${esc(billingPeriodLabel(state,y))}</strong><br>${esc(ctx.message)}<br><small>Reguläres Fristende: ${periodDeadline(y)}.</small></div>
+  <div class="${ctx.kind==="takeover"?"info":"legal-ok"}"><strong>${esc(billingPeriodLabel(state,y))}</strong><br>${esc(ctx.message)}<br><small>Endabrechnung intern bis ${periodBillingTarget(y)} · gesetzliche Abrechnungsfrist ${periodDeadline(y)}.</small></div>
   ${p.missingCategories.length?`<details class="card secondary-detail"><summary>Was in der Prognose noch geschätzt wird</summary><div class="detail-content"><p>${p.missingCategories.map(x=>`${esc(categoryLabel(x.category))}${x.annualized?" (aus Teilperiode hochgerechnet)":""}`).join(", ")}</p><span class="confidence confidence-${cb.id}">${esc(cb.label)} · ${p.confidence}%</span></div></details>`:""}
   <div class="card"><div class="fact-row"><span>Mietzahlung ${esc(rent.key)}</span><strong>${rent.status==="none"?"kein aktiver Vertrag":esc(rentStatusLabel(rent))}</strong></div>${rent.status!=="none"?`<small>${euro(rent.paid)} von ${euro(rent.expected)} in erfassten Zahlungen erkannt.</small>`:""}</div>
   ${v17RentLedgerCard(state)}
@@ -2946,7 +3215,7 @@ function calculationView(){
   document.querySelectorAll("[data-closure]").forEach(b=>b.onclick=()=>{const r=routeFor[b.dataset.closure];if(r)go(r[0],r[1])});
   document.querySelectorAll("[data-bill-trace]").forEach(b=>b.onclick=()=>openPositionTrace(positionById(state,b.dataset.billTrace)));
   if($("freezeBilling"))$("freezeBilling").onclick=()=>openBillingFinalReview(y);
-  if($("downloadBillingPDF"))$("downloadBillingPDF").onclick=async()=>{try{const pdf=await generateProfessionalBillingPDF(state,y,snap);pdf.save(`Betriebskostenabrechnung_${y}-${y+1}.pdf`)}catch(e){recordClientError("billing-pdf",e);alert(e.message||e)}};
+  if($("downloadBillingPDF"))$("downloadBillingPDF").onclick=async()=>{try{const pdf=await generateProfessionalBillingPDF(state,y,snap);pdf.save(`Betriebskostenabrechnung_${y}.pdf`);AppFeedback.showToast("Abrechnungs-PDF erstellt",{kind:"success"})}catch(e){recordClientError("billing-pdf",e);AppFeedback.showToast("PDF-Erstellung fehlgeschlagen",{kind:"error"});alert(e.message||e)}};
   if($("printBillingBtn"))$("printBillingBtn").onclick=()=>printBilling(snap||a,y,snap)
 }
 function openBillingFinalReview(y){
@@ -3104,7 +3373,7 @@ function openBankImportPreview(parsed,fileName){
     $("commitBankImport").onclick=async()=>{const selected=[...document.querySelectorAll("[data-import-row]:checked")].map(x=>rows[Number(x.dataset.importRow)]).filter(Boolean);if(!selected.length)return;
       createRestorePoint("Vor Kontoimport");
       const result=await executeCommand("bank.csv.import",{fileName,count:selected.length},async()=>{for(const r of selected)state.payments.push({id:uid(),date:r.date,direction:r.direction,label:r.label,amount:r.amount,sourceId:"",positionId:"",importOrigin:"csv",importFile:fileName});state.meta.importHistory.unshift({id:uid(),at:new Date().toISOString(),fileName,recognized:rows.length,imported:selected.length,duplicates:rows.length-fresh.length});state.meta.importHistory=state.meta.importHistory.slice(0,25)},{auditText:"Kontoauszug importiert"});
-      if(!result.ok)return alert(result.message);closeModal(true);cashflowView()
+      if(!result.ok)return alert(result.message);AppFeedback.showToast(`${selected.length} Buchung(en) importiert`,{kind:"success"});closeModal(true);cashflowView()
     }
   })
 }

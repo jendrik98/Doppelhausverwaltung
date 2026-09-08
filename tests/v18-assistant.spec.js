@@ -68,8 +68,8 @@ async function seedBase(page, {
   s.sources=[]; s.costPositions=[]; s.waterSettlements=[]; s.payments=[]; s.billingWorkflows=[]; s.billingSnapshots=[]; s.tasks=[];
   s.meta = {...s.meta, lastBackupAt:backupAt};
 
-  const start = takeover > `${year}-04-01` ? takeover : `${year}-04-01`;
-  const end = `${year+1}-03-31`;
+  const start = takeover > `${year}-01-01` ? takeover : `${year}-01-01`;
+  const end = `${year}-12-31`;
   s.costPositions.push(
     cost(`tax-${year}`,'propertyTax',200,start,end),
     cost(`rain-${year}`,'rainwater',80,start,end),
@@ -80,7 +80,7 @@ async function seedBase(page, {
   if(includeCurrentInsurance) s.costPositions.push(cost(`insurance-${year}`,'insurance',1000,start,end));
   if(includePriorInsurance) {
     const py=year-1;
-    s.costPositions.push(cost(`insurance-${py}`,'insurance',1000,`${py}-04-01`,`${py+1}-03-31`));
+    s.costPositions.push(cost(`insurance-${py}`,'insurance',1000,`${py}-01-01`,`${py}-12-31`));
   }
 
   if(validWater) {
@@ -101,7 +101,7 @@ async function seedBase(page, {
 
   const monthCount = fullPayments ? 12 : 1;
   for(let i=0;i<monthCount;i++) {
-    const d = new Date(Date.UTC(year, 3+i, 3));
+    const d = new Date(Date.UTC(year, i, 3));
     const iso=d.toISOString().slice(0,10);
     if(iso < takeover) continue;
     s.payments.push({
@@ -123,7 +123,7 @@ async function reload(page, hash='./') {
   await page.waitForTimeout(350);
 }
 
-test('V18 Assistent: erste Teilperiode zeigt 7 geplante Vorauszahlungen, offene Daten und Backup-Status', async ({ page }) => {
+test('V18 Assistent: erste Teilperiode zeigt 4 geplante Vorauszahlungen, offene Daten und Backup-Status', async ({ page }) => {
   const guard=runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2026-10-15T12:00:00+02:00'));
   await seedBase(page);
@@ -137,7 +137,7 @@ test('V18 Assistent: erste Teilperiode zeigt 7 geplante Vorauszahlungen, offene 
 
   const full=page.locator('#v18BillingAssistantFull');
   await expect(full).toBeVisible();
-  await expect(full).toContainText('875,00');
+  await expect(full).toContainText('500,00');
   await expect(full.locator('[data-v18-category="insurance"]')).toContainText('Offen');
   await expect(full.locator('[data-v18-category="water"]')).toContainText('Offen');
   guard.assertClean();
@@ -146,7 +146,7 @@ test('V18 Assistent: erste Teilperiode zeigt 7 geplante Vorauszahlungen, offene 
 test('V18 Assistent: historische Gebäudeversicherung wird transparent geschätzt statt erfunden', async ({ page }) => {
   const guard=runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2027-10-15T12:00:00+02:00'));
-  await seedBase(page,{year:2027,takeover:'2026-04-01',includePriorInsurance:true,validWater:true});
+  await seedBase(page,{year:2027,takeover:'2026-01-01',includePriorInsurance:true,validWater:true});
   await reload(page,'./#rental/billing');
 
   const row=page.locator('#v18BillingAssistantFull [data-v18-category="insurance"]');
@@ -159,7 +159,7 @@ test('V18 Assistent: historische Gebäudeversicherung wird transparent geschätz
 test('V18 Assistent: aktueller Beleg ersetzt die Schätzung automatisch', async ({ page }) => {
   const guard=runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2027-10-15T12:00:00+02:00'));
-  await seedBase(page,{year:2027,takeover:'2026-04-01',includePriorInsurance:true,includeCurrentInsurance:true,validWater:true});
+  await seedBase(page,{year:2027,takeover:'2026-01-01',includePriorInsurance:true,includeCurrentInsurance:true,validWater:true});
   await reload(page,'./#rental/billing');
 
   const row=page.locator('#v18BillingAssistantFull [data-v18-category="insurance"]');
@@ -172,7 +172,8 @@ test('V18 Sicherheit: Schätzwerte gelangen niemals in Snapshot oder finale Abre
   test.setTimeout(60_000);
   const guard=runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2028-06-15T12:00:00+02:00'));
-  await seedBase(page,{year:2027,takeover:'2026-04-01',rent:500,advance:150,includePriorInsurance:true,validWater:true,fullPayments:true,backupAt:'2028-06-01T12:00:00.000Z'});
+  await seedBase(page,{year:2027,takeover:'2026-01-01',rent:500,advance:150,includePriorInsurance:true,validWater:true,fullPayments:true,backupAt:'2028-06-01T12:00:00.000Z'});
+  await page.evaluate(() => sessionStorage.setItem('billingSelectedYear','2027'));
   await reload(page,'./#rental/billing');
 
   const assistant=page.locator('#v18BillingAssistantFull');

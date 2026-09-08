@@ -3,7 +3,7 @@ const { runtimeGuard, openApp, top, section, currentPeriodYear, addUnit } = requ
 
 async function buildCoreData(page) {
   const y = await currentPeriodYear(page);
-  const takeover = `${y}-09-01`, predecessor = `${y}-08-31`, end = `${y + 1}-03-31`;
+  const takeover = `${y}-09-01`, predecessor = `${y}-08-31`, end = `${y}-12-31`;
 
   await top(page, 'Haus');
   await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
@@ -17,7 +17,7 @@ async function buildCoreData(page) {
   await page.getByLabel('Absenderadresse').fill('Musterweg 10');
   await page.getByRole('button', { name: 'Objektdaten speichern' }).click();
   await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`0?1\\.0?9\\.${y}`));
-  await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`31\\.0?3\\.${y + 1}`));
+  await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`31\\.12\\.${y}`));
 
   await top(page, 'Haus');
   await page.getByRole('button', { name: 'Einheiten bearbeiten' }).click();
@@ -135,7 +135,7 @@ test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung 
 
   await top(page, 'Vermietung');
   await section(page, 'billing');
-  await expect(page.getByRole('heading', { name: new RegExp(`0?1\\.0?9\\.${dates.y}.*31\\.0?3\\.${dates.y + 1}`) })).toBeVisible();
+  await expect(page.getByRole('heading', { name: new RegExp(`0?1\\.0?9\\.${dates.y}.*31\\.12\\.${dates.y}`) })).toBeVisible();
   await expect(page.getByText('Abschlussprüfung')).toBeVisible();
   const waterStep = page.getByRole('button').filter({ hasText: 'Verbrauchsdaten vollständig' });
   if (await waterStep.count()) {

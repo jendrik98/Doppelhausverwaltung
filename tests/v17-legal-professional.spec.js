@@ -70,7 +70,7 @@ function normalizedText(s) {
 }
 
 function expectedPeriodLabel(y) {
-  return `1.4.${y} – 31.3.${y + 1}`;
+  return `1.1.${y} – 31.12.${y}`;
 }
 
 function addPeriodData(s, y, i, {
@@ -79,10 +79,10 @@ function addPeriodData(s, y, i, {
   insuranceCostOverride = null,
   includeOwnerOnlyCosts = true
 } = {}) {
-  const periodStart = `${y}-04-01`;
-  const periodEnd = `${y + 1}-03-31`;
-  const finalizationDate = `${y + 1}-06-15`;
-  const statutoryDeadline = `${y + 2}-03-31`;
+  const periodStart = `${y}-01-01`;
+  const periodEnd = `${y}-12-31`;
+  const finalizationDate = `${y + 1}-03-15`;
+  const statutoryDeadline = `${y + 1}-12-31`;
 
   const houseM3 = 100 + i * 3;
   const ownerM3 = 40 + i;
@@ -208,7 +208,7 @@ function addPeriodData(s, y, i, {
 
   let actualAdvances = 0;
   for (let offset = 0; offset < 12; offset++) {
-    const d = new Date(Date.UTC(y, 3 + offset, 3));
+    const d = new Date(Date.UTC(y, offset, 3));
     const yy = d.getUTCFullYear();
     const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
     const advanceAmount = offset === missingAdvanceMonth ? 0 : 150;
@@ -275,8 +275,8 @@ function buildAuditState(base, {
     address: 'Langzeitweg 15, 12345 Teststadt',
     totalArea: 200,
     year: '1965',
-    billingTakeoverDate: `${startYear}-04-01`,
-    predecessorBillingEnd: `${startYear}-03-31`
+    billingTakeoverDate: `${startYear}-01-01`,
+    predecessorBillingEnd: `${startYear - 1}-12-31`
   };
 
   s.correspondence = {
@@ -296,7 +296,7 @@ function buildAuditState(base, {
       area: 100,
       year: 1965,
       part: 'Doppelhaushälfte A',
-      occupancy: [{ from: `${startYear}-04-01`, to: '', count: 2 }]
+      occupancy: [{ from: `${startYear}-01-01`, to: '', count: 2 }]
     },
     {
       id: 'audit-rental-unit',
@@ -305,7 +305,7 @@ function buildAuditState(base, {
       area: 100,
       year: 1965,
       part: 'Doppelhaushälfte B',
-      occupancy: [{ from: `${startYear}-04-01`, to: '', count: 2 }]
+      occupancy: [{ from: `${startYear}-01-01`, to: '', count: 2 }]
     }
   ];
 
@@ -313,7 +313,7 @@ function buildAuditState(base, {
     id: 'audit-lease',
     tenantName: 'Langzeit Testperson',
     tenantAddress: 'Langzeitweg 15, 12345 Teststadt',
-    start: `${startYear}-04-01`,
+    start: `${startYear}-01-01`,
     end: '',
     rent: 500,
     advance: 150,
@@ -486,7 +486,7 @@ test('V17 Rechtsschutz: laufende Periode nicht finalisieren, abgeschlossene Peri
   await seed(page, { startYear: 2027, years: 1, missingAdvanceYear: -1 });
   let body = await openCurrentBilling(page);
 
-  await expect(body).toContainText(/1\.4\.2027\s*–\s*31\.3\.2028/);
+  await expect(body).toContainText(/1\.1\.2027\s*–\s*31\.12\.2027/);
 
   const freezeBeforeEnd = page.getByRole('button', { name: 'Final prüfen & einfrieren' });
   await expect.soft(
@@ -498,12 +498,13 @@ test('V17 Rechtsschutz: laufende Periode nicht finalisieren, abgeschlossene Peri
   // erreichbar und abrechenbar sein; eine automatische Umschaltung auf 2028/29
   // darf die Abschlussmöglichkeit für 2027/28 nicht verlieren.
   await page.clock.setFixedTime(new Date('2028-06-15T12:00:00+02:00'));
+  await page.evaluate(() => sessionStorage.setItem('billingSelectedYear','2027'));
   body = await openCurrentBilling(page);
 
   await expect.soft(
     body,
     'Nach Periodenende muss 2027/28 weiterhin auswählbar/abrechenbar bleiben.'
-  ).toContainText(/1\.4\.2027\s*–\s*31\.3\.2028/);
+  ).toContainText(/1\.1\.2027\s*–\s*31\.12\.2027/);
 
   guard.assertClean();
   await context.close();
@@ -516,6 +517,7 @@ test('V17 Inhaltsrichtigkeit: tatsächlich geleistete BK-Vorauszahlungen bestimm
 
   await page.clock.setFixedTime(new Date('2028-06-15T12:00:00+02:00'));
   const built = await seed(page, { startYear: 2027, years: 1, missingAdvanceYear: 2027 });
+  await page.evaluate(() => sessionStorage.setItem('billingSelectedYear','2027'));
   await openCurrentBilling(page);
   await freezeVisibleBilling(page);
 
@@ -563,7 +565,7 @@ test('V17 Dokumentstandard: finale PDF ist formell vollständig und professionel
   const page = await context.newPage();
   const guard = runtimeGuard(page);
 
-  await page.clock.setFixedTime(new Date('2042-06-15T12:00:00+02:00'));
+  await page.clock.setFixedTime(new Date('2042-03-15T12:00:00+01:00'));
   const built = await seed(page, {
     startYear: 2041,
     years: 1,
@@ -578,7 +580,7 @@ test('V17 Dokumentstandard: finale PDF ist formell vollständig und professionel
   await page.getByRole('button', { name: 'PDF erstellen' }).click();
   const pdf = await pdfPromise;
 
-  expect(pdf.suggestedFilename()).toBe('Betriebskostenabrechnung_2041-2042.pdf');
+  expect(pdf.suggestedFilename()).toBe('Betriebskostenabrechnung_2041.pdf');
 
   const pdfPath = 'test-results/v17-professional-billing-2041.pdf';
   await pdf.saveAs(pdfPath);
@@ -610,8 +612,8 @@ test('V17 Dokumentstandard: finale PDF ist formell vollständig und professionel
   expect(text).toContain('Langzeitweg 15');
   expect(text).toContain('V17 Rechtsaudit Doppelhaus');
   expect(text).toMatch(/Abrechnungszeitraum/i);
-  expect(text).toMatch(/1\.4\.2041|01\.04\.2041/);
-  expect(text).toMatch(/31\.3\.2042|31\.03\.2042/);
+  expect(text).toMatch(/1\.1\.2041|01\.01\.2041/);
+  expect(text).toMatch(/31\.12\.2041/);
 
   expect(text).toContain('Kaltwasser / Kanal 2041/2042');
   expect(text).toContain('Gebäude-Sachversicherung 2041/2042');

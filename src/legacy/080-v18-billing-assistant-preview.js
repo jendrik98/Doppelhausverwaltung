@@ -95,13 +95,19 @@ function advanceAdjustmentSuggestion(state){
   return {periodYear:snap.periodYear,current,recommended,diff,relative:current?diff/current:0,material:Math.abs(diff)>=5&&Math.abs(diff/current)>=.05,basis:"Rechnerischer Richtwert aus der letzten abgeschlossenen Abrechnung; eine Anpassung nach einer Abrechnung ist nach § 560 Abs. 4 BGB grundsätzlich möglich, die angemessene Höhe ist im Einzelfall zu prüfen."}
 }
 function billingDeadlineInsights(state){
-  const out=[],today=smartToday(),cy=currentPeriodYear();
-  for(let y=cy-4;y<cy;y++){
-    const lease=state.leases?.[0];if(!lease||!activeLeaseInMonth(lease,`${y+1}-03`))continue;
-    if(periodEnd(y)>=today||snapshotFor(state,y))continue;
-    const deadline=periodDeadlineISO(y),days=calendarDayDiff(today,deadline);
-    if(days<0)out.push({id:`deadline-${y}`,severity:"bad",title:`Abrechnung ${billingPeriodLabel(state,y)} ohne gespeicherten Abschluss`,detail:`Die reguläre 12-Monats-Frist endete am ${new Date(deadline+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"calculation"});
-    else if(days<=120)out.push({id:`deadline-${y}`,severity:days<=30?"bad":"warn",title:`Abrechnung ${billingPeriodLabel(state,y)} abschließen`,detail:`Noch ${days} Tage bis zum regulären Fristende ${new Date(deadline+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"calculation"})
+  const out=[],today=smartToday(),cy=currentPeriodYear(),lease=state.leases?.[0];
+  for(let y=cy-4;y<=cy;y++){
+    const p=billingPeriodInfo(state,y);if(!lease||!p.active||snapshotFor(state,y)||p.end>=today)continue;
+    const leaseStart=lease.start||p.start,leaseEnd=lease.end||p.end;
+    if(leaseStart>p.end||leaseEnd<p.start)continue;
+    const target=periodBillingTargetISO(y),legal=periodDeadlineISO(y),targetDays=calendarDayDiff(today,target),legalDays=calendarDayDiff(today,legal);
+    if(targetDays>=0&&targetDays<=120){
+      out.push({id:`target-${y}`,severity:targetDays<=30?"warn":"info",title:`Endabrechnung ${billingPeriodLabel(state,y)} vorbereiten`,detail:`Eigene Zielfrist: ${new Date(target+"T00:00:00").toLocaleDateString("de-DE")} · noch ${targetDays} Tage.`,why:"Eigene Arbeitszielfrist",confidence:100,route:"rental",sub:"billing"})
+    }else if(targetDays<0&&legalDays>=0){
+      out.push({id:`target-${y}`,severity:"warn",title:`Eigene Zielfrist für ${billingPeriodLabel(state,y)} überschritten`,detail:`Die Endabrechnung sollte bis ${new Date(target+"T00:00:00").toLocaleDateString("de-DE")} fertig sein. Die gesetzliche Abrechnungsfrist läuft bis ${new Date(legal+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"Interne Zielfrist; gesetzliche Frist separat",confidence:100,route:"rental",sub:"billing"})
+    }else if(legalDays<0){
+      out.push({id:`deadline-${y}`,severity:"bad",title:`Gesetzliche Abrechnungsfrist ${billingPeriodLabel(state,y)} überschritten`,detail:`Die reguläre Frist endete am ${new Date(legal+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"billing"})
+    }
   }
   return out
 }

@@ -27,7 +27,7 @@ test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, r
   expect(manifest.shortcuts.map(x=>x.url)).toEqual(['./#rental/billing','./#more/smart']);
   const swResponse=await request.get('./service-worker.js');
   const swText=await swResponse.text();
-  expect(swText).toContain('mietverwaltung-v18-consolidated-preview-1');
+  expect(swText).toContain('mietverwaltung-v18-phase2-calendar-validation-4');
   expect(swText).toContain('./style.css?v=1810p1');
   for (const path of ['./style.css?v=1810p1','./manifest.webmanifest?v=1810p1','./legal-rules.json','./service-worker.js','./icon-192.png','./icon-512.png']) {
     const r=await request.get(path); expect(r.ok(),`${path} muss erreichbar sein`).toBeTruthy();

@@ -34,10 +34,7 @@ async function section(page, value) {
 }
 
 async function currentPeriodYear(page) {
-  return await page.evaluate(() => {
-    const d = new Date();
-    return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
-  });
+  return await page.evaluate(() => new Date().getFullYear());
 }
 
 async function addUnit(page, data) {

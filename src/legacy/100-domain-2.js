@@ -11,15 +11,19 @@ const confidencePercent=v=>{const n=Number(v||0);return Math.max(0,Math.min(100,
 const percent=n=>new Intl.NumberFormat("de-DE",{style:"percent",maximumFractionDigits:1}).format(Number(n)||0);
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random();
 
-const periodStart=y=>`${y}-04-01`;
-const periodEnd=y=>`${y+1}-03-31`;
-const periodLabel=y=>`01.04.${y} – 31.03.${y+1}`;
-const periodDeadlineISO=y=>`${y+2}-03-31`;
+const periodStart=y=>`${y}-01-01`;
+const periodEnd=y=>`${y}-12-31`;
+const periodLabel=y=>`01.01.${y} – 31.12.${y}`;
+// Eigene Arbeitszielfrist: Endabrechnung des Kalenderjahres bis 31.03. des Folgejahres fertigstellen.
+const periodBillingTargetISO=y=>`${y+1}-03-31`;
+const periodBillingTarget=y=>dateDE(periodBillingTargetISO(y));
+// Gesetzliche Abrechnungsfrist nach § 556 Abs. 3 BGB: grundsätzlich 12 Monate nach Periodenende.
+const periodDeadlineISO=y=>`${y+1}-12-31`;
 const periodDeadline=y=>dateDE(periodDeadlineISO(y));
-function currentPeriodYear(){const d=new Date();return d.getMonth()>=3?d.getFullYear():d.getFullYear()-1}
+function currentPeriodYear(){return new Date().getFullYear()}
 function preferredBillingYear(){
-  const d=new Date(),m=d.getMonth();
-  return m>=3&&m<=5?d.getFullYear()-1:currentPeriodYear()
+  const d=new Date(),y=d.getFullYear();
+  return d.getMonth()<=2?y-1:y
 }
 function billingSelectableYears(s=state){
   const years=new Set([preferredBillingYear(),currentPeriodYear()]);
@@ -28,13 +32,13 @@ function billingSelectableYears(s=state){
   for(const pos of s.costPositions||[]){
     const d=String(pos.serviceStart||pos.serviceEnd||"").slice(0,10);
     if(/^\d{4}-\d{2}-\d{2}$/.test(d)){
-      const [yy,mm]=d.split("-").map(Number);
-      years.add(mm>=4?yy:yy-1)
+      const [yy]=d.split("-").map(Number);
+      years.add(yy)
     }
   }
   const takeover=billingTakeoverDate(s);
   if(/^\d{4}-\d{2}-\d{2}$/.test(takeover)){
-    const [yy,mm]=takeover.split("-").map(Number),first=mm>=4?yy:yy-1,last=currentPeriodYear();
+    const [yy]=takeover.split("-").map(Number),first=yy,last=currentPeriodYear();
     for(let y=first;y<=last&&y<first+60;y++)if(billingPeriodInfo(s,y).active)years.add(y)
   }else years.add(currentPeriodYear()-1);
   return [...years].filter(y=>Number.isInteger(y)&&y>1900&&billingPeriodInfo(s,y).active).sort((a,b)=>b-a)
@@ -70,7 +74,7 @@ function billingPeriodContext(s,year){
   const p=billingPeriodInfo(s,year);
   if(!p.active)return {kind:"before-takeover",message:"Diese Periode liegt vollständig vor der Verwaltungsübernahme."};
   if(p.isTakeoverPeriod)return {kind:"takeover",message:`Erste eigene Abrechnungsperiode ab ${new Date(p.start+"T00:00:00").toLocaleDateString("de-DE")}. Der Voreigentümer rechnet bis ${new Date(p.predecessorEnd+"T00:00:00").toLocaleDateString("de-DE")} selbst ab.`};
-  return {kind:"annual",message:"Reguläre jährliche Abrechnungsperiode 01.04.–31.03."}
+  return {kind:"annual",message:"Reguläre jährliche Abrechnungsperiode 01.01.–31.12."}
 }
 
 

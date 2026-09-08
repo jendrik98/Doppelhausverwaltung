@@ -46,3 +46,9 @@ sichtbare Rückmeldungen nach Speichern, Import, Export und anderen Aktionen.
 `app.js` ist ab dieser Architektur ein Build-Artefakt.
 Sie soll nicht mehr direkt manuell bearbeitet werden.
 Änderungen erfolgen in `src/` und anschließend über `npm run build`.
+
+## Phase 2: Kalenderjahr, Validierung und Feedback
+
+Der Abrechnungszeitraum ist fachlich auf das Kalenderjahr `01.01.–31.12.` korrigiert. Bei der Übernahme mitten im Jahr beginnt nur die erste eigene Periode am Übernahmedatum. Die interne Arbeitszielfrist für die fertige Endabrechnung ist der `31.03.` des Folgejahres; die gesetzliche Frist nach § 556 Abs. 3 BGB wird davon getrennt als `31.12.` des Folgejahres geführt.
+
+`src/core/validation.ts` und `src/core/feedback.ts` werden nun beim Build in die Browser-App kompiliert. Alle Formular-Submits laufen durch eine zentrale Validierungsschicht. Harte Fehler blockieren das Speichern und markieren das Feld; ungewöhnliche, aber mögliche Werte verlangen eine bewusste Bestätigung. Erfolgreiche Speicher- und ausgewählte Export-/Importaktionen erhalten Toast-Feedback.
