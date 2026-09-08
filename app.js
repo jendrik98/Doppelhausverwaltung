@@ -375,6 +375,134 @@ var AppState = (() => {
 })();
 
 
+/* ===== compiled src/core/persistence.ts ===== */
+"use strict";
+var AppPersistence = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/core/persistence.ts
+  var persistence_exports = {};
+  __export(persistence_exports, {
+    DB_NAME: () => DB_NAME,
+    DB_VERSION: () => DB_VERSION,
+    STATE_ID: () => STATE_ID,
+    addDocument: () => addDocument,
+    deleteDocument: () => deleteDocument,
+    getDocument: () => getDocument,
+    listDocuments: () => listDocuments,
+    openDB: () => openDB,
+    readStateRecord: () => readStateRecord,
+    replaceDocuments: () => replaceDocuments,
+    saveState: () => saveState,
+    updateDocument: () => updateDocument
+  });
+  var DB_NAME = "mietverwaltung-v6";
+  var DB_VERSION = 2;
+  var STATE_ID = "main";
+  var STATE_STORE = "state";
+  var DOCS_STORE = "docs";
+  function requestValue(request) {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  function transactionDone(transaction) {
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB-Transaktion abgebrochen"));
+    });
+  }
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STATE_STORE)) {
+          db.createObjectStore(STATE_STORE, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(DOCS_STORE)) {
+          db.createObjectStore(DOCS_STORE, { keyPath: "id" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  async function readStateRecord() {
+    const db = await openDB();
+    const transaction = db.transaction(STATE_STORE, "readonly");
+    const request = transaction.objectStore(STATE_STORE).get(STATE_ID);
+    const record = await requestValue(request);
+    return record ?? null;
+  }
+  async function saveState(state) {
+    const db = await openDB();
+    const transaction = db.transaction(STATE_STORE, "readwrite");
+    transaction.objectStore(STATE_STORE).put({ id: STATE_ID, data: state });
+    await transactionDone(transaction);
+  }
+  async function addDocument(document) {
+    const db = await openDB();
+    const transaction = db.transaction(DOCS_STORE, "readwrite");
+    transaction.objectStore(DOCS_STORE).put(document);
+    await transactionDone(transaction);
+  }
+  async function getDocument(id) {
+    const db = await openDB();
+    const transaction = db.transaction(DOCS_STORE, "readonly");
+    const request = transaction.objectStore(DOCS_STORE).get(id);
+    const document = await requestValue(request);
+    return document ?? null;
+  }
+  async function listDocuments() {
+    const db = await openDB();
+    const transaction = db.transaction(DOCS_STORE, "readonly");
+    const request = transaction.objectStore(DOCS_STORE).getAll();
+    const documents = await requestValue(request);
+    return documents ?? [];
+  }
+  async function deleteDocument(id) {
+    const db = await openDB();
+    const transaction = db.transaction(DOCS_STORE, "readwrite");
+    transaction.objectStore(DOCS_STORE).delete(id);
+    await transactionDone(transaction);
+  }
+  async function updateDocument(document) {
+    const db = await openDB();
+    const transaction = db.transaction(DOCS_STORE, "readwrite");
+    transaction.objectStore(DOCS_STORE).put(document);
+    await transactionDone(transaction);
+  }
+  async function replaceDocuments(documents) {
+    const db = await openDB();
+    const transaction = db.transaction(DOCS_STORE, "readwrite");
+    const store = transaction.objectStore(DOCS_STORE);
+    store.clear();
+    for (const document of documents) store.put(document);
+    await transactionDone(transaction);
+  }
+  return __toCommonJS(persistence_exports);
+})();
+
+
 /* ===== compiled src/domain/meter-parsing.ts ===== */
 "use strict";
 var AppMeterParsing = (() => {
@@ -535,6 +663,164 @@ var AppMeterParsing = (() => {
     return 1 - editDistance(left, right) / Math.max(left.length, right.length);
   }
   return __toCommonJS(meter_parsing_exports);
+})();
+
+
+/* ===== compiled src/io/backup-codec.ts ===== */
+"use strict";
+var AppBackupCodec = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/io/backup-codec.ts
+  var backup_codec_exports = {};
+  __export(backup_codec_exports, {
+    ENCRYPTED_BACKUP_SCHEMA: () => ENCRYPTED_BACKUP_SCHEMA,
+    FULL_BACKUP_SCHEMA: () => FULL_BACKUP_SCHEMA,
+    b64ToBytes: () => b64ToBytes,
+    bytesToB64: () => bytesToB64,
+    createFullBackup: () => createFullBackup,
+    decodeFullBackup: () => decodeFullBackup,
+    decryptJSON: () => decryptJSON,
+    encodeBlobForBackup: () => encodeBlobForBackup,
+    encryptJSON: () => encryptJSON
+  });
+  var ENCRYPTED_BACKUP_SCHEMA = "mietverwaltung-encrypted-v1";
+  var FULL_BACKUP_SCHEMA = "mietverwaltung-full-backup-v2";
+  function bytesToB64(bytes) {
+    let binary = "";
+    const chunk = 32768;
+    for (let index = 0; index < bytes.length; index += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+    }
+    return btoa(binary);
+  }
+  function b64ToBytes(value) {
+    const binary = atob(value);
+    const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  }
+  async function deriveKey(password, salt) {
+    const material = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(password),
+      "PBKDF2",
+      false,
+      ["deriveKey"]
+    );
+    return crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: 25e4, hash: "SHA-256" },
+      material,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+  async function encryptJSON(value, password) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveKey(password, salt);
+    const plain = new TextEncoder().encode(JSON.stringify(value));
+    const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
+    return {
+      schema: ENCRYPTED_BACKUP_SCHEMA,
+      salt: bytesToB64(salt),
+      iv: bytesToB64(iv),
+      data: bytesToB64(new Uint8Array(encrypted))
+    };
+  }
+  async function decryptJSON(wrapper, password) {
+    if (!wrapper || wrapper.schema !== ENCRYPTED_BACKUP_SCHEMA) {
+      throw new Error("Falsches verschlüsseltes Backup-Format");
+    }
+    const salt = b64ToBytes(wrapper.salt);
+    const iv = b64ToBytes(wrapper.iv);
+    const key = await deriveKey(password, salt);
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      key,
+      b64ToBytes(wrapper.data)
+    );
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+  async function encodeBlobForBackup(blob) {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    return {
+      type: blob.type || "application/octet-stream",
+      base64: bytesToB64(bytes)
+    };
+  }
+  async function createFullBackup(state, password, documents) {
+    const encoded = [];
+    for (const document of documents) {
+      const copy = { ...document, blob: void 0, pages: void 0 };
+      if (Array.isArray(document.pages) && document.pages.length) {
+        copy.pageData = [];
+        for (const page of document.pages) {
+          copy.pageData.push({
+            id: page.id,
+            name: page.name,
+            type: page.type,
+            size: page.size,
+            blobData: await encodeBlobForBackup(page.blob)
+          });
+        }
+      } else if (document.blob) {
+        copy.blobData = await encodeBlobForBackup(document.blob);
+      }
+      encoded.push(copy);
+    }
+    const payload = {
+      schema: FULL_BACKUP_SCHEMA,
+      state,
+      documents: encoded
+    };
+    return encryptJSON(payload, password);
+  }
+  async function decodeFullBackup(wrapper, password) {
+    const payload = await decryptJSON(wrapper, password);
+    if (!payload || payload.schema !== FULL_BACKUP_SCHEMA) {
+      throw new Error("Falsches Backup-Format");
+    }
+    const documents = [];
+    for (const document of payload.documents || []) {
+      const copy = { ...document };
+      if (Array.isArray(document.pageData)) {
+        copy.pages = document.pageData.map((page) => ({
+          id: page.id,
+          name: page.name,
+          type: page.type,
+          size: page.size,
+          blob: new Blob([b64ToBytes(page.blobData.base64)], { type: page.blobData.type })
+        }));
+        delete copy.pageData;
+      } else if (document.blobData) {
+        copy.blob = new Blob([b64ToBytes(document.blobData.base64)], {
+          type: document.blobData.type
+        });
+        delete copy.blobData;
+      }
+      documents.push(copy);
+    }
+    return { state: payload.state, documents };
+  }
+  return __toCommonJS(backup_codec_exports);
 })();
 
 /* ===== schema.js ===== */
@@ -1950,96 +2236,31 @@ function createBillingSnapshot(state,periodYear){
 
 /* ===== db.js ===== */
 
-const DB_NAME="mietverwaltung-v6",DB_VERSION=2,STATE_ID="main"; // Historical identifier intentionally stable so existing IndexedDB data is not orphaned.
+const {
+  DB_NAME,
+  DB_VERSION,
+  STATE_ID,
+  openDB,
+  readStateRecord,
+  saveState,
+  addDocument,
+  getDocument,
+  listDocuments,
+  deleteDocument,
+  updateDocument,
+  replaceDocuments
+}=AppPersistence;
 
-function openDB(){
-  return new Promise((resolve,reject)=>{
-    const r=indexedDB.open(DB_NAME,DB_VERSION);
-    r.onupgradeneeded=()=>{const db=r.result;if(!db.objectStoreNames.contains("state"))db.createObjectStore("state",{keyPath:"id"});if(!db.objectStoreNames.contains("docs"))db.createObjectStore("docs",{keyPath:"id"})};
-    r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)
-  })
-}
 async function loadState(){
-  const db=await openDB(),tx=db.transaction("state","readonly"),r=tx.objectStore("state").get(STATE_ID);
-  const rec=await new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+  const rec=await readStateRecord();
   if(rec?.data)return migrateDomainState(normalizeState(rec.data));
-  const migrated=migrateDomainState(migrateLegacyStorage());await saveState(migrated);return migrated
-}
-async function saveState(state){
-  const db=await openDB(),tx=db.transaction("state","readwrite");tx.objectStore("state").put({id:STATE_ID,data:state});
-  return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})
-}
-async function addDocument(doc){
-  const db=await openDB(),tx=db.transaction("docs","readwrite");tx.objectStore("docs").put(doc);
-  return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})
-}
-async function getDocument(id){
-  const db=await openDB(),tx=db.transaction("docs","readonly"),r=tx.objectStore("docs").get(id);
-  return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result||null);r.onerror=()=>rej(r.error)})
-}
-async function listDocuments(){
-  const db=await openDB(),tx=db.transaction("docs","readonly"),r=tx.objectStore("docs").getAll();
-  return new Promise((res,rej)=>{r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error)})
-}
-async function deleteDocument(id){
-  const db=await openDB(),tx=db.transaction("docs","readwrite");tx.objectStore("docs").delete(id);
-  return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})
-}
 
-
-async function updateDocument(doc){
-  const db=await openDB(),tx=db.transaction("docs","readwrite");tx.objectStore("docs").put(doc);
-  return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})
+  const fresh=repairDomainState(createEmptyState());
+  LAST_STABLE_STATE=cloneState(fresh);
+  const migrated=migrateDomainState(normalizeState(fresh));
+  await saveState(migrated);
+  return migrated
 }
-/* Compatibility import only; not used by current billing calculations. */
-function migrateLegacyStorage(){
-  const state=repairDomainState(createEmptyState());LAST_STABLE_STATE=cloneState(state);
-  const keys=["mietverwaltung_v2_4","mietverwaltung_v2_3","mietverwaltung_v2_2","mietverwaltung_v2_1","mietverwaltung_v2"];
-  let old=null,from=null;
-  for(const k of keys){try{const raw=localStorage.getItem(k);if(raw){old=JSON.parse(raw);from=k;break}}catch{}}
-  if(!old)return state;
-  state.meta.migratedFrom=from;
-  state.property={...state.property,...(old.property||{})};
-  state.finance={...state.finance,...(old.finance||{})};
-  state.units=(old.units||[]).map(u=>({id:u.id||crypto.randomUUID(),name:u.name,type:u.type,area:Number(u.area||0),note:u.note||"",occupancy:(u.occupancyHistory||u.occupancy||[{from:"2000-01-01",to:"",count:Number(u.persons||0)}])}));
-  state.leases=(old.contracts||[]).map(c=>({id:c.id||crypto.randomUUID(),tenantId:c.tenantId,start:c.start,end:c.end||"",rent:Number(c.rent||0),advance:Number(c.advance??c.opAdvance??0),note:c.note||""}));
-  // compatibility import from earlier local data
-  for(const c of old.costs||[]){
-    state.sources.push({id:c.id||crypto.randomUUID(),kind:"manual",name:c.note||c.category||c.categoryId||"Betriebskosten",category:c.categoryId||mapImportedCategory(c.category),amount:Number(c.amount||0),interval:"once",serviceStart:c.start||"",serviceEnd:c.end||"",assignment:c.unitId||"house",agreement:c.agreement||c.key||"auto",legacy:true})
-  }
-  // own contracts
-  for(const c of old.ownContracts||[]){
-    state.sources.push({id:c.id||crypto.randomUUID(),kind:"contract",name:c.name||c.category||"Vertrag",category:mapImportedPrivateCategory(c.category),amount:Number(c.cost||0),interval:c.interval||"yearly",serviceStart:c.start||"",serviceEnd:c.end||"",assignment:c.assignment||((c.note||"").includes("nur Eigennutzung")?"owner":"house"),agreement:"auto",review:c.review||"",noticeDays:Number(c.noticeDays||0),note:c.note||""})
-  }
-  // house costs
-  for(const c of old.houseCosts||[]){
-    state.sources.push({id:c.id||crypto.randomUUID(),kind:"manual",name:c.name||c.category||"Hauskosten",category:mapImportedPrivateCategory(c.category),amount:Number(c.amount||0),interval:c.interval||"once",serviceStart:c.date||"",serviceEnd:c.date||"",assignment:c.assignment||"owner",agreement:"auto",note:c.note||""})
-  }
-  // assessments
-  for(const a of old.assessments||[]){
-    const items=[];
-    if(a.tax)items.push({category:"propertyTax",label:"Grundsteuer B",amount:Number(a.tax),assignment:"house"});
-    if(a.street)items.push({category:"street",label:"Straßenreinigung / Winterdienst",amount:Number(a.street),assignment:"house"});
-    if(a.rain)items.push({category:"rainwater",label:"Niederschlagswasser",amount:Number(a.rain),assignment:"house"});
-    if(a.bio)items.push({category:"waste",label:"Gemeinsame Biotonne",amount:Number(a.bio),assignment:"house"});
-    if(a.residualShared)items.push({category:"waste",label:"Gemeinsame Restmülltonne",amount:Number(a.residualShared),assignment:"house"});
-    if(a.residualPrivate)items.push({category:"waste",label:"Zusätzliche 120L Restmülltonne Eigennutzung",amount:Number(a.residualPrivate),assignment:"owner"});
-    state.sources.push({id:a.id||crypto.randomUUID(),kind:"assessment",name:`Grundbesitzabgaben ${a.year}`,year:Number(a.year),serviceStart:`${a.year}-01-01`,serviceEnd:`${a.year}-12-31`,items,dueDates:a.dueDates||["02-15","05-15","08-15","11-15"],note:a.note||""})
-  }
-  state.water=(old.water||[]).map(w=>({id:w.id||crypto.randomUUID(),periodYear:Number(w.year??w.periodYear),houseConsumption:Number(w.houseConsumption||0),ownerStart:Number(w.ownerStart||0),ownerEnd:Number(w.ownerEnd||0),totalCost:Number(w.totalCost||0)}));
-  state.tasks=(old.tasks||[]).map(t=>({...t,id:t.id||crypto.randomUUID()}));
-  state.audit=[{id:crypto.randomUUID(),at:new Date().toISOString(),action:"Migration",detail:`Daten aus ${from} übernommen`}];
-  state.schemaVersion=SCHEMA_VERSION;return normalizeState(state)
-}
-function mapImportedCategory(x=""){const s=String(x).toLowerCase();if(s.includes("grundsteuer"))return"propertyTax";if(s.includes("niedersch"))return"rainwater";if(s.includes("straße")||s.includes("winter"))return"street";if(s.includes("müll")||s.includes("abfall"))return"waste";if(s.includes("versicher"))return"insurance";if(s.includes("schorn"))return"chimney";if(s.includes("wasser")||s.includes("kanal"))return"water";if(s.includes("repar"))return"repair";return"other"}
-function mapImportedPrivateCategory(x=""){const s=String(x).toLowerCase();if(s.includes("internet"))return"internet";if(s.includes("rundfunk")||s.includes("gez"))return"broadcasting";if(s.includes("repar"))return"repair";if(s.includes("versicher"))return"insurance";return"other"}
-async function replaceDocuments(docs){
-  const db=await openDB(),tx=db.transaction("docs","readwrite"),store=tx.objectStore("docs");
-  store.clear();for(const d of docs)store.put(d);
-  return new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})
-}
-
-
 
 /* ===== security.js ===== */
 
@@ -2080,60 +2301,14 @@ async function authenticate(){
 }
 function disableAuth(){localStorage.removeItem(SEC_KEY);for(const key of LEGACY_SEC_KEYS)localStorage.removeItem(key)}
 
-function bytesToB64(a){let s="";const chunk=0x8000;for(let i=0;i<a.length;i+=chunk)s+=String.fromCharCode(...a.subarray(i,i+chunk));return btoa(s)}
-function b64ToBytes(s){const b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a}
-async function derive(password,salt){const mat=await crypto.subtle.importKey("raw",new TextEncoder().encode(password),"PBKDF2",false,["deriveKey"]);return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:250000,hash:"SHA-256"},mat,{name:"AES-GCM",length:256},false,["encrypt","decrypt"])}
-async function encryptJSON(obj,password){
-  const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await derive(password,salt),plain=new TextEncoder().encode(JSON.stringify(obj)),cipher=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key,plain));
-  return {schema:"mietverwaltung-encrypted-v1",salt:bytesToB64(salt),iv:bytesToB64(iv),data:bytesToB64(cipher)}
-}
-async function decryptJSON(wrapper,password){
-  const salt=b64ToBytes(wrapper.salt),iv=b64ToBytes(wrapper.iv),key=await derive(password,salt),plain=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,b64ToBytes(wrapper.data));
-  return JSON.parse(new TextDecoder().decode(plain))
-}
-
-
 /* ===== backup.js ===== */
 
-
-
-async function encodeBlobForBackup(blob){
-  const bytes=new Uint8Array(await blob.arrayBuffer());
-  return {type:blob.type||"application/octet-stream",base64:bytesToB64(bytes)}
-}
 async function createFullBackup(state,password){
-  const docs=await listDocuments(),encoded=[];
-  for(const d of docs){
-    const copy={...d,blob:undefined,pages:undefined};
-    if(Array.isArray(d.pages)&&d.pages.length){
-      copy.pageData=[];
-      for(const p of d.pages){
-        copy.pageData.push({
-          id:p.id,name:p.name,type:p.type,size:p.size,
-          blobData:await encodeBlobForBackup(p.blob)
-        })
-      }
-    }else if(d.blob){
-      copy.blobData=await encodeBlobForBackup(d.blob)
-    }
-    encoded.push(copy)
-  }
-  return encryptJSON({schema:"mietverwaltung-full-backup-v2",state,documents:encoded},password)
-}
-async function decodeFullBackup(wrapper,password){
-  const payload=await decryptJSON(wrapper,password);
-  if(!["mietverwaltung-full-backup-v2","mietverwaltung-v81-full-backup","mietverwaltung-v75-full-backup"].includes(payload.schema))throw new Error("Falsches Backup-Format");
-  const docs=[];
-  for(const d of payload.documents||[]){
-    const copy={...d};
-    if(Array.isArray(d.pageData)){
-      copy.pages=d.pageData.map(p=>({id:p.id,name:p.name,type:p.type,size:p.size,blob:new Blob([b64ToBytes(p.blobData.base64)],{type:p.blobData.type})}));delete copy.pageData
-    }else if(d.blobData){copy.blob=new Blob([b64ToBytes(d.blobData.base64)],{type:d.blobData.type});delete copy.blobData}
-    docs.push(copy)
-  }
-  return {state:payload.state,documents:docs}
+  const docs=await listDocuments();
+  return AppBackupCodec.createFullBackup(state,password,docs)
 }
 
+const {encodeBlobForBackup,decodeFullBackup}=AppBackupCodec;
 
 /* ===== tests.js ===== */
 

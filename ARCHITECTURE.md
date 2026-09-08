@@ -67,3 +67,20 @@ und ohne Big-Bang-Rewrite fortgesetzt werden kann.
 Neue Fachlogik soll nicht mehr in `src/legacy/` entstehen. Bestehende Bereiche werden
 domänenweise migriert und nach jedem Schritt mit der vollständigen E2E-Suite abgesichert.
 
+## Phase 4: Persistenz und Backup-Codec
+
+Die IndexedDB-Zugriffe liegen nun in `src/core/persistence.ts`. Der bestehende Live-Speicher bleibt
+absichtlich unverändert: Datenbank `mietverwaltung-v6`, DB-Version `2`, Stores `state` und `docs`,
+jeweils `keyPath: "id"`, sowie der State-Schlüssel `main`. Es findet keine IndexedDB-Schema- oder
+Datenmigration statt.
+
+Der bisherige Import aus alten `mietverwaltung_v2*`-LocalStorage-Ständen wurde entfernt. Wenn kein
+aktueller IndexedDB-State vorhanden ist, startet die App direkt mit einem neuen aktuellen State.
+
+Backup-Serialisierung, Base64-Konvertierung und AES-GCM/PBKDF2-Codec liegen in
+`src/io/backup-codec.ts`. Neue und aktuelle Backups behalten die Schemas
+`mietverwaltung-encrypted-v1` und `mietverwaltung-full-backup-v2`. Ältere V81-/V75-Vollbackupformate
+werden nicht mehr akzeptiert.
+
+`src/legacy/110-db.js` und `src/legacy/130-backup.js` sind nur noch schmale Laufzeitbrücken zu den
+TypeScript-Modulen; der WebAuthn-Teil bleibt vorerst in `src/legacy/120-security.js`.

@@ -42,7 +42,9 @@ const typedRuntime = (
     compileModule("src/core/validation.ts", "AppValidation"),
     compileModule("src/core/feedback.ts", "AppFeedback"),
     compileModule("src/core/state.ts", "AppState"),
-    compileModule("src/domain/meter-parsing.ts", "AppMeterParsing")
+    compileModule("src/core/persistence.ts", "AppPersistence"),
+    compileModule("src/domain/meter-parsing.ts", "AppMeterParsing"),
+    compileModule("src/io/backup-codec.ts", "AppBackupCodec")
   ])
 ).join("");
 
