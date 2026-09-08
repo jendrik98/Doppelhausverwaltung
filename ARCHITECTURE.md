@@ -84,3 +84,17 @@ werden nicht mehr akzeptiert.
 
 `src/legacy/110-db.js` und `src/legacy/130-backup.js` sind nur noch schmale Laufzeitbrücken zu den
 TypeScript-Modulen; der WebAuthn-Teil bleibt vorerst in `src/legacy/120-security.js`.
+
+## Phase 5: Geräteauthentifizierung
+
+Die WebAuthn-/Passkey-nahe Geräteauthentifizierung liegt nun in `src/core/auth.ts`. Der bisherige
+Legacy-Bereich `src/legacy/120-security.js` ist nur noch eine schmale Laufzeitbrücke zu `AppAuth`.
+Der aktuelle lokale Credential-Schlüssel `mietverwaltung_webauthn` bleibt unverändert, damit eine
+bereits für diese App eingerichtete Geräteauthentifizierung weiter verwendet werden kann.
+
+Die frühere Übernahme des alten Schlüssels `mietverwaltung_v75_webauthn` wurde entfernt. Neue
+Altkompatibilitäts-Pfade werden nicht mehr gepflegt. Die Authentifizierungsfunktionen behalten ihre
+bestehenden Laufzeitnamen (`authCredentialId`, `authEnabled`, `registerDevice`, `authenticate`,
+`disableAuth`), sodass die noch nicht migrierte UI unverändert weiterarbeiten kann.
+
+Der einmalige Phase-4-Migrationsworkflow wird mit dem erfolgreichen Phase-5-Commit entfernt.

@@ -19,6 +19,7 @@ const backup = read("src/legacy/130-backup.js");
 const buildScript = read("scripts/build-app.mjs");
 const state = read("src/core/state.ts");
 const persistence = read("src/core/persistence.ts");
+const auth = read("src/core/auth.ts");
 const meter = read("src/domain/meter-parsing.ts");
 const backupCodec = read("src/io/backup-codec.ts");
 const tsconfig = read("tsconfig.json");
@@ -46,6 +47,12 @@ assert(persistence.includes('createObjectStore(DOCS_STORE, { keyPath: "id" })'),
 
 assert(!security.includes("async function encryptJSON"), "Backup-Verschlüsselung liegt noch im Legacy-Sicherheitscode.");
 assert(!security.includes("function bytesToB64"), "Backup-Base64-Codec liegt noch im Legacy-Sicherheitscode.");
+assert(!security.includes("PublicKeyCredential"), "WebAuthn-Implementierung liegt noch im Legacy-Sicherheitscode.");
+assert(security.includes("}=AppAuth;"), "Legacy-Brücke zu AppAuth fehlt.");
+assert(auth.includes('SEC_KEY = "mietverwaltung_webauthn"'), "Aktueller WebAuthn-Schlüssel wurde verändert.");
+assert(auth.includes("export async function registerDevice"), "registerDevice liegt nicht im TypeScript-Auth-Modul.");
+assert(auth.includes("export async function authenticate"), "authenticate liegt nicht im TypeScript-Auth-Modul.");
+assert(!auth.includes("mietverwaltung_v75_webauthn"), "Veraltete V75-WebAuthn-Schlüsselübernahme ist noch vorhanden.");
 assert(backup.includes("AppBackupCodec.createFullBackup"), "Backup-Erstellung nutzt das TypeScript-Codec nicht.");
 assert(backup.includes("decodeFullBackup}=AppBackupCodec"), "Backup-Decoding ist nicht an AppBackupCodec gebunden.");
 assert(backupCodec.includes('FULL_BACKUP_SCHEMA = "mietverwaltung-full-backup-v2"'), "Aktuelles Vollbackup-Schema fehlt.");
@@ -56,14 +63,16 @@ assert(!backupCodec.includes("mietverwaltung-v75-full-backup"), "Veraltetes V75-
 assert(buildScript.includes("bundle: true"), "Build bündelt TypeScript-Importe nicht.");
 assert(buildScript.includes('"AppState"'), "AppState wird nicht gebaut.");
 assert(buildScript.includes('"AppPersistence"'), "AppPersistence wird nicht gebaut.");
+assert(buildScript.includes('"AppAuth"'), "AppAuth wird nicht gebaut.");
 assert(buildScript.includes('"AppMeterParsing"'), "AppMeterParsing wird nicht gebaut.");
 assert(buildScript.includes('"AppBackupCodec"'), "AppBackupCodec wird nicht gebaut.");
 assert(tsconfig.includes('"src/io/**/*.ts"'), "TypeScript-Prüfung umfasst src/io nicht.");
 
 assert(app.includes("compiled src/core/state.ts"), "State-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/core/persistence.ts"), "Persistenz-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/core/auth.ts"), "Auth-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/domain/meter-parsing.ts"), "Meter-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/io/backup-codec.ts"), "Backup-Codec-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes('APP_VERSION="18.0.0"'), "APP_VERSION wurde unerwartet verändert.");
 
-console.log("Architekturprüfung bestanden: Persistenz und Backup-Codec sind echte TypeScript-Module; IndexedDB v2 bleibt unverändert.");
+console.log("Architekturprüfung bestanden: Phase 5 migriert WebAuthn nach TypeScript; Persistenz und IndexedDB v2 bleiben unverändert.");

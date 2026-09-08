@@ -43,6 +43,7 @@ const typedRuntime = (
     compileModule("src/core/feedback.ts", "AppFeedback"),
     compileModule("src/core/state.ts", "AppState"),
     compileModule("src/core/persistence.ts", "AppPersistence"),
+    compileModule("src/core/auth.ts", "AppAuth"),
     compileModule("src/domain/meter-parsing.ts", "AppMeterParsing"),
     compileModule("src/io/backup-codec.ts", "AppBackupCodec")
   ])
