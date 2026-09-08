@@ -15,6 +15,10 @@ const schema = read("src/legacy/010-schema.js");
 const domain = read("src/legacy/020-domain.js");
 const legalLegacy = read("src/legacy/090-legal-rules.js");
 const domain2 = read("src/legacy/100-domain-2.js");
+const intelligenceLegacy = read("src/legacy/050-intelligence.js");
+const qualityLegacy = read("src/legacy/060-quality.js");
+const smartLegacy = read("src/legacy/070-smart-engine.js");
+const assistantLegacy = read("src/legacy/080-v18-billing-assistant-preview.js");
 const integrityLegacy = read("src/legacy/030-integrity.js");
 const traceabilityLegacy = read("src/legacy/040-traceability.js");
 const db = read("src/legacy/110-db.js");
@@ -30,6 +34,10 @@ const meter = read("src/domain/meter-parsing.ts");
 const propertyDomain = read("src/domain/property-domain.ts");
 const legalRules = read("src/domain/legal-rules.ts");
 const billingDomain = read("src/domain/billing-domain.ts");
+const intelligence = read("src/domain/intelligence.ts");
+const quality = read("src/domain/quality.ts");
+const smartEngine = read("src/domain/smart-engine.ts");
+const v18Assistant = read("src/domain/v18-assistant.ts");
 const backupCodec = read("src/io/backup-codec.ts");
 const tsconfig = read("tsconfig.json");
 const app = read("app.js");
@@ -78,6 +86,37 @@ assert(billingDomain.includes("export function actualAdvanceEvidenceInPeriod"), 
 assert(billingDomain.includes("export function billingReadiness"), "billingReadiness liegt nicht im TypeScript-Billingmodul.");
 assert(billingDomain.includes("export function createBillingSnapshot"), "createBillingSnapshot liegt nicht im TypeScript-Billingmodul.");
 assert(billingDomain.includes("ACTIVE_LEGAL_PACK?.version"), "Snapshots verwenden das aktive Regelpaket nicht mehr dynamisch.");
+
+
+assert(!intelligenceLegacy.includes("function paymentMatchScore"), "Zahlungs-Matching liegt noch im Legacy-Intelligence-Code.");
+assert(!intelligenceLegacy.includes("async function generateProfessionalBillingPDF"), "Professionelle PDF-Logik liegt noch im Legacy-Intelligence-Code.");
+assert(intelligenceLegacy.includes("}=AppIntelligence;"), "Legacy-Brücke zu AppIntelligence fehlt.");
+assert(intelligence.includes("export const INTELLIGENCE_VERSION=1"), "INTELLIGENCE_VERSION wurde verändert.");
+assert(intelligence.includes("export function paymentMatchScore"), "paymentMatchScore liegt nicht im TypeScript-Intelligence-Modul.");
+assert(intelligence.includes("export async function generateProfessionalBillingPDF"), "PDF-Erzeugung liegt nicht im TypeScript-Intelligence-Modul.");
+
+assert(!qualityLegacy.includes("function parseBankCSV"), "Bank-CSV-Parsing liegt noch im Legacy-Quality-Code.");
+assert(!qualityLegacy.includes("function dataQualityScore"), "Datenqualitätsbewertung liegt noch im Legacy-Quality-Code.");
+assert(qualityLegacy.includes("}=AppQuality;"), "Legacy-Brücke zu AppQuality fehlt.");
+assert(quality.includes("export const QUALITY_VERSION=1"), "QUALITY_VERSION wurde verändert.");
+assert(quality.includes("export function parseBankCSV"), "parseBankCSV liegt nicht im TypeScript-Quality-Modul.");
+assert(quality.includes("export function dataQualityScore"), "dataQualityScore liegt nicht im TypeScript-Quality-Modul.");
+
+assert(!smartLegacy.includes("function rentMonthStatus"), "Mietzahlungsmonitor liegt noch im Legacy-Smart-Engine-Code.");
+assert(!smartLegacy.includes("function billingProjection"), "Abrechnungsprognose liegt noch im Legacy-Smart-Engine-Code.");
+assert(smartLegacy.includes("}=AppSmartEngine;"), "Legacy-Brücke zu AppSmartEngine fehlt.");
+assert(smartEngine.includes("export const SMART_ENGINE_VERSION=1"), "SMART_ENGINE_VERSION wurde verändert.");
+assert(smartEngine.includes("export function rentMonthStatus"), "rentMonthStatus liegt nicht im TypeScript-Smart-Engine-Modul.");
+assert(smartEngine.includes("export function billingProjection"), "billingProjection liegt nicht im TypeScript-Smart-Engine-Modul.");
+
+assert(!assistantLegacy.includes("function v18BillingAssistant"), "V18-Abrechnungsassistent liegt noch im Legacy-Code.");
+assert(!assistantLegacy.includes("function smartInsights"), "Smart-Insights liegen noch im Legacy-V18-Code.");
+assert(!assistantLegacy.includes("function smartAnswer"), "Smart-Antworten liegen noch im Legacy-V18-Code.");
+assert(assistantLegacy.includes("}=AppV18Assistant;"), "Legacy-Brücke zu AppV18Assistant fehlt.");
+assert(v18Assistant.includes("export const V18_ASSISTANT_VERSION=1"), "V18_ASSISTANT_VERSION wurde verändert.");
+assert(v18Assistant.includes("export function v18BillingAssistant"), "v18BillingAssistant liegt nicht im TypeScript-Modul.");
+assert(v18Assistant.includes("export function smartInsights"), "smartInsights liegt nicht im TypeScript-Modul.");
+assert(v18Assistant.includes("export function smartAnswer"), "smartAnswer liegt nicht im TypeScript-Modul.");
 
 assert(!integrityLegacy.includes("function cloneState"), "cloneState liegt noch im Legacy-Integritätscode.");
 assert(!integrityLegacy.includes("function validateDomainState"), "Domain-Validierung liegt noch im Legacy-Integritätscode.");
@@ -135,6 +174,10 @@ assert(buildScript.includes('"AppMeterParsing"'), "AppMeterParsing wird nicht ge
 assert(buildScript.includes('"AppPropertyDomain"'), "AppPropertyDomain wird nicht gebaut.");
 assert(buildScript.includes('"AppLegalRules"'), "AppLegalRules wird nicht gebaut.");
 assert(buildScript.includes('"AppBillingDomain"'), "AppBillingDomain wird nicht gebaut.");
+assert(buildScript.includes('"AppIntelligence"'), "AppIntelligence wird nicht gebaut.");
+assert(buildScript.includes('"AppQuality"'), "AppQuality wird nicht gebaut.");
+assert(buildScript.includes('"AppSmartEngine"'), "AppSmartEngine wird nicht gebaut.");
+assert(buildScript.includes('"AppV18Assistant"'), "AppV18Assistant wird nicht gebaut.");
 assert(buildScript.includes('"AppBackupCodec"'), "AppBackupCodec wird nicht gebaut.");
 assert(tsconfig.includes('"src/io/**/*.ts"'), "TypeScript-Prüfung umfasst src/io nicht.");
 
@@ -147,7 +190,11 @@ assert(app.includes("compiled src/domain/meter-parsing.ts"), "Meter-TypeScript f
 assert(app.includes("compiled src/domain/property-domain.ts"), "Property-Domain-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/domain/legal-rules.ts"), "Legal-Rules-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/domain/billing-domain.ts"), "Billing-Domain-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/domain/intelligence.ts"), "Intelligence-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/domain/quality.ts"), "Quality-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/domain/smart-engine.ts"), "Smart-Engine-TypeScript fehlt im Browser-Bundle.");
+assert(app.includes("compiled src/domain/v18-assistant.ts"), "V18-Assistant-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/io/backup-codec.ts"), "Backup-Codec-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes('APP_VERSION="18.0.0"'), "APP_VERSION wurde unerwartet verändert.");
 
-console.log("Architekturprüfung bestanden: Phase 7 migriert Kern-Fachlogik und Rechtsregeln nach TypeScript; IndexedDB v2 und App-Version 18.0.0 bleiben unverändert.");
+console.log("Architekturprüfung bestanden: Phase 8 migriert Intelligence, Quality, Smart Engine und V18-Assistent nach TypeScript; IndexedDB v2 und App-Version 18.0.0 bleiben unverändert.");

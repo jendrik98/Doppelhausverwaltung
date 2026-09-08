@@ -140,3 +140,17 @@ formate oder App-Version. Datenbank `mietverwaltung-v6`, DB-Version `2`, State-S
 App-Version `18.0.0` bleiben unverändert.
 
 Der einmalige Phase-6-Migrationsworkflow wird erst mit dem erfolgreichen Phase-7-Commit entfernt.
+
+
+## Phase 8: Intelligence und Assistenz
+
+Die bislang zusammenhängenden Legacy-Bereiche für Intelligence, Datenqualität, Smart Engine und den V18-Abrechnungsassistenten sind in eigenständige TypeScript-Module verschoben:
+
+- `src/domain/intelligence.ts`: Zahlungs-Matching, Forecasts, Dokumentintelligenz und professionelle Abrechnungs-PDF-Erzeugung.
+- `src/domain/quality.ts`: Bank-CSV-Import, Dubletten-/Mietzahlungs-Erkennung, Periodenvergleich, Zählertrends und Datenqualität.
+- `src/domain/smart-engine.ts`: Mietzahlungsmonitor und Abrechnungsprojektion.
+- `src/domain/v18-assistant.ts`: V18-Vorbereitungsassistent, Smart-Zuordnung, Anomalien, Insights, Entscheidungsqueue und Smart-Antworten.
+
+Die bisherigen Dateien `050-intelligence.js`, `060-quality.js`, `070-smart-engine.js` und `080-v18-billing-assistant-preview.js` bleiben nur als Laufzeitbrücken mit den bestehenden globalen Funktionsnamen erhalten. Die Migration ist bewusst semantikerhaltend; die vier stark dynamischen Module werden in dieser Strukturphase mit `@ts-nocheck` kompiliert. Das Verhaltensgate bleibt der vollständige Browser-E2E-Satz mit exakt 25/25 Tests. Eine spätere Phase kann die Typen dieser Module schrittweise härten, ohne gleichzeitig die Laufzeitstruktur zu verändern.
+
+Phase 8 verändert keine fachlichen Regeln, keine Rechtsdaten, keine Datenbank- oder Backup-Schemata und keine App-Version. `mietverwaltung-v6`, DB-Version `2`, State-Schlüssel `main`, WebAuthn-Schlüssel, Backup-Schemata, Rechtsstand `2026-09-05`, `DOMAIN_VERSION=1` und App-Version `18.0.0` bleiben unverändert. Der einmalige Phase-7-Migrationsworkflow wird erst mit dem erfolgreichen Phase-8-Commit entfernt.

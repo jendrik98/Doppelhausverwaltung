@@ -1993,6 +1993,1129 @@ var AppBillingDomain = (() => {
 })();
 
 
+/* ===== compiled src/domain/intelligence.ts ===== */
+"use strict";
+var AppIntelligence = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/intelligence.ts
+  var intelligence_exports = {};
+  __export(intelligence_exports, {
+    INTELLIGENCE_VERSION: () => INTELLIGENCE_VERSION,
+    billingRecipient: () => billingRecipient,
+    daysDistance: () => daysDistance,
+    documentConfidenceSummary: () => documentConfidenceSummary,
+    dueDatesForPosition: () => dueDatesForPosition,
+    extractDocumentIntelligence: () => extractDocumentIntelligence,
+    forecastSignals: () => forecastSignals,
+    formatBillingRuleDetails: () => formatBillingRuleDetails,
+    formatRuleForReport: () => formatRuleForReport,
+    generateProfessionalBillingPDF: () => generateProfessionalBillingPDF,
+    intelligentForecast: () => intelligentForecast,
+    normalizeLabelText: () => normalizeLabelText,
+    paymentMatchScore: () => paymentMatchScore,
+    paymentMatchSuggestions: () => paymentMatchSuggestions,
+    positionMonthlyEquivalent: () => positionMonthlyEquivalent,
+    predictedMonth: () => predictedMonth,
+    splitAddressLines: () => splitAddressLines,
+    tokenSimilarity: () => tokenSimilarity,
+    validateDocumentTotals: () => validateDocumentTotals
+  });
+  var INTELLIGENCE_VERSION = 1;
+  function normalizeLabelText(v) {
+    return String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  }
+  function tokenSimilarity(a, b) {
+    const A = new Set(normalizeLabelText(a).split(/\s+/).filter(Boolean)), B = new Set(normalizeLabelText(b).split(/\s+/).filter(Boolean));
+    if (!A.size || !B.size) return 0;
+    let hit = 0;
+    for (const x of A) if (B.has(x)) hit++;
+    return hit / Math.max(A.size, B.size);
+  }
+  function daysDistance(a, b) {
+    if (!a || !b) return 9999;
+    const d = calendarDayDiff(a, b);
+    return Number.isFinite(d) ? Math.abs(d) : 9999;
+  }
+  function dueDatesForPosition(state, p) {
+    const s = (state.sources || []).find((x) => x.id === p.sourceId);
+    return Array.isArray(s?.dueDates) ? s.dueDates : [];
+  }
+  function paymentMatchScore(state, payment, position) {
+    if (payment.direction !== "outflow") return { score: 0, reasons: [] };
+    let score = 0, reasons = [];
+    const amountDiff = Math.abs(Number(payment.amount || 0) - Number(position.amount || 0));
+    const amountBase = Math.max(1, Number(position.amount || 0));
+    const rel = amountDiff / amountBase;
+    if (rel < 5e-3) {
+      score += 55;
+      reasons.push("Betrag stimmt praktisch exakt");
+    } else if (rel < 0.03) {
+      score += 42;
+      reasons.push("Betrag sehr ähnlich");
+    } else if (rel < 0.1) {
+      score += 20;
+      reasons.push("Betrag im plausiblen Bereich");
+    }
+    const label = tokenSimilarity(payment.label, position.label);
+    score += Math.round(label * 25);
+    if (label > 0.45) reasons.push("Bezeichnung passt");
+    const dues = dueDatesForPosition(state, position);
+    if (dues.length) {
+      const dd = Math.min(...dues.map((d) => daysDistance(payment.date, d)));
+      if (dd <= 2) {
+        score += 18;
+        reasons.push("Zahlungsdatum nahe Fälligkeit");
+      } else if (dd <= 14) {
+        score += 10;
+        reasons.push("Zahlungsdatum im Fälligkeitsfenster");
+      }
+    } else if (position.serviceEnd) {
+      const dd = daysDistance(payment.date, position.serviceEnd);
+      if (dd <= 45) {
+        score += 5;
+        reasons.push("Datum nahe Leistungszeitraum");
+      }
+    }
+    const src = (state.sources || []).find((s) => s.id === position.sourceId);
+    if (src && tokenSimilarity(payment.label, src.name) > 0.35) {
+      score += 12;
+      reasons.push("Quelle passt zur Buchungsbezeichnung");
+    }
+    return { score: Math.min(100, score), reasons };
+  }
+  function paymentMatchSuggestions(state, payment, limit = 5) {
+    return (state.costPositions || []).filter((p) => p.confirmed).map((p) => ({ position: p, ...paymentMatchScore(state, payment, p) })).filter((x) => x.score >= 25).sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+  function positionMonthlyEquivalent(p, monthStart, monthEnd) {
+    const start = p.serviceStart || monthStart, end = p.serviceEnd || monthEnd;
+    const ov = overlapDays(start, end, monthStart, monthEnd);
+    if (!ov) return 0;
+    const factor = ov / daysInclusive(start, end), a = Number(p.amount || 0);
+    if (p.interval === "monthly") return a * (ov / daysInclusive(monthStart, monthEnd));
+    if (p.interval === "quarterly") return a * 4 * factor;
+    if (p.interval === "yearly") return a * factor;
+    return a * factor;
+  }
+  function predictedMonth(state, date) {
+    const ms = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`, me = localMonthEndISO(date), key = ms.slice(0, 7);
+    let rentalIncome = 0;
+    for (const l of state.leases || []) {
+      const active = (!l.start || l.start <= me) && (!l.end || l.end >= ms);
+      if (active) rentalIncome += Number(l.rent || 0) + Number(l.advance || 0);
+    }
+    let propertyCosts = Number(state.finance.repayment || 0) + Number(state.finance.fixed || 0);
+    const costBreakdown = [];
+    for (const p of state.costPositions || []) {
+      if (!p.confirmed || p.assignment === "rental") continue;
+      const amt = positionMonthlyEquivalent(p, ms, me);
+      if (amt) {
+        propertyCosts += amt;
+        costBreakdown.push({ label: p.label, amount: amt });
+      }
+    }
+    const historic = (state.payments || []).filter((p) => p.direction === "outflow" && paymentMonthKey(p.date) === key).reduce((s, p) => s + Number(p.amount || 0), 0);
+    return { key, label: date.toLocaleDateString("de-DE", { month: "short", year: "2-digit" }), income: rentalIncome, outflow: propertyCosts, net: rentalIncome - propertyCosts, actualOutflow: historic, costBreakdown };
+  }
+  function intelligentForecast(state, months = 12) {
+    const now = /* @__PURE__ */ new Date(), rows = [];
+    for (let i = 0; i < months; i++) rows.push(predictedMonth(state, new Date(now.getFullYear(), now.getMonth() + i, 1)));
+    return rows;
+  }
+  function forecastSignals(state) {
+    const rows = intelligentForecast(state, 12), out = [];
+    const worst = rows.slice().sort((a, b) => a.net - b.net)[0];
+    if (worst && worst.net < 0) out.push({ severity: "warn", text: `Schwächster prognostizierter Monat: ${worst.label} mit ${euro(worst.net)}.` });
+    const total = rows.reduce((s, r) => s + r.net, 0);
+    out.push({ severity: total >= 0 ? "good" : "warn", text: `Prognostizierter 12-Monats-Saldo: ${euro(total)}.` });
+    const pending = (state.payments || []).filter((p) => p.direction === "outflow" && !p.positionId).length;
+    if (pending) out.push({ severity: "warn", text: `${pending} Ausgabe(n) warten auf automatische oder manuelle Zuordnung.` });
+    return out;
+  }
+  function extractDocumentIntelligence(text, baseFields = {}) {
+    const lines = String(text || "").split(/\r?\n/).map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean), low = String(text || "").toLowerCase();
+    const moneyMatches = [...String(text || "").matchAll(/\b(\d{1,6}(?:\.\d{3})*,\d{2})\s*€?/g)].map((m) => parseMoney(m[1])).filter((x) => x >= 0);
+    const issuerLine = lines.find((l) => /(stadt|gemeinde|versicherung|werke|wasser|entsorgung|rechnung|bescheid)/i.test(l) && l.length < 100) || lines[0] || "";
+    const refLine = lines.find((l) => /(aktenzeichen|kassenzeichen|kundennummer|rechnungsnummer|bescheidnummer|zeichen)/i.test(l)) || "";
+    const ref = (refLine.match(/[A-Z0-9][A-Z0-9\-\/.]{4,}/i) || [])[0] || "";
+    const totalLine = lines.slice().reverse().find((l) => /(gesamtsumme|gesamtbetrag|summe neu|zahlbetrag|zu zahlen|endbetrag)/i.test(l)) || "";
+    const totalVals = [...totalLine.matchAll(/(\d{1,6}(?:\.\d{3})*,\d{2})/g)].map((m) => parseMoney(m[1]));
+    const total = totalVals.length ? totalVals[totalVals.length - 1] : moneyMatches.length ? Math.max(...moneyMatches) : 0;
+    const vatLines = lines.filter((l) => /(ust|umsatzsteuer|mwst)/i.test(l));
+    const vatAmounts = vatLines.flatMap((l) => [...l.matchAll(/(\d{1,6}(?:\.\d{3})*,\d{2})/g)].map((m) => parseMoney(m[1])));
+    const due = extractDueDates(text);
+    const propertyTaxDeferred = /grundsteuer.*(?:erst|ab).*januar.*folgejahr|erwerber.*erst.*januar.*folgejahr/i.test(low);
+    return {
+      issuer: issuerLine.slice(0, 120),
+      reference: ref,
+      total,
+      vatAmount: vatAmounts.length ? vatAmounts[vatAmounts.length - 1] : 0,
+      dueDates: due,
+      documentFamily: /grundbesitzabgaben/i.test(low) ? "municipal_assessment" : /rechnung/i.test(low) ? "invoice" : /versicherung/i.test(low) ? "insurance" : baseFields.kind || "document",
+      propertyTaxDeferred,
+      anomalies: []
+    };
+  }
+  function validateDocumentTotals(fields) {
+    const proposals = fields.positionProposals || [], sum = proposals.reduce((s, p) => s + Number(p.amount || 0), 0), total = Number(fields.intelligence?.total || 0), issues = [];
+    if (total > 0 && sum > 0) {
+      const diff = Math.abs(total - sum);
+      if (diff > 0.02) issues.push({ severity: diff / total > 0.1 ? "warn" : "info", message: `Erkannte Einzelpositionen ${euro(sum)} weichen vom erkannten Gesamtbetrag ${euro(total)} um ${euro(diff)} ab.` });
+    }
+    if (fields.intelligence?.propertyTaxDeferred) issues.push({ severity: "info", message: "Hinweis auf verschobenen Beginn der Grundsteuer erkannt; Grundsteuer für den aktuellen Teilzeitraum nicht automatisch ergänzen." });
+    if (!(fields.dueDates || []).length && !(fields.intelligence?.dueDates || []).length) issues.push({ severity: "info", message: "Kein eindeutiger Fälligkeitstermin erkannt." });
+    return issues;
+  }
+  function documentConfidenceSummary(fields) {
+    const ps = fields.positionProposals || [];
+    if (!ps.length) return 0;
+    return ps.reduce((s, p) => s + Number(p.confidence || 0), 0) / ps.length;
+  }
+  function billingRecipient(lease) {
+    return { name: lease?.tenantName || "", address: lease?.tenantAddress || "" };
+  }
+  function splitAddressLines(s) {
+    return String(s || "").split(/\n|,\s*(?=\d{5}\s)/).map((x) => x.trim()).filter(Boolean);
+  }
+  function formatRuleForReport(e) {
+    if (e.decision?.rule === "area") return `Wohnfläche (${percent(e.tenantShare)})`;
+    if (e.decision?.rule === "consumption") return `Verbrauch (${percent(e.tenantShare)})`;
+    if (e.decision?.rule === "rental") return "direkt Mietwohnung";
+    if (e.decision?.rule === "persons") return `Personen (${percent(e.tenantShare)})`;
+    return e.decision?.rule || "individuell";
+  }
+  function formatBillingRuleDetails(e, { property = {}, units = [], waterConsumption = null, allocationBases = null } = {}) {
+    const share = Number(e.tenantShare || 0), fmt = (v, d = 0) => Number(v || 0).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
+    if (e.decision?.rule === "consumption") {
+      const house = Number(waterConsumption?.house ?? e.details?.quantity), tenant = Number(waterConsumption?.tenant ?? (Number.isFinite(house) ? house * share : NaN));
+      if (Number.isFinite(house) && house > 0 && Number.isFinite(tenant)) return `Verbrauch ${fmt(tenant, 3)} m³ von ${fmt(house, 3)} m³ (${percent(share)})`;
+    }
+    if (e.decision?.rule === "area") {
+      const total = Number((allocationBases?.totalArea ?? property?.totalArea) || 0), rental = Number((allocationBases?.rentalArea ?? units.find((u) => u.type === "rental")?.area) || 0);
+      if (total > 0 && rental >= 0) return `Wohnfläche ${fmt(rental, 0)} m² von ${fmt(total, 0)} m² (${percent(share)})`;
+    }
+    return formatRuleForReport(e);
+  }
+  async function generateProfessionalBillingPDF(state, year, snapshot = null) {
+    const jsPDF = await loadJSPDF(), a = snapshot || billingAnalysis(state, year), lease = snapshot?.lease || state.leases?.[0], recipient = billingRecipient(lease), sender = snapshot?.correspondence || state.correspondence || {}, property = snapshot?.property || state.property, units = snapshot?.units || state.units || [], waterConsumption = snapshot?.waterConsumption || settlementConsumption(state, settlementByPeriod(state, year)), reportCtx = { property, units, waterConsumption, allocationBases: snapshot?.allocationBases || null };
+    const doc = new jsPDF({ unit: "mm", format: "a4" }), W = 210, M = 18;
+    let y = 18;
+    const txt = (t, x, yy, size = 10, style = "normal") => {
+      doc.setFont("helvetica", style);
+      doc.setFontSize(size);
+      doc.text(String(t || ""), x, yy);
+    };
+    const euroPdf = (n) => Number(n || 0).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+    txt(sender.landlordName || "Vermieter", M, y, 11, "bold");
+    y += 5;
+    for (const l of splitAddressLines(sender.landlordAddress || property.address || "")) {
+      txt(l, M, y, 9);
+      y += 4;
+    }
+    if (sender.contact) {
+      txt(sender.contact, M, y, 8);
+      y += 4;
+    }
+    y = 18;
+    txt((/* @__PURE__ */ new Date()).toLocaleDateString("de-DE"), W - M, y, 9, "normal");
+    doc.setTextColor(0);
+    y = 42;
+    if (recipient.name) {
+      txt(recipient.name, M, y, 10, "bold");
+      y += 5;
+    }
+    for (const l of splitAddressLines(recipient.address || property.address || "")) {
+      txt(l, M, y, 10);
+      y += 5;
+    }
+    y = Math.max(y + 8, 68);
+    txt("Betriebskostenabrechnung", M, y, 16, "bold");
+    y += 7;
+    txt(`Abrechnungszeitraum: ${billingPeriodLabel(state, year)}`, M, y, 10);
+    y += 5;
+    txt(`Mietobjekt: ${property.name || property.address || "Mietobjekt"}`, M, y, 10);
+    y += 9;
+    doc.setDrawColor(190);
+    doc.line(M, y, W - M, y);
+    y += 7;
+    txt("Kostenaufstellung", M, y, 11, "bold");
+    y += 6;
+    txt("Kostenart", M, y, 8, "bold");
+    txt("Gesamt", 112, y, 8, "bold");
+    txt("Umlage", 140, y, 8, "bold");
+    txt("Ihr Anteil", W - M, y, 8, "bold");
+    y += 4;
+    doc.line(M, y, W - M, y);
+    y += 5;
+    const events = a.events || [];
+    for (const e of events) {
+      if (y > 255) {
+        doc.addPage();
+        y = 18;
+      }
+      const label = String(e.label || "").slice(0, 48);
+      txt(label, M, y, 8);
+      txt(euroPdf(e.amount), 112, y, 8);
+      txt(formatBillingRuleDetails(e, reportCtx), 140, y, 6);
+      doc.text(euroPdf(e.tenantAmount), W - M, y, { align: "right" });
+      y += 5;
+    }
+    y += 2;
+    doc.line(M, y, W - M, y);
+    y += 7;
+    txt("Anteilige Betriebskosten", M, y, 10, "bold");
+    doc.text(euroPdf(a.tenantCosts), W - M, y, { align: "right" });
+    y += 6;
+    txt("Abzüglich geleistete Vorauszahlungen", M, y, 10);
+    doc.text("− " + euroPdf(a.advances), W - M, y, { align: "right" });
+    y += 6;
+    doc.line(112, y, W - M, y);
+    y += 7;
+    const result = Number(a.result || 0), title = result >= 0 ? "Nachzahlung" : "Guthaben";
+    txt(title, M, y, 12, "bold");
+    doc.text(euroPdf(Math.abs(result)), W - M, y, { align: "right" });
+    y += 10;
+    if (result > 0 && sender.iban) {
+      txt(`Bitte überweisen Sie den Betrag auf ${sender.iban}${sender.paymentReference ? ` unter Angabe „${sender.paymentReference}“` : ""}.`, M, y, 9);
+      y += 6;
+    } else if (result < 0) {
+      txt("Das Guthaben ist in der Abrechnung ausgewiesen und kann entsprechend ausgeglichen werden.", M, y, 9);
+      y += 6;
+    }
+    txt("Die zugrunde liegenden Kostenpositionen und Verteilungsmaßstäbe sind oben einzeln dargestellt.", M, y, 8);
+    y += 5;
+    txt("Belegeinsicht wird auf Verlangen ermöglicht (§ 556 Abs. 4 BGB).", M, y, 8);
+    y += 5;
+    txt("Die zugehörigen Herkunftsnachweise sind in der App dokumentiert.", M, y, 8);
+    y += 5;
+    if (sender.contact) {
+      txt(`Kontakt für Rückfragen: ${sender.contact}`, M, y, 8);
+      y += 5;
+    }
+    y += 5;
+    txt("Mit freundlichen Grüßen", M, y, 9);
+    y += 10;
+    txt(sender.landlordName || "Vermieter", M, y, 9);
+    doc.setFontSize(7);
+    doc.text(`Erstellt am ${(/* @__PURE__ */ new Date()).toLocaleDateString("de-DE")}`, M, 290);
+    if (snapshot?.integrityHash) doc.text(`Snapshot ${String(snapshot.integrityHash).slice(0, 20)}…`, W - M, 290, { align: "right" });
+    return doc;
+  }
+  return __toCommonJS(intelligence_exports);
+})();
+
+
+/* ===== compiled src/domain/quality.ts ===== */
+"use strict";
+var AppQuality = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/quality.ts
+  var quality_exports = {};
+  __export(quality_exports, {
+    QUALITY_VERSION: () => QUALITY_VERSION,
+    annualComparison: () => annualComparison,
+    bankHeaderIndex: () => bankHeaderIndex,
+    bankImportPreview: () => bankImportPreview,
+    categoryLabel: () => categoryLabel,
+    costTrendAlerts: () => costTrendAlerts,
+    csvDetectDelimiter: () => csvDetectDelimiter,
+    csvRows: () => csvRows,
+    dataQualityScore: () => dataQualityScore,
+    detectRentPayment: () => detectRentPayment,
+    meterAnomalies: () => meterAnomalies,
+    meterTrend: () => meterTrend,
+    parseBankCSV: () => parseBankCSV,
+    parseFlexibleDate: () => parseFlexibleDate,
+    parseGermanNumber: () => parseGermanNumber,
+    paymentFingerprint: () => paymentFingerprint,
+    periodCategoryTotals: () => periodCategoryTotals
+  });
+  var QUALITY_VERSION = 1;
+  function parseGermanNumber(v) {
+    let s = String(v ?? "").trim().replace(/\s/g, "").replace(/[€EUR]/gi, "");
+    if (!s) return null;
+    const neg = /^\(.*\)$/.test(s);
+    s = s.replace(/[()]/g, "");
+    if (s.includes(",") && s.includes(".")) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+      else s = s.replace(/,/g, "");
+    } else if (s.includes(",")) s = s.replace(",", ".");
+    s = s.replace(/[^\d.+-]/g, "");
+    const n = Number(s);
+    return Number.isFinite(n) ? neg ? -Math.abs(n) : n : null;
+  }
+  function parseFlexibleDate(v) {
+    const s = String(v || "").trim();
+    if (!s) return "";
+    let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+    m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})$/);
+    if (m) {
+      let y = Number(m[3]);
+      if (y < 100) y += 2e3;
+      return `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
+    }
+    ;
+    return "";
+  }
+  function csvDetectDelimiter(text) {
+    const first = String(text || "").split(/\r?\n/).slice(0, 5).join("\n"), candidates = [";", ",", "	"];
+    return candidates.map((d) => ({ d, n: (first.match(new RegExp(d === "	" ? "\\t" : d === ";" ? ";" : ",", "g")) || []).length })).sort((a, b) => b.n - a.n)[0]?.d || ";";
+  }
+  function csvRows(text, delimiter) {
+    const rows = [];
+    let row = [], cell = "", quoted = false;
+    for (let i = 0; i < String(text).length; i++) {
+      const ch = text[i], nx = text[i + 1];
+      if (ch === '"' && quoted && nx === '"') {
+        cell += '"';
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        quoted = !quoted;
+        continue;
+      }
+      if (ch === delimiter && !quoted) {
+        row.push(cell);
+        cell = "";
+        continue;
+      }
+      if ((ch === "\n" || ch === "\r") && !quoted) {
+        if (ch === "\r" && nx === "\n") i++;
+        row.push(cell);
+        if (row.some((x) => String(x).trim() !== "")) rows.push(row);
+        row = [];
+        cell = "";
+        continue;
+      }
+      cell += ch;
+    }
+    row.push(cell);
+    if (row.some((x) => String(x).trim() !== "")) rows.push(row);
+    return rows;
+  }
+  function bankHeaderIndex(headers, patterns) {
+    const hs = headers.map(normalizeLabelText);
+    for (const p of patterns) {
+      const i = hs.findIndex((h) => p.test(h));
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+  function parseBankCSV(text) {
+    const delimiter = csvDetectDelimiter(text), rows = csvRows(text, delimiter);
+    if (rows.length < 2) throw new Error("Die CSV-Datei enthält keine Buchungen.");
+    const h = rows[0], dateIdx = bankHeaderIndex(h, [/buchungstag/, /wertstellung/, /^datum$/, /date/]), amountIdx = bankHeaderIndex(h, [/^betrag/, /umsatz/, /amount/]), debitIdx = bankHeaderIndex(h, [/soll/, /debit/]), creditIdx = bankHeaderIndex(h, [/haben/, /credit/]), textIdx = bankHeaderIndex(h, [/verwendungszweck/, /buchungstext/, /beschreibung/, /umsatztext/, /purpose/, /description/]), nameIdx = bankHeaderIndex(h, [/zahlungspflichtiger/, /zahlungsempfanger/, /auftraggeber/, /empfanger/, /^name$/]);
+    if (dateIdx < 0 || amountIdx < 0 && debitIdx < 0 && creditIdx < 0) throw new Error("Datum oder Betragsspalte konnte nicht erkannt werden.");
+    const out = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i], date = parseFlexibleDate(r[dateIdx]);
+      if (!date) continue;
+      let amount = amountIdx >= 0 ? parseGermanNumber(r[amountIdx]) : null;
+      if ((amount == null || amount === 0) && debitIdx >= 0) {
+        const d = parseGermanNumber(r[debitIdx]);
+        if (d != null && d !== 0) amount = -Math.abs(d);
+      }
+      if ((amount == null || amount === 0) && creditIdx >= 0) {
+        const c = parseGermanNumber(r[creditIdx]);
+        if (c != null && c !== 0) amount = Math.abs(c);
+      }
+      if (amount == null || amount === 0) continue;
+      const label = [nameIdx >= 0 ? r[nameIdx] : "", textIdx >= 0 ? r[textIdx] : ""].filter(Boolean).join(" · ").trim() || "Kontobuchung";
+      out.push({ date, amount: Math.abs(amount), direction: amount < 0 ? "outflow" : "income", label, rawRow: i + 1 });
+    }
+    return { delimiter, headers: h, rows: out };
+  }
+  function paymentFingerprint(p) {
+    return `${p.date}|${p.direction}|${Number(p.amount || 0).toFixed(2)}|${normalizeLabelText(p.label).slice(0, 80)}`;
+  }
+  function detectRentPayment(state, payment) {
+    if (payment.direction !== "income") return null;
+    let best = null;
+    for (const l of state.leases || []) {
+      for (const c of [{ kind: "Gesamtmiete", value: Number(l.rent || 0) + Number(l.advance || 0) }, { kind: "Kaltmiete", value: Number(l.rent || 0) }].filter((x) => x.value > 0)) {
+        const diff = Math.abs(Number(payment.amount) - c.value);
+        let score = diff < 0.01 ? 80 : diff / Math.max(1, c.value) < 0.03 ? 55 : 0;
+        const tenant = normalizeLabelText(l.tenantName || "");
+        if (tenant && normalizeLabelText(payment.label).includes(tenant)) score += 20;
+        if (score > Number(best?.score || 0)) best = { leaseId: l.id, kind: c.kind, expected: c.value, score: Math.min(100, score) };
+      }
+    }
+    return best && best.score >= 55 ? best : null;
+  }
+  function bankImportPreview(state, parsed) {
+    const existing = new Set((state.payments || []).map(paymentFingerprint));
+    return parsed.rows.map((r) => ({ ...r, duplicate: existing.has(paymentFingerprint(r)), rentMatch: detectRentPayment(state, r) }));
+  }
+  function categoryLabel(k) {
+    return category(k)?.label || String(k || "Sonstige");
+  }
+  function periodCategoryTotals(state, year) {
+    const a = billingAnalysis(state, year), map = /* @__PURE__ */ new Map();
+    for (const e of a.events || []) {
+      const cat = e.category || positionById(state, e.positionId)?.category || "other", prev = map.get(cat) || { category: cat, total: 0, tenant: 0, count: 0 };
+      prev.total += Number(e.amount || 0);
+      prev.tenant += Number(e.tenantAmount || 0);
+      prev.count++;
+      map.set(cat, prev);
+    }
+    return [...map.values()];
+  }
+  function annualComparison(s, year) {
+    const current = periodCategoryTotals(s, year), prior = periodCategoryTotals(s, year - 1), keys = /* @__PURE__ */ new Set([...current.map((x) => x.category), ...prior.map((x) => x.category)]), cp = billingPeriodInfo(s, year), pp = billingPeriodInfo(s, year - 1);
+    return [...keys].map((k) => {
+      const c = current.find((x) => x.category === k) || { total: 0, tenant: 0 }, p = prior.find((x) => x.category === k) || { total: 0, tenant: 0 }, comparable = cp.days === cp.nominalDays && pp.days === pp.nominalDays;
+      return { category: k, current: c.total, prior: p.total, tenantCurrent: c.tenant, change: c.total - p.total, pct: comparable && p.total ? (c.total - p.total) / p.total : null, comparable, currentPartial: cp.days !== cp.nominalDays, priorPartial: pp.days !== pp.nominalDays };
+    }).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+  }
+  function costTrendAlerts(s, year) {
+    return annualComparison(s, year).filter((x) => x.comparable && x.prior > 0 && x.current > 0 && x.pct != null && Math.abs(x.pct) >= 0.15).map((x) => ({ severity: x.pct > 0.25 ? "warn" : "info", text: `${categoryLabel(x.category)}: ${x.pct >= 0 ? "+" : ""}${Math.round(x.pct * 100)} % gegenüber ${billingPeriodLabel(s, year - 1)} (${euro(x.prior)} → ${euro(x.current)}).` }));
+  }
+  function meterTrend(meter) {
+    const r = (meter?.readings || []).filter((x) => x.date && Number.isFinite(Number(x.value))).slice().sort((a, b) => a.date.localeCompare(b.date)), segments = [];
+    for (let i = 1; i < r.length; i++) {
+      const days = daysInclusive(r[i - 1].date, r[i].date) - 1, delta = Number(r[i].value) - Number(r[i - 1].value);
+      if (days > 0 && delta >= 0) segments.push({ from: r[i - 1], to: r[i], days, delta, perDay: delta / days, per30: delta / days * 30 });
+    }
+    const avg = segments.length ? segments.reduce((s, x) => s + x.perDay, 0) / segments.length : 0;
+    return { segments, avgPerDay: avg, avgPer30: avg * 30 };
+  }
+  function meterAnomalies(meter) {
+    const t = meterTrend(meter);
+    if (t.segments.length < 2) return [];
+    const baseline = t.segments.slice(0, -1).reduce((s, x) => s + x.perDay, 0) / Math.max(1, t.segments.length - 1), last = t.segments.at(-1), out = [];
+    if (baseline > 0 && last.perDay > baseline * 1.75 && last.delta > 1) out.push({ severity: "warn", text: `${meter.name}: letzter Verbrauch liegt ${Math.round((last.perDay / baseline - 1) * 100)} % über dem bisherigen Tagesmittel.` });
+    return out;
+  }
+  function dataQualityScore(state) {
+    const integrity = integritySummary(state), checks = billingReadiness(state, currentPeriodYear()), openDocs = (state.documentsCache || []).filter((d) => documentWorkflowState(d) !== "done").length;
+    const matchable = (state.payments || []).filter((p) => p.direction === "outflow" && !p.positionId && paymentMatchSuggestions(state, p, 1)[0]?.score >= 45).length;
+    let score = 100;
+    score -= integrity.errors.length * 20;
+    score -= integrity.warnings.length * 4;
+    score -= checks.filter((x) => !x.ok).length * 7;
+    score -= Math.min(15, openDocs * 3);
+    score -= Math.min(10, matchable * 2);
+    return Math.max(0, Math.round(score));
+  }
+  return __toCommonJS(quality_exports);
+})();
+
+
+/* ===== compiled src/domain/smart-engine.ts ===== */
+"use strict";
+var AppSmartEngine = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/smart-engine.ts
+  var smart_engine_exports = {};
+  __export(smart_engine_exports, {
+    SMART_ENGINE_VERSION: () => SMART_ENGINE_VERSION,
+    activeLeaseInMonth: () => activeLeaseInMonth,
+    billingProjection: () => billingProjection,
+    latestBillingSnapshot: () => latestBillingSnapshot,
+    rentMonitor: () => rentMonitor,
+    rentMonthStatus: () => rentMonthStatus,
+    rentStatusLabel: () => rentStatusLabel,
+    smartMonthKey: () => smartMonthKey,
+    smartMonthOffset: () => smartMonthOffset,
+    smartMonthRange: () => smartMonthRange,
+    smartToday: () => smartToday
+  });
+  var SMART_ENGINE_VERSION = 1;
+  function smartToday() {
+    return localDateISO();
+  }
+  function smartMonthKey(d = /* @__PURE__ */ new Date()) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+  function smartMonthOffset(offset) {
+    const d = /* @__PURE__ */ new Date(), x = new Date(d.getFullYear(), d.getMonth() + offset, 1);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`;
+  }
+  function smartMonthRange(key) {
+    const [y, m] = String(key).split("-").map(Number), start = `${y}-${String(m).padStart(2, "0")}-01`, end = new Date(y, m, 0).toISOString().slice(0, 10);
+    return { start, end };
+  }
+  function activeLeaseInMonth(lease, key) {
+    const { start, end } = smartMonthRange(key);
+    return !!lease && (!lease.start || lease.start <= end) && (!lease.end || lease.end >= start);
+  }
+  function rentMonthStatus(state, key = smartMonthKey()) {
+    const lease = (state.leases || []).find((l) => activeLeaseInMonth(l, key));
+    if (!lease) return { key, status: "none", expected: 0, paid: 0, confidence: 0, payments: [] };
+    const expected = Number(lease.rent || 0) + Number(lease.advance || 0), tenant = normalizeLabelText(lease.tenantName || "");
+    const pays = (state.payments || []).filter((p) => p.direction === "income" && paymentMonthKey(p.date) === key).filter((p) => {
+      const label = normalizeLabelText(p.label), det = detectRentPayment(state, p);
+      return det?.leaseId === lease.id || /\bmiete\b|betriebskosten|nebenkosten|\bbk\b/.test(label) || tenant && label.includes(tenant);
+    });
+    const paid = pays.reduce((s, p) => s + Number(p.amount || 0), 0), ratio = expected ? paid / expected : 0;
+    let status = paid <= 0 ? "missing" : ratio >= 0.995 ? "paid" : "partial";
+    if (ratio > 1.08) status = "over";
+    let confidence = 0;
+    if (pays.length) confidence = Math.max(...pays.map((p) => Number(detectRentPayment(state, p)?.score || (/\bmiete\b/.test(normalizeLabelText(p.label)) ? 70 : 45))));
+    return { key, lease, expected, paid, difference: paid - expected, status, confidence, payments: pays };
+  }
+  function rentMonitor(state, months = 8) {
+    return Array.from({ length: months }, (_, i) => rentMonthStatus(state, smartMonthOffset(-i)));
+  }
+  function rentStatusLabel(s) {
+    return s.status === "paid" ? "vollständig erkannt" : s.status === "partial" ? "teilweise erkannt" : s.status === "over" ? "über Soll erkannt" : s.status === "missing" ? "noch nicht erkannt" : "kein aktiver Mietvertrag";
+  }
+  function latestBillingSnapshot(state) {
+    return (state.billingSnapshots || []).slice().sort((a, b) => Number(b.periodYear) - Number(a.periodYear))[0] || null;
+  }
+  function billingProjection(s, year = currentPeriodYear()) {
+    const current = billingAnalysis(s, year), cur = periodCategoryTotals(s, year), prior = periodCategoryTotals(s, year - 1), pp = billingPeriodInfo(s, year - 1), currentCats = new Set(cur.filter((x) => x.total > 0).map((x) => x.category)), factor = pp.active && pp.days > 0 ? pp.nominalDays / pp.days : 1;
+    const missing = prior.filter((x) => x.total > 0 && !currentCats.has(x.category)).map((x) => ({ ...x, estimatedTenant: Number(x.tenant || 0) * (pp.days < pp.nominalDays ? factor : 1), annualized: pp.days < pp.nominalDays }));
+    const estimatedMissingTenant = missing.reduce((sum, x) => sum + Number(x.estimatedTenant || 0), 0), projectedTenantCosts = Number(current.tenantCosts || 0) + estimatedMissingTenant, projectedResult = projectedTenantCosts - Number(current.advances || 0);
+    const priorCats = prior.filter((x) => x.total > 0).length, matched = prior.filter((x) => currentCats.has(x.category)).length;
+    let confidence = priorCats ? Math.round(55 + 40 * (matched / priorCats)) : Math.min(55, 25 + (current.events || []).length * 5);
+    if (pp.days < pp.nominalDays && missing.length) confidence = Math.max(35, confidence - 15);
+    return { year, knownTenantCosts: Number(current.tenantCosts || 0), estimatedMissingTenant, projectedTenantCosts, advances: Number(current.advances || 0), projectedResult, missingCategories: missing, confidence: Math.max(20, Math.min(95, confidence)), period: current.period };
+  }
+  return __toCommonJS(smart_engine_exports);
+})();
+
+
+/* ===== compiled src/domain/v18-assistant.ts ===== */
+"use strict";
+var AppV18Assistant = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/v18-assistant.ts
+  var v18_assistant_exports = {};
+  __export(v18_assistant_exports, {
+    DECISION_UI_VERSION: () => DECISION_UI_VERSION,
+    V18_ASSISTANT_VERSION: () => V18_ASSISTANT_VERSION,
+    V18_EXPECTED_BILLING_CATEGORIES: () => V18_EXPECTED_BILLING_CATEGORIES,
+    advanceAdjustmentSuggestion: () => advanceAdjustmentSuggestion,
+    billingDeadlineInsights: () => billingDeadlineInsights,
+    bindV18AssistantActions: () => bindV18AssistantActions,
+    cleanProposalLabel: () => cleanProposalLabel,
+    confidenceBand: () => confidenceBand,
+    decisionActionLabel: () => decisionActionLabel,
+    decisionKind: () => decisionKind,
+    decisionSeverityWeight: () => decisionSeverityWeight,
+    decisionWhyHTML: () => decisionWhyHTML,
+    enrichDocumentProposalsSmart: () => enrichDocumentProposalsSmart,
+    historicalAssignmentPrediction: () => historicalAssignmentPrediction,
+    medianValue: () => medianValue,
+    qualityBand: () => qualityBand,
+    rentAttentionDay: () => rentAttentionDay,
+    robustMeterAnomalies: () => robustMeterAnomalies,
+    smartAnswer: () => smartAnswer,
+    smartClassifyCostText: () => smartClassifyCostText,
+    smartDataAnomalies: () => smartDataAnomalies,
+    smartDecisionQueue: () => smartDecisionQueue,
+    smartDocumentSummary: () => smartDocumentSummary,
+    smartGenericPositionProposals: () => smartGenericPositionProposals,
+    smartInsights: () => smartInsights,
+    smartPaymentPlan: () => smartPaymentPlan,
+    smartPaymentSuggestions: () => smartPaymentSuggestions,
+    smartSummaryText: () => smartSummaryText,
+    smartTaskSuggestions: () => smartTaskSuggestions,
+    sourceExpectedAmounts: () => sourceExpectedAmounts,
+    sourcePaymentMatchScore: () => sourcePaymentMatchScore,
+    v18BackupStatus: () => v18BackupStatus,
+    v18BillingAssistant: () => v18BillingAssistant,
+    v18BillingAssistantHTML: () => v18BillingAssistantHTML,
+    v18CategoryForecast: () => v18CategoryForecast,
+    v18StatusClass: () => v18StatusClass,
+    v18StatusLabel: () => v18StatusLabel,
+    v18StatusWeight: () => v18StatusWeight
+  });
+  var V18_ASSISTANT_VERSION = 1;
+  var V18_EXPECTED_BILLING_CATEGORIES = [
+    { category: "propertyTax", label: "Grundsteuer", route: "data", sub: "positions" },
+    { category: "rainwater", label: "Niederschlagswasser", route: "data", sub: "positions" },
+    { category: "street", label: "Straßenreinigung / Winterdienst", route: "data", sub: "positions" },
+    { category: "waste", label: "Abfall", route: "data", sub: "positions" },
+    { category: "insurance", label: "Gebäudeversicherung", route: "data", sub: "positions" },
+    { category: "water", label: "Kaltwasser / Kanal", route: "rental", sub: "water" }
+  ];
+  function v18CategoryForecast(s, year, def) {
+    const cp = billingPeriodInfo(s, year), current = periodCategoryTotals(s, year).find((x) => x.category === def.category), water = def.category === "water" ? settlementConsumption(s, settlementByPeriod(s, year)) : null;
+    if (current?.total > 0) {
+      if (def.category === "water" && !water?.valid) return { ...def, status: "open", amount: 0, knownTotal: Number(current.total || 0), detail: "Kosten sind vorhanden, aber vollständige Verbrauchsdaten fehlen." };
+      return { ...def, status: "known", amount: Number(current.tenant || 0), knownTotal: Number(current.total || 0), detail: "Bestätigte Daten dieser Abrechnungsperiode." };
+    }
+    const prior = periodCategoryTotals(s, year - 1).find((x) => x.category === def.category), pp = billingPeriodInfo(s, year - 1);
+    if (prior?.total > 0 && pp.active && pp.days > 0) {
+      const currentFull = cp.active && !cp.isTakeoverPeriod && cp.days === cp.nominalDays;
+      const priorFull = pp.active && !pp.isTakeoverPeriod && pp.days === pp.nominalDays;
+      const scale = currentFull && priorFull ? 1 : cp.days > 0 ? cp.days / pp.days : 1;
+      const amount = Number(prior.tenant || 0) * scale;
+      const detail = currentFull && priorFull ? `Aus ${billingPeriodLabel(s, year - 1)} als Jahresvergleich übernommen.` : `Aus ${billingPeriodLabel(s, year - 1)} zeitanteilig auf die aktuelle Teilperiode hochgerechnet.`;
+      return { ...def, status: "estimated", amount, knownTotal: 0, detail };
+    }
+    return { ...def, status: "open", amount: 0, knownTotal: 0, detail: "Noch kein aktueller oder ausreichend vergleichbarer historischer Wert vorhanden." };
+  }
+  function v18BackupStatus(s) {
+    const at = s.meta?.lastBackupAt || "", age = at ? Math.max(0, calendarDayDiff(String(at).slice(0, 10), smartToday())) : null;
+    if (age == null) return { status: "open", label: "Noch kein Backup", detail: "Noch keine verschlüsselte Vollsicherung dokumentiert.", age: null, route: "more", sub: "backup" };
+    if (age > 30) return { status: "open", label: "Backup überfällig", detail: `Letzte verschlüsselte Sicherung vor ${age} Tagen.`, age, route: "more", sub: "backup" };
+    return { status: "known", label: "Backup aktuell", detail: `Letzte verschlüsselte Sicherung vor ${age} Tagen.`, age, route: "more", sub: "backup" };
+  }
+  function v18StatusWeight(status) {
+    return status === "known" ? 1 : status === "estimated" ? 0.5 : 0;
+  }
+  function v18StatusLabel(status) {
+    return status === "known" ? "Bekannt" : status === "estimated" ? "Geschätzt" : "Offen";
+  }
+  function v18StatusClass(status) {
+    return status === "known" ? "good" : status === "estimated" ? "warn" : "bad";
+  }
+  function v18BillingAssistant(s, year = preferredBillingYear()) {
+    const period = billingPeriodInfo(s, year), analysis = billingAnalysis(s, year), lease = analysis.lease || s.leases?.[0] || null, owner = unitByType(s, "owner"), rental = unitByType(s, "rental"), rows = V18_EXPECTED_BILLING_CATEGORIES.map((d) => v18CategoryForecast(s, year, d));
+    const leaseItem = { id: "lease", label: "Mietvertrag", status: lease ? "known" : "open", detail: lease ? `${euro(lease.rent)} Kaltmiete · ${euro(lease.advance)} BK-Vorauszahlung` : "Mietvertrag fehlt.", route: "rental", sub: "overview" };
+    const areaOK = Number(s.property?.totalArea || 0) > 0 && Number(rental?.area || 0) > 0 && Number(owner?.area || 0) > 0;
+    const areaItem = { id: "area", label: "Wohnflächen", status: areaOK ? "known" : "open", detail: areaOK ? `${rental.area} m² Mietwohnung von ${s.property.totalArea} m² gesamt` : "Wohnflächen sind noch nicht vollständig.", route: "data", sub: "object" };
+    const correspondenceOK = !!String(s.correspondence?.landlordName || "").trim() && !!String(s.correspondence?.landlordAddress || s.property?.address || "").trim();
+    const correspondenceItem = { id: "correspondence", label: "Absenderdaten", status: correspondenceOK ? "known" : "open", detail: correspondenceOK ? "Für die spätere PDF vorhanden." : "Absenderdaten für die Endabrechnung ergänzen.", route: "data", sub: "object" };
+    const evidence = lease ? actualAdvanceEvidenceInPeriod(s, lease, year) : { amount: 0, recognizedPayments: 0 }, scheduled = lease ? monthlyAdvanceInPeriod(s, lease, year) : 0, periodEnded = !!period.end && smartToday() > period.end;
+    const advanceStatus = Number(evidence.recognizedPayments || 0) > 0 ? "known" : lease && Number(lease.advance || 0) > 0 && !periodEnded ? "estimated" : "open";
+    const advanceItem = { id: "advances", label: "Vorauszahlungen", status: advanceStatus, detail: advanceStatus === "known" ? `${evidence.recognizedPayments} Zahlung(en) erkannt · bisher ${euro(evidence.amount)}` : advanceStatus === "estimated" ? `Vertraglich geplant: ${euro(scheduled)}` : "Keine belastbare Vorauszahlungsbasis.", route: "owner", sub: "cashflow" };
+    const checklist = [leaseItem, areaItem, correspondenceItem, ...rows, advanceItem], score = Math.round(100 * checklist.reduce((sum, x) => sum + v18StatusWeight(x.status), 0) / Math.max(1, checklist.length));
+    const estimatedTenant = rows.filter((x) => x.status === "estimated").reduce((sum, x) => sum + Number(x.amount || 0), 0), knownTenant = Number(analysis.tenantCosts || 0), projectedTenantCosts = knownTenant + estimatedTenant;
+    const projectedAdvances = periodEnded ? Number(analysis.advances || 0) : Math.max(Number(analysis.advances || 0), Number(scheduled || 0)), projectedResult = projectedTenantCosts - projectedAdvances;
+    const openItems = checklist.filter((x) => x.status === "open"), estimatedItems = checklist.filter((x) => x.status === "estimated"), knownItems = checklist.filter((x) => x.status === "known"), backup = v18BackupStatus(s);
+    let confidence = Math.round(100 * (knownItems.length + 0.55 * estimatedItems.length) / Math.max(1, checklist.length));
+    if (openItems.length) confidence -= Math.min(20, openItems.length * 3);
+    confidence = Math.max(20, Math.min(96, confidence));
+    const label = score >= 90 ? "Fast fertig" : score >= 75 ? "Gut vorbereitet" : score >= 50 ? "Im Aufbau" : "Noch unvollständig";
+    return { year, period, analysis, rows, checklist, score, label, confidence, knownTenant, estimatedTenant, projectedTenantCosts, actualAdvances: Number(analysis.advances || 0), scheduledAdvances: Number(scheduled || 0), projectedAdvances, projectedResult, openItems, estimatedItems, knownItems, backup, periodEnded };
+  }
+  function v18BillingAssistantHTML(s, year, { compact = false } = {}) {
+    const m = v18BillingAssistant(s, year), cb = confidenceBand(m.confidence), resultLabel = m.projectedResult >= 0 ? "voraussichtliche Nachzahlung" : "voraussichtliches Guthaben", problem = m.openItems.length + m.estimatedItems.length;
+    if (compact) {
+      const next = [...m.openItems, ...m.estimatedItems].slice(0, 3);
+      return `<section id="v18BillingAssistant" class="card"><div class="card-head"><div><p class="eyebrow">ABRECHNUNGSASSISTENT</p><h3>${m.score}% vorbereitet · ${esc(m.label)}</h3><p class="muted">${esc(billingPeriodLabel(s, year))}</p></div><span class="confidence confidence-${cb.id}">${esc(cb.short)}</span></div>
+      <div class="storage-meter" aria-label="Vorbereitungsgrad"><span style="width:${m.score}%"></span></div>
+      <div class="grid cards"><article class="card metric-card"><span>Bekannte Kosten</span><strong>${euro(m.knownTenant)}</strong></article><article class="card metric-card"><span>Geschätzt</span><strong>${euro(m.estimatedTenant)}</strong></article><article class="card metric-card"><span>Prognose</span><strong>${euro(Math.abs(m.projectedResult))}</strong><small>${resultLabel}</small></article></div>
+      ${next.length ? `<div class="card"><strong>${problem} Punkt(e) noch nicht endgültig</strong>${next.map((x) => `<div class="fact-row"><span>${esc(x.label)}</span><strong>${v18StatusLabel(x.status)}</strong></div>`).join("")}</div>` : `<div class="legal-ok">✓ Alle für die Prognose erwarteten Daten sind vorhanden.</div>`}
+      <div class="${m.backup.status === "known" ? "legal-ok" : "legal-warn"}"><strong>${esc(m.backup.label)}</strong><br>${esc(m.backup.detail)}</div>
+      <button class="primary wide" data-v18-go="rental|billing">Abrechnung vorbereiten</button></section>`;
+    }
+    return `<section id="v18BillingAssistantFull" class="card"><div class="card-head"><div><p class="eyebrow">ABRECHNUNGSASSISTENT</p><h3>${m.score}% vorbereitet · ${esc(m.label)}</h3><p class="muted">Planungsansicht für ${esc(billingPeriodLabel(s, year))}. Schätzwerte werden niemals automatisch in die endgültige Abrechnung übernommen.</p></div><span class="confidence confidence-${cb.id}">${esc(cb.label)} · ${m.confidence}%</span></div>
+    <div class="storage-meter" aria-label="Vorbereitungsgrad"><span style="width:${m.score}%"></span></div>
+    <div class="grid cards">
+      <article class="card metric-card"><span>Bekannte Kosten</span><strong>${euro(m.knownTenant)}</strong><small>abrechnungswirksam</small></article>
+      <article class="card metric-card"><span>Geschätzte Ergänzung</span><strong>${euro(m.estimatedTenant)}</strong><small>nur Prognose</small></article>
+      <article class="card metric-card"><span>Geplante Vorauszahlungen</span><strong>${euro(m.projectedAdvances)}</strong><small>bisher tatsächlich ${euro(m.actualAdvances)}</small></article>
+      <article class="card metric-card"><span>Prognose</span><strong>${euro(Math.abs(m.projectedResult))}</strong><small>${resultLabel}</small></article>
+    </div>
+    <div class="tablewrap"><table class="costtable"><thead><tr><th>Baustein</th><th>Status</th><th>Prognoseanteil</th><th>Nächster Schritt</th></tr></thead><tbody>
+      ${m.checklist.map((x) => `<tr ${x.category ? `data-v18-category="${x.category}"` : ""}><td><strong>${esc(x.label)}</strong><br><small>${esc(x.detail || "")}</small></td><td><span class="pill ${v18StatusClass(x.status)}">${v18StatusLabel(x.status)}</span></td><td>${x.category && x.status !== "open" ? euro(x.amount) : "–"}</td><td>${x.status === "known" ? "✓" : `<button class="secondary compact" data-v18-go="${x.route}|${x.sub}">${x.status === "estimated" ? "Aktualisieren" : "Erfassen"}</button>`}</td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="${m.backup.status === "known" ? "legal-ok" : "legal-warn"}"><strong>${esc(m.backup.label)}</strong><br>${esc(m.backup.detail)} ${m.backup.status !== "known" ? `<button class="linkbutton" data-v18-go="more|backup">Sicherung öffnen</button>` : ""}</div>
+    <div class="info"><strong>Trennung von Prognose und Abrechnung:</strong> Nur bestätigte Kosten, echte Zählerdaten und tatsächlich geleistete Vorauszahlungen fließen in Abschluss, Snapshot und PDF ein. Gelbe Schätzwerte dienen ausschließlich der Planung.</div>
+  </section>`;
+  }
+  function bindV18AssistantActions(root = document) {
+    root.querySelectorAll("[data-v18-go]").forEach((b) => b.onclick = () => {
+      const [r, s] = String(b.dataset.v18Go || "").split("|");
+      if (r) go(r, s || DEFAULT_SUB[r]);
+    });
+  }
+  function advanceAdjustmentSuggestion(state) {
+    const snap = latestBillingSnapshot(state), lease = state.leases?.[0];
+    if (!snap || !lease || Number(lease.advance || 0) <= 0) return null;
+    const basisLease = snap.lease || lease, months = monthlyAdvanceInPeriod(state, { ...basisLease, advance: 1 }, Number(snap.periodYear));
+    if (months <= 0) return null;
+    const recommended = Number(snap.tenantCosts || 0) / months, current = Number(lease.advance || 0), diff = recommended - current;
+    return { periodYear: snap.periodYear, current, recommended, diff, relative: current ? diff / current : 0, material: Math.abs(diff) >= 5 && Math.abs(diff / current) >= 0.05, basis: "Rechnerischer Richtwert aus der letzten abgeschlossenen Abrechnung; eine Anpassung nach einer Abrechnung ist nach § 560 Abs. 4 BGB grundsätzlich möglich, die angemessene Höhe ist im Einzelfall zu prüfen." };
+  }
+  function billingDeadlineInsights(state) {
+    const out = [], today = smartToday(), cy = currentPeriodYear(), lease = state.leases?.[0];
+    for (let y = cy - 4; y <= cy; y++) {
+      const p = billingPeriodInfo(state, y);
+      if (!lease || !p.active || snapshotFor(state, y) || p.end >= today) continue;
+      const leaseStart = lease.start || p.start, leaseEnd = lease.end || p.end;
+      if (leaseStart > p.end || leaseEnd < p.start) continue;
+      const target = periodBillingTargetISO(y), legal = periodDeadlineISO(y), targetDays = calendarDayDiff(today, target), legalDays = calendarDayDiff(today, legal);
+      if (targetDays >= 0 && targetDays <= 120) {
+        out.push({ id: `target-${y}`, severity: targetDays <= 30 ? "warn" : "info", title: `Endabrechnung ${billingPeriodLabel(state, y)} vorbereiten`, detail: `Eigene Zielfrist: ${(/* @__PURE__ */ new Date(target + "T00:00:00")).toLocaleDateString("de-DE")} · noch ${targetDays} Tage.`, why: "Eigene Arbeitszielfrist", confidence: 100, route: "rental", sub: "billing" });
+      } else if (targetDays < 0 && legalDays >= 0) {
+        out.push({ id: `target-${y}`, severity: "warn", title: `Eigene Zielfrist für ${billingPeriodLabel(state, y)} überschritten`, detail: `Die Endabrechnung sollte bis ${(/* @__PURE__ */ new Date(target + "T00:00:00")).toLocaleDateString("de-DE")} fertig sein. Die gesetzliche Abrechnungsfrist läuft bis ${(/* @__PURE__ */ new Date(legal + "T00:00:00")).toLocaleDateString("de-DE")}.`, why: "Interne Zielfrist; gesetzliche Frist separat", confidence: 100, route: "rental", sub: "billing" });
+      } else if (legalDays < 0) {
+        out.push({ id: `deadline-${y}`, severity: "bad", title: `Gesetzliche Abrechnungsfrist ${billingPeriodLabel(state, y)} überschritten`, detail: `Die reguläre Frist endete am ${(/* @__PURE__ */ new Date(legal + "T00:00:00")).toLocaleDateString("de-DE")}.`, why: "§ 556 Abs. 3 BGB", confidence: 100, route: "rental", sub: "billing" });
+      }
+    }
+    return out;
+  }
+  function sourceExpectedAmounts(state, source) {
+    const vals = [];
+    if (Number(source?.amount || 0) > 0) vals.push(Number(source.amount));
+    const ps = sourcePositions(state, source?.id).filter((p) => p.confirmed), sum = ps.reduce((s, p) => s + Number(p.amount || 0), 0);
+    if (sum > 0) vals.push(sum);
+    return [...new Set(vals.map((x) => Number(x.toFixed(2))))];
+  }
+  function sourcePaymentMatchScore(state, payment, source) {
+    if (payment.direction !== "outflow") return { score: 0, reasons: [] };
+    let score = 0, reasons = [], expected = sourceExpectedAmounts(state, source);
+    if (expected.length) {
+      const best = Math.min(...expected.map((a) => Math.abs(Number(payment.amount || 0) - a) / Math.max(1, a)));
+      if (best < 5e-3) {
+        score += 58;
+        reasons.push("Betrag passt zur Kostenquelle");
+      } else if (best < 0.03) {
+        score += 42;
+        reasons.push("Betrag ist sehr ähnlich");
+      } else if (best < 0.1) {
+        score += 18;
+        reasons.push("Betrag ist plausibel");
+      }
+    }
+    const sim = tokenSimilarity(payment.label, source.name || "");
+    score += Math.round(sim * 25);
+    if (sim > 0.4) reasons.push("Buchungstext passt zur Quelle");
+    const dues = Array.isArray(source.dueDates) ? source.dueDates : [];
+    if (dues.length) {
+      const dd = Math.min(...dues.map((d) => daysDistance(payment.date, d)));
+      if (dd <= 2) {
+        score += 17;
+        reasons.push("Datum passt zur Fälligkeit");
+      } else if (dd <= 14) {
+        score += 9;
+        reasons.push("Datum liegt im Fälligkeitsfenster");
+      }
+    }
+    return { score: Math.min(100, score), reasons };
+  }
+  function smartPaymentSuggestions(state, payment, limit = 5) {
+    const pos = paymentMatchSuggestions(state, payment, limit).map((x) => ({ type: "position", target: x.position, score: x.score, reasons: x.reasons }));
+    const src = (state.sources || []).map((s) => ({ type: "source", target: s, ...sourcePaymentMatchScore(state, payment, s) })).filter((x) => x.score >= 35);
+    return [...pos, ...src].sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+  function smartPaymentPlan(state) {
+    const candidates = (state.payments || []).filter((p) => p.direction === "outflow" && !p.positionId && !p.sourceId).map((payment) => ({ payment, suggestions: smartPaymentSuggestions(state, payment, 4) })).filter((x) => x.suggestions.length);
+    candidates.sort((a, b) => (b.suggestions[0]?.score || 0) - (a.suggestions[0]?.score || 0));
+    const reservedPositions = /* @__PURE__ */ new Set(), out = [];
+    for (const x of candidates) {
+      const suggestions = x.suggestions.filter((s) => s.type !== "position" || !reservedPositions.has(s.target.id));
+      const best = suggestions[0];
+      if (!best || best.score < 45) continue;
+      if (best.type === "position") reservedPositions.add(best.target.id);
+      out.push({ ...x, suggestions });
+    }
+    return out;
+  }
+  function medianValue(values) {
+    const a = values.filter(Number.isFinite).slice().sort((x, y) => x - y);
+    if (!a.length) return 0;
+    const m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+  function robustMeterAnomalies(meter) {
+    const t = meterTrend(meter), segs = t.segments;
+    if (segs.length < 3) return meterAnomalies(meter);
+    const hist = segs.slice(0, -1).map((x) => x.perDay), med = medianValue(hist), dev = medianValue(hist.map((x) => Math.abs(x - med))), last = segs.at(-1), out = [];
+    const threshold = med + Math.max(med * 0.65, dev * 4);
+    if (med > 0 && last.perDay > threshold && last.delta > 1) out.push({ severity: "warn", text: `${meter.name}: der jüngste Verbrauch liegt deutlich über dem robusten bisherigen Niveau (${last.per30.toFixed(2)} statt etwa ${(med * 30).toFixed(2)} ${meter.unit || ""} je 30 Tage).`, confidence: Math.min(99, Math.round(70 + (last.perDay / Math.max(threshold, 1e-4) - 1) * 20)) });
+    return out;
+  }
+  function smartDataAnomalies(state) {
+    const out = [], positions = state.costPositions || [], groups = /* @__PURE__ */ new Map();
+    for (const p of positions) {
+      const k = `${normalizeLabelText(p.label)}|${Number(p.amount || 0).toFixed(2)}|${p.serviceStart}|${p.serviceEnd}|${p.assignment}`;
+      const a = groups.get(k) || [];
+      a.push(p);
+      groups.set(k, a);
+    }
+    for (const a of groups.values()) if (a.length > 1) out.push({ id: `dup-pos-${a[0].id}`, severity: "warn", title: "Mögliche doppelte Kostenposition", detail: `${a[0].label} · ${euro(a[0].amount)} ist ${a.length}-mal mit gleichem Zeitraum und gleicher Zuordnung vorhanden.`, why: "Duplikatprüfung", confidence: 96, route: "data", sub: "positions" });
+    const payGroups = /* @__PURE__ */ new Map();
+    for (const p of state.payments || []) {
+      const k = paymentFingerprint(p), a = payGroups.get(k) || [];
+      a.push(p);
+      payGroups.set(k, a);
+    }
+    for (const a of payGroups.values()) if (a.length > 1) out.push({ id: `dup-pay-${a[0].id}`, severity: "warn", title: "Mögliche doppelte Zahlung", detail: `${a[0].date} · ${euro(a[0].amount)} · ${a[0].label}`, why: "Import-/Buchungsprüfung", confidence: 94, route: "owner", sub: "cashflow" });
+    for (const m of state.meters || []) {
+      const r = (m.readings || []).slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      for (let i = 1; i < r.length; i++) if (Number(r[i].value) < Number(r[i - 1].value) && !r[i].synthetic) out.push({ id: `meter-drop-${m.id}-${r[i].id}`, severity: "warn", title: `Zählerstand bei ${m.name} gesunken`, detail: `${r[i - 1].value} → ${r[i].value} am ${r[i].date}. Zählerwechsel oder Eingabefehler prüfen.`, why: "Plausibilitätsprüfung", confidence: 98, route: "data", sub: "infrastructure" });
+      for (const a of robustMeterAnomalies(m)) out.push({ id: `meter-spike-${m.id}`, severity: "warn", title: "Ungewöhnlicher Verbrauch", detail: a.text, why: "Robuste Verbrauchsanalyse", confidence: a.confidence || 80, route: "owner", sub: "analytics" });
+    }
+    return out;
+  }
+  function historicalAssignmentPrediction(state, label, categoryId) {
+    const nl = normalizeLabelText(label), candidates = (state.costPositions || []).filter((p) => p.confirmed && p.assignment !== "review" && (p.category === categoryId || tokenSimilarity(p.label, label) > 0.65));
+    if (!candidates.length) return null;
+    const counts = {};
+    for (const p of candidates) counts[p.assignment] = (counts[p.assignment] || 0) + 1;
+    const [assignment, count] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    return { assignment, confidence: Math.round(100 * count / candidates.length), samples: candidates.length };
+  }
+  function smartClassifyCostText(text) {
+    const s = normalizeLabelText(text);
+    const defs = [
+      { category: "repair", rx: /reparatur|instandsetzung|instandhaltung|sanierung|ersatzteil|defekt|erneuerung/, confidence: 0.96, reason: "Hinweis auf Instandhaltung/Reparatur" },
+      { category: "admin", rx: /verwaltung|verwalter|buchfuhrung|kontofuhrung|geschaftsfuhrung/, confidence: 0.94, reason: "Hinweis auf Verwaltungskosten" },
+      { category: "propertyTax", rx: /grundsteuer|grundbesitzabgabe.*steuer/, confidence: 0.98, reason: "Grundsteuer erkannt" },
+      { category: "rainwater", rx: /niederschlagswasser|regenwasser/, confidence: 0.97, reason: "Niederschlagswasser erkannt" },
+      { category: "water", rx: /schmutzwasser|frischwasser|wasserverbrauch|wasserversorgung|kanal|abwasser|grundgebuhr wasser/, confidence: 0.94, reason: "Wasser/Kanal erkannt" },
+      { category: "waste", rx: /restmull|restmuell|bioabfall|biomull|biomuell|papier.*tonne|abfall|mullabfuhr|muellabfuhr/, confidence: 0.94, reason: "Abfallkosten erkannt" },
+      { category: "street", rx: /strassenreinigung|straßenreinigung|winterdienst|schneeraum|schneeräum/, confidence: 0.94, reason: "Straßenreinigung/Winterdienst erkannt" },
+      { category: "insurance", rx: /gebaudeversicherung|gebäudeversicherung|sachversicherung|haftpflicht.*gebaude|haftpflicht.*gebäude/, confidence: 0.91, reason: "Gebäudeversicherung erkannt" },
+      { category: "chimney", rx: /schornsteinfeger|kehrgebuhr|kehrgebühr|feuerstattenschau|feuerstättenschau/, confidence: 0.94, reason: "Schornsteinfeger erkannt" },
+      { category: "garden", rx: /gartenpflege|grunpflege|grünpflege|rasenpflege|heckenschnitt/, confidence: 0.88, reason: "Gartenpflege erkannt" },
+      { category: "cleaning", rx: /gebaudereinigung|gebäudereinigung|treppenhausreinigung|ungeziefer|schadlingsbekampfung|schädlingsbekämpfung/, confidence: 0.88, reason: "Gebäudereinigung erkannt" }
+    ];
+    for (const d of defs) if (d.rx.test(s)) return d;
+    return { category: "other", confidence: 0.28, reason: "Keine eindeutige Kostenart erkannt" };
+  }
+  function cleanProposalLabel(line, categoryId) {
+    let x = String(line || "").replace(/\b\d{1,6}(?:\.\d{3})*,\d{2}\s*€?/g, "").replace(/\s{2,}/g, " ").replace(/[·;:,\-–]+$/, "").trim();
+    if (x.length < 4 || x.length > 80) x = category(categoryId).label;
+    return x;
+  }
+  function smartGenericPositionProposals(state, text, fields) {
+    const lines = String(text || "").split(/\r?\n/).map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean), out = [];
+    const start = fields.serviceStart || `${fields.year || (/* @__PURE__ */ new Date()).getFullYear()}-01-01`, end = fields.serviceEnd || `${fields.year || (/* @__PURE__ */ new Date()).getFullYear()}-12-31`;
+    for (const line of lines) {
+      if (/gesamtsumme|gesamtbetrag|summe neu|zahlbetrag|zu zahlen|endbetrag|umsatzsteuer|mwst|ust\b/i.test(line)) continue;
+      const cls = smartClassifyCostText(line);
+      if (cls.confidence < 0.78) continue;
+      const ms = [...line.matchAll(/(\d{1,6}(?:\.\d{3})*,\d{2})\s*€?/g)];
+      if (!ms.length) continue;
+      const amount = parseMoney(ms.at(-1)[1]);
+      if (!(amount > 0)) continue;
+      const label = cleanProposalLabel(line, cls.category), hist = historicalAssignmentPrediction(state, label, cls.category);
+      let assignment = hist?.confidence >= 70 ? hist.assignment : ["repair", "admin"].includes(cls.category) ? "owner" : cls.category === "waste" ? "review" : "house";
+      out.push({ id: uid(), label, category: cls.category, amount, serviceStart: start, serviceEnd: end, assignment, agreement: "auto", confidence: Math.min(0.96, cls.confidence * (hist?.confidence >= 70 ? 1 : 0.96)), evidence: line, confirmed: false, smartReason: hist?.confidence >= 70 ? `${cls.reason}; Zuordnung aus ${hist.samples} früheren Position(en) gelernt` : cls.reason });
+    }
+    return out;
+  }
+  function enrichDocumentProposalsSmart(state, text, fields, base) {
+    const out = (base || []).slice(), generic = smartGenericPositionProposals(state, text, fields);
+    for (const p of generic) {
+      const duplicate = out.some((x) => tokenSimilarity(x.label, p.label) > 0.78 && Math.abs(Number(x.amount) - Number(p.amount)) < 0.02);
+      if (!duplicate) out.push(p);
+    }
+    return out.slice(0, 30);
+  }
+  function smartDocumentSummary(state, text, fields) {
+    const cls = smartClassifyCostText(text), issuer = fields.intelligence?.issuer || "", sourceMatches = (state.sources || []).map((s) => ({ source: s, score: tokenSimilarity(issuer, s.name || "") })).filter((x) => x.score > 0.32).sort((a, b) => b.score - a.score);
+    const warnings = [];
+    if (["repair", "admin"].includes(cls.category)) warnings.push(`Die Dokumentanalyse erkennt wahrscheinlich ${category(cls.category).label}. Diese Kostenart wird nicht automatisch auf die Mieterin umgelegt.`);
+    if ((fields.positionProposals || []).some((p) => p.assignment === "review")) warnings.push("Mindestens eine Kostenposition benötigt eine ausdrückliche Zuordnungsentscheidung.");
+    return { category: cls.category, categoryConfidence: Math.round(cls.confidence * 100), reason: cls.reason, sourceId: sourceMatches[0]?.source.id || "", sourceName: sourceMatches[0]?.source.name || "", sourceConfidence: sourceMatches[0] ? Math.round(sourceMatches[0].score * 100) : 0, warnings };
+  }
+  function smartTaskSuggestions(state) {
+    const out = [], today = smartToday(), existing = new Set(taskList().map((t) => `${normalizeLabelText(t.title)}|${t.due}`));
+    for (const s of state.sources || []) for (const d of s.dueDates || []) {
+      if (d < today) continue;
+      const title = `${s.name} – Fälligkeit`;
+      const k = `${normalizeLabelText(title)}|${d}`;
+      if (!existing.has(k)) out.push({ title, due: d, lead: 14, reason: "Fälligkeit aus Kostenquelle" });
+    }
+    for (const m of state.meters || []) {
+      const last = latestMeterReading(m), age = last ? Math.max(0, calendarDayDiff(last.date, smartToday())) : 999;
+      if (age > 90) {
+        const due = /* @__PURE__ */ new Date();
+        due.setDate(due.getDate() + 7);
+        const title = `${m.name} ablesen`;
+        const ds = localDateISO(due), k = `${normalizeLabelText(title)}|${ds}`;
+        if (!existing.has(k)) out.push({ title, due: ds, lead: 2, reason: last ? `Letzte Ablesung vor ${age} Tagen` : "Noch keine Ablesung" });
+      }
+    }
+    const backupAge = state.meta?.lastBackupAt ? Math.max(0, calendarDayDiff(String(state.meta.lastBackupAt).slice(0, 10), smartToday())) : 999;
+    if (backupAge > 30) {
+      const due = /* @__PURE__ */ new Date();
+      due.setDate(due.getDate() + 3);
+      out.push({ title: "Verschlüsselte Datensicherung erstellen", due: localDateISO(due), lead: 1, reason: "Datensicherung ist nicht aktuell" });
+    }
+    return out.slice(0, 12);
+  }
+  function smartInsights(state) {
+    const out = [], today = smartToday(), rent = rentMonthStatus(state), proj = billingProjection(state), paymentPlan = smartPaymentPlan(state), todayDay = Number(today.slice(8, 10)), rentAttention = rentAttentionDay(state);
+    for (const c of billingReadiness(state, currentPeriodYear()).filter((x) => !x.ok)) out.push({ id: `ready-${c.id}`, severity: "warn", title: c.label, detail: "Die Abrechnung ist an dieser Stelle noch nicht vollständig.", why: "Abschlussprüfung", confidence: 100, route: c.route, sub: c.sub });
+    if (rent.status === "missing" && Number(rent.expected) > 0 && todayDay >= rentAttention) {
+      const late = todayDay - rentAttention;
+      out.push({ id: `rent-${rent.key}`, severity: late >= 7 ? "bad" : "warn", title: `Mietzahlung ${rent.key} noch nicht erkannt`, detail: `Erwartet ${euro(rent.expected)}. In den erfassten Kontobewegungen wurde noch keine passende Zahlung gefunden.`, why: "Abgleich Mietvertrag ↔ Zahlungseingänge; Zeitpunkt orientiert sich – wenn vorhanden – an bisherigen Zahlungseingängen. Keine automatische Mahnaussage.", confidence: 78, route: "owner", sub: "cashflow" });
+    }
+    if (rent.status === "partial") out.push({ id: `rent-${rent.key}`, severity: "warn", title: `Mietzahlung ${rent.key} nur teilweise erkannt`, detail: `Erkannt ${euro(rent.paid)} von ${euro(rent.expected)}.`, why: "Zahlungseingangsabgleich", confidence: rent.confidence || 65, route: "owner", sub: "cashflow" });
+    if (paymentPlan.length) out.push({ id: "payment-match", severity: "warn", title: `${paymentPlan.length} Zahlung(en) mit plausiblem Zuordnungsvorschlag`, detail: `Bester aktueller Treffer: ${paymentPlan[0].suggestions[0].score} %.`, why: "Betrag, Text, Quelle und Fälligkeit", confidence: paymentPlan[0].suggestions[0].score, route: "owner", sub: "reconciliation" });
+    const docs = state.documentsCache || [], reviewDocs = docs.filter((d) => documentWorkflowState(d) === "review").length, newDocs = docs.filter((d) => documentWorkflowState(d) === "new").length;
+    if (reviewDocs || newDocs) out.push({ id: "docs-review", severity: "warn", title: `${reviewDocs + newDocs} Dokument(e) warten auf Prüfung`, detail: `${newDocs} neu · ${reviewDocs} mit Prüfschritt.`, why: "Dokumenten-Inbox", confidence: 100, route: "data", sub: "documents" });
+    for (const d of billingDeadlineInsights(state)) out.push(d);
+    for (const a of smartDataAnomalies(state)) out.push(a);
+    const adv = advanceAdjustmentSuggestion(state);
+    if (adv?.material) out.push({ id: "advance", severity: "info", title: "Betriebskostenvorauszahlung prüfen", detail: `Aktuell ${euro(adv.current)} / Monat · rechnerischer Richtwert aus letzter Abrechnung ${euro(adv.recommended)} / Monat.`, why: "§ 560 Abs. 4 BGB; nur rechnerischer Vorschlag", confidence: 80, route: "rental", sub: "calculation" });
+    if (proj.missingCategories.length && proj.confidence >= 55) out.push({ id: "projection", severity: "info", title: "Abrechnungsprognose nutzt Vorjahreswerte", detail: `Für ${proj.missingCategories.map((x) => categoryLabel(x.category)).join(", ")} fehlen noch aktuelle Werte. Prognose: ${euro(Math.abs(proj.projectedResult))} ${proj.projectedResult >= 0 ? "Nachzahlung" : "Guthaben"}.`, why: "Bekannte Kosten + fehlende Vorjahreskategorien", confidence: proj.confidence, route: "rental", sub: "calculation" });
+    const age = state.meta?.lastBackupAt ? Math.max(0, calendarDayDiff(String(state.meta.lastBackupAt).slice(0, 10), smartToday())) : 9999;
+    if (age > 30) out.push({ id: "backup", severity: "warn", title: state.meta?.lastBackupAt ? "Datensicherung älter als 30 Tage" : "Noch keine verschlüsselte Datensicherung", detail: "Eine aktuelle Vollsicherung schützt Daten und Dokumente bei Geräteverlust.", why: "Datensicherheit", confidence: 100, route: "more", sub: "backup" });
+    const rank = { bad: 0, warn: 1, info: 2, good: 3 };
+    return out.sort((a, b) => (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9) || Number(b.confidence || 0) - Number(a.confidence || 0));
+  }
+  var DECISION_UI_VERSION = 1;
+  function confidenceBand(score) {
+    const n = Math.max(0, Math.min(100, Number(score || 0)));
+    if (n >= 90) return { id: "high", label: "Sehr sicher", short: "Sicher" };
+    if (n >= 75) return { id: "good", label: "Gut begründet", short: "Plausibel" };
+    if (n >= 55) return { id: "medium", label: "Mit Vorbehalt", short: "Prüfen" };
+    return { id: "low", label: "Unsicher", short: "Unsicher" };
+  }
+  function qualityBand(score) {
+    const n = Number(score || 0);
+    if (n >= 90) return { id: "high", label: "Sehr gut" };
+    if (n >= 75) return { id: "good", label: "Gut" };
+    if (n >= 55) return { id: "medium", label: "Prüfen" };
+    return { id: "low", label: "Unvollständig" };
+  }
+  function decisionSeverityWeight(s) {
+    return s === "bad" ? 400 : s === "warn" ? 260 : s === "info" ? 100 : 0;
+  }
+  function decisionActionLabel(x) {
+    if (x.route === "rental" && x.sub === "calculation") return "Abrechnung prüfen";
+    if (x.route === "rental" && x.sub === "water") return "Wasser prüfen";
+    if (x.route === "owner" && x.sub === "cashflow") return "Zahlungen öffnen";
+    if (x.route === "owner" && x.sub === "reconciliation") return "Zuordnung prüfen";
+    if (x.route === "data" && x.sub === "documents") return "Dokumente prüfen";
+    if (x.route === "data" && x.sub === "positions") return "Kosten prüfen";
+    if (x.route === "more" && x.sub === "backup") return "Sicherung öffnen";
+    return "Öffnen";
+  }
+  function decisionKind(x) {
+    if ((x.why || "").includes("§")) return "Regel";
+    if (/Prognose|Richtwert|Analyse|Abgleich|Plausibil/i.test(x.why || "")) return "Auswertung";
+    return Number(x.confidence || 0) >= 95 ? "Fakt" : "Hinweis";
+  }
+  function smartDecisionQueue(s) {
+    const raw = smartInsights(s), seen = /* @__PURE__ */ new Set(), out = [];
+    for (const x of raw) {
+      const key = `${normalizeLabelText(x.title)}|${x.route}|${x.sub || ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const confidence = Math.max(0, Math.min(100, Number(x.confidence || 0))), band = confidenceBand(confidence), blocker = x.severity === "bad" || /fehlt|offen|ungeklärt|abschließen|nicht erkannt/i.test(`${x.title} ${x.detail || ""}`), actionability = x.route && x.route !== "home" ? 60 : 0;
+      if (x.severity === "info" && confidence < 55 && !blocker) continue;
+      out.push({ ...x, confidence, band, blocker, kind: decisionKind(x), actionLabel: decisionActionLabel(x), decisionScore: decisionSeverityWeight(x.severity) + confidence + actionability + (blocker ? 50 : 0) });
+    }
+    return out.sort((a, b) => b.decisionScore - a.decisionScore);
+  }
+  function decisionWhyHTML(x) {
+    return `<details class="decision-details"><summary>Warum zeigt mir die App das?</summary><div><p>${esc(x.why || "Auswertung der vorhandenen Daten")}</p><p><strong>Einordnung:</strong> ${esc(x.kind)} · ${esc(x.band.label)}${x.confidence ? ` (${Math.round(x.confidence)} %)` : ""}</p>${x.severity === "info" ? `<p class="muted">Dieser Hinweis ist nicht dringend. Er soll eine Entscheidung vorbereiten, nicht automatisch ausführen.</p>` : ""}</div></details>`;
+  }
+  function rentAttentionDay(s) {
+    const days = (s.payments || []).filter((p) => p.direction === "income" && detectRentPayment(s, p)?.score >= 70 && p.date).map((p) => Number(p.date.slice(8, 10))).filter((n) => n >= 1 && n <= 28).sort((a, b) => a - b);
+    if (days.length >= 2) {
+      const mid = days[Math.floor(days.length / 2)];
+      return Math.max(6, Math.min(14, mid + 3));
+    }
+    return 10;
+  }
+  function smartSummaryText(state) {
+    const ins = smartInsights(state), rent = rentMonthStatus(state), p = billingProjection(state), q = dataQualityScore(state);
+    return `Datenqualität ${q} %. ${ins.length ? `${ins.filter((x) => x.severity === "bad").length} dringende und ${ins.filter((x) => x.severity === "warn").length} wichtige Hinweise.` : "Keine offenen Smart-Hinweise."} Mietzahlung aktuell: ${rentStatusLabel(rent)}. Abrechnungsprognose: ${euro(Math.abs(p.projectedResult))} ${p.projectedResult >= 0 ? "Nachzahlung" : "Guthaben"} bei ${p.confidence} % Modellkonfidenz.`;
+  }
+  function smartAnswer(state, query) {
+    const q = normalizeLabelText(query), y = currentPeriodYear(), rent = rentMonthStatus(state), proj = billingProjection(state), ins = smartInsights(state);
+    if (/miete|mietzahlung|zahlungseingang/.test(q)) return { title: "Mietzahlung", answer: rent.status === "none" ? "Für den aktuellen Monat ist kein aktiver Mietvertrag hinterlegt." : `Für ${rent.key} sind ${euro(rent.paid)} von ${euro(rent.expected)} als passende Mietzahlung erkannt. Status: ${rentStatusLabel(rent)}. Erkennungs-Sicherheit ${rent.confidence || 0} %.`, route: "owner", sub: "cashflow" };
+    if (/abrechnung|nachzahlung|guthaben|nebenkosten/.test(q)) return { title: "Abrechnung", answer: `Aktuell bestätigte Mieter-Kosten: ${euro(proj.knownTenantCosts)}. Vorauszahlungen im Zeitraum: ${euro(proj.advances)}. Prognose: ${euro(Math.abs(proj.projectedResult))} ${proj.projectedResult >= 0 ? "Nachzahlung" : "Guthaben"} (${proj.confidence} % Modellkonfidenz).${proj.missingCategories.length ? ` Noch geschätzt aus dem Vorjahr: ${proj.missingCategories.map((x) => categoryLabel(x.category)).join(", ")}.` : ""}`, route: "rental", sub: "calculation" };
+    if (/wasser|zahler|zaehler|verbrauch/.test(q)) {
+      const { main, owner } = ensureDefaultMeters(state), tm = meterTrend(main), to = meterTrend(owner), sett = settlementConsumption(state, settlementByPeriod(state, y));
+      return { title: "Wasser", answer: sett?.valid ? `Abrechnungsperiode: Haus ${sett.house.toFixed(3)} m³, Eigennutzung ${sett.owner.toFixed(3)} m³, Mietwohnung ${sett.tenant.toFixed(3)} m³. Jüngerer Trend: Hauptzähler Ø ${tm.avgPer30.toFixed(2)} m³ / 30 Tage, Zwischenzähler Ø ${to.avgPer30.toFixed(2)} m³ / 30 Tage.` : "Für die aktuelle Abrechnungsperiode fehlen noch vollständige Verbrauchsdaten.", route: "rental", sub: "water" };
+    }
+    if (/kosten|steiger|teuer|entwicklung/.test(q)) {
+      const al = costTrendAlerts(state, y);
+      return { title: "Kostenentwicklung", answer: al.length ? al.map((x) => x.text).join(" ") : "Es gibt derzeit keine belastbare Kostenveränderung ab 15 % gegenüber der Vorperiode.", route: "owner", sub: "analytics" };
+    }
+    if (/zahlung|zuord|bezahlt|rechnung/.test(q)) {
+      const p = smartPaymentPlan(state);
+      return { title: "Zahlungszuordnung", answer: p.length ? `${p.length} offene Ausgabe(n) haben plausible Treffer. Der beste Treffer liegt bei ${p[0].suggestions[0].score} % und bezieht sich auf „${p[0].suggestions[0].target.label || p[0].suggestions[0].target.name}“.` : "Aktuell gibt es keine unzugeordnete Ausgabe mit einem ausreichend starken Treffer.", route: "owner", sub: "reconciliation" };
+    }
+    if (/dokument|beleg|bescheid|post/.test(q)) {
+      const d = state.documentsCache || [], n = d.filter((x) => documentWorkflowState(x) === "new").length, r = d.filter((x) => documentWorkflowState(x) === "review").length;
+      return { title: "Dokumente", answer: `Dokumenten-Inbox: ${n} neu, ${r} zu prüfen, ${d.filter((x) => documentWorkflowState(x) === "done").length} erledigt.`, route: "data", sub: "documents" };
+    }
+    if (/backup|sicherung/.test(q)) {
+      const age = state.meta?.lastBackupAt ? Math.max(0, calendarDayDiff(String(state.meta.lastBackupAt).slice(0, 10), smartToday())) : null;
+      return { title: "Datensicherung", answer: age == null ? "Es ist noch keine verschlüsselte Vollsicherung dokumentiert." : `Die letzte verschlüsselte Vollsicherung ist ${age} Tag(e) alt.`, route: "more", sub: "backup" };
+    }
+    if (/frist|recht|rechtsstand/.test(q)) {
+      const dl = billingDeadlineInsights(state);
+      return { title: "Fristen & Rechtsstand", answer: `Hinterlegter Rechtsstand: ${ACTIVE_LEGAL_PACK?.effectiveDate || LAW_DATE}. ${dl.length ? dl.map((x) => x.detail).join(" ") : "Aktuell erkennt die App keine unmittelbar bevorstehende offene Abrechnungsfrist."}`, route: "more", sub: "legal" };
+    }
+    if (/was fehlt.*abrechnung|abrechnung.*fehlt|abrechnung.*vorberei/.test(q)) {
+      const v = v18BillingAssistant(state, preferredBillingYear()), parts = [...v.openItems, ...v.estimatedItems].slice(0, 5).map((x) => `${x.label} (${v18StatusLabel(x.status)})`);
+      return { title: "Abrechnung vorbereiten", answer: `${v.score} % vorbereitet. ${parts.length ? `Noch zu klären: ${parts.join(", ")}.` : "Alle erwarteten Datenbausteine sind vorhanden."} Prognose: ${euro(Math.abs(v.projectedResult))} ${v.projectedResult >= 0 ? "Nachzahlung" : "Guthaben"}.`, route: "rental", sub: "billing" };
+    }
+    if (/vorauszahlung|abschlag/.test(q)) {
+      const a = advanceAdjustmentSuggestion(state);
+      return { title: "Betriebskostenvorauszahlung", answer: a ? `${a.basis} Aktuell ${euro(a.current)}, rechnerischer Richtwert ${euro(a.recommended)} pro Monat.` : "Für einen belastbaren rechnerischen Vorschlag wird zunächst eine abgeschlossene Abrechnung benötigt.", route: "rental", sub: "calculation" };
+    }
+    return { title: "Gesamtstatus", answer: smartSummaryText(state), route: ins[0]?.route || "home", sub: ins[0]?.sub || "" };
+  }
+  return __toCommonJS(v18_assistant_exports);
+})();
+
+
 /* ===== compiled src/io/backup-codec.ts ===== */
 "use strict";
 var AppBackupCodec = (() => {
@@ -2251,642 +3374,106 @@ const {
 }=AppTraceability;
 
 /* ===== intelligence.js ===== */
-const INTELLIGENCE_VERSION=1;
-
-function normalizeLabelText(v){
-  return String(v||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim()
-}
-function tokenSimilarity(a,b){
-  const A=new Set(normalizeLabelText(a).split(/\s+/).filter(Boolean)),B=new Set(normalizeLabelText(b).split(/\s+/).filter(Boolean));
-  if(!A.size||!B.size)return 0;
-  let hit=0;for(const x of A)if(B.has(x))hit++;
-  return hit/Math.max(A.size,B.size)
-}
-function daysDistance(a,b){
-  if(!a||!b)return 9999;
-  const d=calendarDayDiff(a,b);return Number.isFinite(d)?Math.abs(d):9999
-}
-function dueDatesForPosition(state,p){
-  const s=(state.sources||[]).find(x=>x.id===p.sourceId);
-  return Array.isArray(s?.dueDates)?s.dueDates:[]
-}
-function paymentMatchScore(state,payment,position){
-  if(payment.direction!=="outflow")return {score:0,reasons:[]};
-  let score=0,reasons=[];
-  const amountDiff=Math.abs(Number(payment.amount||0)-Number(position.amount||0));
-  const amountBase=Math.max(1,Number(position.amount||0));
-  const rel=amountDiff/amountBase;
-  if(rel<0.005){score+=55;reasons.push("Betrag stimmt praktisch exakt")}
-  else if(rel<0.03){score+=42;reasons.push("Betrag sehr ähnlich")}
-  else if(rel<0.10){score+=20;reasons.push("Betrag im plausiblen Bereich")}
-  const label=tokenSimilarity(payment.label,position.label);
-  score+=Math.round(label*25);if(label>.45)reasons.push("Bezeichnung passt");
-  const dues=dueDatesForPosition(state,position);
-  if(dues.length){
-    const dd=Math.min(...dues.map(d=>daysDistance(payment.date,d)));
-    if(dd<=2){score+=18;reasons.push("Zahlungsdatum nahe Fälligkeit")}
-    else if(dd<=14){score+=10;reasons.push("Zahlungsdatum im Fälligkeitsfenster")}
-  }else if(position.serviceEnd){
-    const dd=daysDistance(payment.date,position.serviceEnd);
-    if(dd<=45){score+=5;reasons.push("Datum nahe Leistungszeitraum")}
-  }
-  const src=(state.sources||[]).find(s=>s.id===position.sourceId);
-  if(src&&tokenSimilarity(payment.label,src.name)>.35){score+=12;reasons.push("Quelle passt zur Buchungsbezeichnung")}
-  return {score:Math.min(100,score),reasons}
-}
-function paymentMatchSuggestions(state,payment,limit=5){
-  return (state.costPositions||[]).filter(p=>p.confirmed).map(p=>({position:p,...paymentMatchScore(state,payment,p)}))
-    .filter(x=>x.score>=25).sort((a,b)=>b.score-a.score).slice(0,limit)
-}
-
-
-function positionMonthlyEquivalent(p,monthStart,monthEnd){
-  const start=p.serviceStart||monthStart,end=p.serviceEnd||monthEnd;
-  const ov=overlapDays(start,end,monthStart,monthEnd);if(!ov)return 0;
-  const factor=ov/daysInclusive(start,end),a=Number(p.amount||0);
-  if(p.interval==="monthly")return a*(ov/daysInclusive(monthStart,monthEnd));
-  if(p.interval==="quarterly")return a*4*factor;
-  if(p.interval==="yearly")return a*factor;
-  return a*factor
-}
-function predictedMonth(state,date){
-  const ms=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-01`,
-        me=localMonthEndISO(date),
-        key=ms.slice(0,7);
-  let rentalIncome=0;
-  for(const l of state.leases||[]){
-    const active=(!l.start||l.start<=me)&&(!l.end||l.end>=ms);
-    if(active)rentalIncome+=Number(l.rent||0)+Number(l.advance||0)
-  }
-  let propertyCosts=Number(state.finance.repayment||0)+Number(state.finance.fixed||0);
-  const costBreakdown=[];
-  for(const p of state.costPositions||[]){
-    if(!p.confirmed||p.assignment==="rental")continue;
-    const amt=positionMonthlyEquivalent(p,ms,me);
-    if(amt){propertyCosts+=amt;costBreakdown.push({label:p.label,amount:amt})}
-  }
-  const historic=(state.payments||[]).filter(p=>p.direction==="outflow"&&paymentMonthKey(p.date)===key).reduce((s,p)=>s+Number(p.amount||0),0);
-  return {key,label:date.toLocaleDateString("de-DE",{month:"short",year:"2-digit"}),income:rentalIncome,outflow:propertyCosts,net:rentalIncome-propertyCosts,actualOutflow:historic,costBreakdown}
-}
-function intelligentForecast(state,months=12){
-  const now=new Date(),rows=[];
-  for(let i=0;i<months;i++)rows.push(predictedMonth(state,new Date(now.getFullYear(),now.getMonth()+i,1)));
-  return rows
-}
-function forecastSignals(state){
-  const rows=intelligentForecast(state,12),out=[];
-  const worst=rows.slice().sort((a,b)=>a.net-b.net)[0];
-  if(worst&&worst.net<0)out.push({severity:"warn",text:`Schwächster prognostizierter Monat: ${worst.label} mit ${euro(worst.net)}.`});
-  const total=rows.reduce((s,r)=>s+r.net,0);out.push({severity:total>=0?"good":"warn",text:`Prognostizierter 12-Monats-Saldo: ${euro(total)}.`});
-  const pending=(state.payments||[]).filter(p=>p.direction==="outflow"&&!p.positionId).length;
-  if(pending)out.push({severity:"warn",text:`${pending} Ausgabe(n) warten auf automatische oder manuelle Zuordnung.`});
-  return out
-}
-
-function extractDocumentIntelligence(text,baseFields={}){
-  const lines=String(text||"").split(/\r?\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean),low=String(text||"").toLowerCase();
-  const moneyMatches=[...String(text||"").matchAll(/\b(\d{1,6}(?:\.\d{3})*,\d{2})\s*€?/g)].map(m=>parseMoney(m[1])).filter(x=>x>=0);
-  const issuerLine=lines.find(l=>/(stadt|gemeinde|versicherung|werke|wasser|entsorgung|rechnung|bescheid)/i.test(l)&&l.length<100)||lines[0]||"";
-  const refLine=lines.find(l=>/(aktenzeichen|kassenzeichen|kundennummer|rechnungsnummer|bescheidnummer|zeichen)/i.test(l))||"";
-  const ref=(refLine.match(/[A-Z0-9][A-Z0-9\-\/.]{4,}/i)||[])[0]||"";
-  const totalLine=lines.slice().reverse().find(l=>/(gesamtsumme|gesamtbetrag|summe neu|zahlbetrag|zu zahlen|endbetrag)/i.test(l))||"";
-  const totalVals=[...totalLine.matchAll(/(\d{1,6}(?:\.\d{3})*,\d{2})/g)].map(m=>parseMoney(m[1]));
-  const total=totalVals.length?totalVals[totalVals.length-1]:(moneyMatches.length?Math.max(...moneyMatches):0);
-  const vatLines=lines.filter(l=>/(ust|umsatzsteuer|mwst)/i.test(l));
-  const vatAmounts=vatLines.flatMap(l=>[...l.matchAll(/(\d{1,6}(?:\.\d{3})*,\d{2})/g)].map(m=>parseMoney(m[1])));
-  const due=extractDueDates(text);
-  const propertyTaxDeferred=/grundsteuer.*(?:erst|ab).*januar.*folgejahr|erwerber.*erst.*januar.*folgejahr/i.test(low);
-  return {
-    issuer:issuerLine.slice(0,120),reference:ref,total,
-    vatAmount:vatAmounts.length?vatAmounts[vatAmounts.length-1]:0,
-    dueDates:due,
-    documentFamily:/grundbesitzabgaben/i.test(low)?"municipal_assessment":/rechnung/i.test(low)?"invoice":/versicherung/i.test(low)?"insurance":baseFields.kind||"document",
-    propertyTaxDeferred,
-    anomalies:[]
-  }
-}
-function validateDocumentTotals(fields){
-  const proposals=fields.positionProposals||[],sum=proposals.reduce((s,p)=>s+Number(p.amount||0),0),total=Number(fields.intelligence?.total||0),issues=[];
-  if(total>0&&sum>0){
-    const diff=Math.abs(total-sum);
-    if(diff>.02)issues.push({severity:diff/total>.10?"warn":"info",message:`Erkannte Einzelpositionen ${euro(sum)} weichen vom erkannten Gesamtbetrag ${euro(total)} um ${euro(diff)} ab.`})
-  }
-  if(fields.intelligence?.propertyTaxDeferred)issues.push({severity:"info",message:"Hinweis auf verschobenen Beginn der Grundsteuer erkannt; Grundsteuer für den aktuellen Teilzeitraum nicht automatisch ergänzen."});
-  if(!(fields.dueDates||[]).length&&!(fields.intelligence?.dueDates||[]).length)issues.push({severity:"info",message:"Kein eindeutiger Fälligkeitstermin erkannt."});
-  return issues
-}
-function documentConfidenceSummary(fields){
-  const ps=fields.positionProposals||[];
-  if(!ps.length)return 0;
-  return ps.reduce((s,p)=>s+Number(p.confidence||0),0)/ps.length
-}
-
-function billingRecipient(lease){
-  return {name:lease?.tenantName||"",address:lease?.tenantAddress||""}
-}
-function splitAddressLines(s){return String(s||"").split(/\n|,\s*(?=\d{5}\s)/).map(x=>x.trim()).filter(Boolean)}
-function formatRuleForReport(e){
-  if(e.decision?.rule==="area")return `Wohnfläche (${percent(e.tenantShare)})`;
-  if(e.decision?.rule==="consumption")return `Verbrauch (${percent(e.tenantShare)})`;
-  if(e.decision?.rule==="rental")return "direkt Mietwohnung";
-  if(e.decision?.rule==="persons")return `Personen (${percent(e.tenantShare)})`;
-  return e.decision?.rule||"individuell"
-}
-
-function formatBillingRuleDetails(e,{property={},units=[],waterConsumption=null,allocationBases=null}={}){
-  const share=Number(e.tenantShare||0),fmt=(v,d=0)=>Number(v||0).toLocaleString("de-DE",{minimumFractionDigits:d,maximumFractionDigits:d});
-  if(e.decision?.rule==="consumption"){
-    const house=Number(waterConsumption?.house??e.details?.quantity),tenant=Number(waterConsumption?.tenant??(Number.isFinite(house)?house*share:NaN));
-    if(Number.isFinite(house)&&house>0&&Number.isFinite(tenant))return `Verbrauch ${fmt(tenant,3)} m³ von ${fmt(house,3)} m³ (${percent(share)})`
-  }
-  if(e.decision?.rule==="area"){
-    const total=Number((allocationBases?.totalArea??property?.totalArea)||0),rental=Number((allocationBases?.rentalArea??units.find(u=>u.type==="rental")?.area)||0);
-    if(total>0&&rental>=0)return `Wohnfläche ${fmt(rental,0)} m² von ${fmt(total,0)} m² (${percent(share)})`
-  }
-  return formatRuleForReport(e)
-}
-async function generateProfessionalBillingPDF(state,year,snapshot=null){
-  const jsPDF=await loadJSPDF(),a=snapshot||billingAnalysis(state,year),lease=snapshot?.lease||state.leases?.[0],recipient=billingRecipient(lease),sender=snapshot?.correspondence||state.correspondence||{},property=snapshot?.property||state.property,units=snapshot?.units||state.units||[],waterConsumption=snapshot?.waterConsumption||settlementConsumption(state,settlementByPeriod(state,year)),reportCtx={property,units,waterConsumption,allocationBases:snapshot?.allocationBases||null};
-  const doc=new jsPDF({unit:"mm",format:"a4"}),W=210,M=18;
-  let y=18;
-  const txt=(t,x,yy,size=10,style="normal")=>{doc.setFont("helvetica",style);doc.setFontSize(size);doc.text(String(t||""),x,yy)};
-  const euroPdf=n=>Number(n||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
-  txt(sender.landlordName||"Vermieter",M,y,11,"bold");y+=5;
-  for(const l of splitAddressLines(sender.landlordAddress||property.address||"")){txt(l,M,y,9);y+=4}
-  if(sender.contact){txt(sender.contact,M,y,8);y+=4}
-  y=18;txt(new Date().toLocaleDateString("de-DE"),W-M,y,9,"normal");doc.setTextColor(0); y=42;
-  if(recipient.name){txt(recipient.name,M,y,10,"bold");y+=5}
-  for(const l of splitAddressLines(recipient.address||property.address||"")){txt(l,M,y,10);y+=5}
-  y=Math.max(y+8,68);
-  txt("Betriebskostenabrechnung",M,y,16,"bold");y+=7;
-  txt(`Abrechnungszeitraum: ${billingPeriodLabel(state,year)}`,M,y,10);y+=5;
-  txt(`Mietobjekt: ${property.name||property.address||"Mietobjekt"}`,M,y,10);y+=9;
-  doc.setDrawColor(190);doc.line(M,y,W-M,y);y+=7;
-  txt("Kostenaufstellung",M,y,11,"bold");y+=6;
-  txt("Kostenart",M,y,8,"bold");txt("Gesamt",112,y,8,"bold");txt("Umlage",140,y,8,"bold");txt("Ihr Anteil",W-M,y,8,"bold");y+=4;
-  doc.line(M,y,W-M,y);y+=5;
-  const events=a.events||[];
-  for(const e of events){
-    if(y>255){doc.addPage();y=18}
-    const label=String(e.label||"").slice(0,48);
-    txt(label,M,y,8);txt(euroPdf(e.amount),112,y,8);txt(formatBillingRuleDetails(e,reportCtx),140,y,6);doc.text(euroPdf(e.tenantAmount),W-M,y,{align:"right"});y+=5
-  }
-  y+=2;doc.line(M,y,W-M,y);y+=7;
-  txt("Anteilige Betriebskosten",M,y,10,"bold");doc.text(euroPdf(a.tenantCosts),W-M,y,{align:"right"});y+=6;
-  txt("Abzüglich geleistete Vorauszahlungen",M,y,10);doc.text("− "+euroPdf(a.advances),W-M,y,{align:"right"});y+=6;
-  doc.line(112,y,W-M,y);y+=7;
-  const result=Number(a.result||0),title=result>=0?"Nachzahlung":"Guthaben";
-  txt(title,M,y,12,"bold");doc.text(euroPdf(Math.abs(result)),W-M,y,{align:"right"});y+=10;
-  if(result>0&&sender.iban){
-    txt(`Bitte überweisen Sie den Betrag auf ${sender.iban}${sender.paymentReference?` unter Angabe „${sender.paymentReference}“`:""}.`,M,y,9);y+=6
-  }else if(result<0){
-    txt("Das Guthaben ist in der Abrechnung ausgewiesen und kann entsprechend ausgeglichen werden.",M,y,9);y+=6
-  }
-  txt("Die zugrunde liegenden Kostenpositionen und Verteilungsmaßstäbe sind oben einzeln dargestellt.",M,y,8);y+=5;
-  txt("Belegeinsicht wird auf Verlangen ermöglicht (§ 556 Abs. 4 BGB).",M,y,8);y+=5;
-  txt("Die zugehörigen Herkunftsnachweise sind in der App dokumentiert.",M,y,8);y+=5;
-  if(sender.contact){txt(`Kontakt für Rückfragen: ${sender.contact}`,M,y,8);y+=5}y+=5;
-  txt("Mit freundlichen Grüßen",M,y,9);y+=10;txt(sender.landlordName||"Vermieter",M,y,9);
-  doc.setFontSize(7);doc.text(`Erstellt am ${new Date().toLocaleDateString("de-DE")}`,M,290);
-  if(snapshot?.integrityHash)doc.text(`Snapshot ${String(snapshot.integrityHash).slice(0,20)}…`,W-M,290,{align:"right"});
-  return doc
-}
-
-
+/* Phase 8 runtime bridge: Implementierung in src/domain/intelligence.ts */
+const {
+  INTELLIGENCE_VERSION,
+  normalizeLabelText,
+  tokenSimilarity,
+  daysDistance,
+  dueDatesForPosition,
+  paymentMatchScore,
+  paymentMatchSuggestions,
+  positionMonthlyEquivalent,
+  predictedMonth,
+  intelligentForecast,
+  forecastSignals,
+  extractDocumentIntelligence,
+  validateDocumentTotals,
+  documentConfidenceSummary,
+  billingRecipient,
+  splitAddressLines,
+  formatRuleForReport,
+  formatBillingRuleDetails,
+  generateProfessionalBillingPDF
+}=AppIntelligence;
 /* ===== quality.js ===== */
-const QUALITY_VERSION=1;
-function parseGermanNumber(v){
-  let s=String(v??"").trim().replace(/\s/g,"").replace(/[€EUR]/gi,"");if(!s)return null;
-  const neg=/^\(.*\)$/.test(s);s=s.replace(/[()]/g,"");
-  if(s.includes(",")&&s.includes(".")){if(s.lastIndexOf(",")>s.lastIndexOf("."))s=s.replace(/\./g,"").replace(",",".");else s=s.replace(/,/g,"")}
-  else if(s.includes(","))s=s.replace(",",".");
-  s=s.replace(/[^\d.+-]/g,"");const n=Number(s);return Number.isFinite(n)?(neg?-Math.abs(n):n):null
-}
-function parseFlexibleDate(v){
-  const s=String(v||"").trim();if(!s)return "";
-  let m=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);if(m)return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
-  m=s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})$/);if(m){let y=Number(m[3]);if(y<100)y+=2000;return `${y}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`};return ""
-}
-function csvDetectDelimiter(text){
-  const first=String(text||"").split(/\r?\n/).slice(0,5).join("\n"),candidates=[";",",","\t"];
-  return candidates.map(d=>({d,n:(first.match(new RegExp(d==="\t"?"\\t":d===";"?";":",","g"))||[]).length})).sort((a,b)=>b.n-a.n)[0]?.d||";"
-}
-function csvRows(text,delimiter){
-  const rows=[];let row=[],cell="",quoted=false;
-  for(let i=0;i<String(text).length;i++){const ch=text[i],nx=text[i+1];
-    if(ch==='"'&&quoted&&nx==='"'){cell+='"';i++;continue}
-    if(ch==='"'){quoted=!quoted;continue}
-    if(ch===delimiter&&!quoted){row.push(cell);cell="";continue}
-    if((ch==="\n"||ch==="\r")&&!quoted){if(ch==="\r"&&nx==="\n")i++;row.push(cell);if(row.some(x=>String(x).trim()!==""))rows.push(row);row=[];cell="";continue}
-    cell+=ch
-  }
-  row.push(cell);if(row.some(x=>String(x).trim()!==""))rows.push(row);return rows
-}
-function bankHeaderIndex(headers,patterns){const hs=headers.map(normalizeLabelText);for(const p of patterns){const i=hs.findIndex(h=>p.test(h));if(i>=0)return i}return -1}
-function parseBankCSV(text){
-  const delimiter=csvDetectDelimiter(text),rows=csvRows(text,delimiter);if(rows.length<2)throw new Error("Die CSV-Datei enthält keine Buchungen.");
-  const h=rows[0],dateIdx=bankHeaderIndex(h,[/buchungstag/,/wertstellung/,/^datum$/, /date/]),amountIdx=bankHeaderIndex(h,[/^betrag/,/umsatz/,/amount/]),debitIdx=bankHeaderIndex(h,[/soll/,/debit/]),creditIdx=bankHeaderIndex(h,[/haben/,/credit/]),textIdx=bankHeaderIndex(h,[/verwendungszweck/,/buchungstext/,/beschreibung/,/umsatztext/,/purpose/,/description/]),nameIdx=bankHeaderIndex(h,[/zahlungspflichtiger/,/zahlungsempfanger/,/auftraggeber/,/empfanger/,/^name$/]);
-  if(dateIdx<0||(amountIdx<0&&debitIdx<0&&creditIdx<0))throw new Error("Datum oder Betragsspalte konnte nicht erkannt werden.");
-  const out=[];
-  for(let i=1;i<rows.length;i++){
-    const r=rows[i],date=parseFlexibleDate(r[dateIdx]);if(!date)continue;let amount=amountIdx>=0?parseGermanNumber(r[amountIdx]):null;
-    if((amount==null||amount===0)&&debitIdx>=0){const d=parseGermanNumber(r[debitIdx]);if(d!=null&&d!==0)amount=-Math.abs(d)}
-    if((amount==null||amount===0)&&creditIdx>=0){const c=parseGermanNumber(r[creditIdx]);if(c!=null&&c!==0)amount=Math.abs(c)}
-    if(amount==null||amount===0)continue;
-    const label=[nameIdx>=0?r[nameIdx]:"",textIdx>=0?r[textIdx]:""].filter(Boolean).join(" · ").trim()||"Kontobuchung";
-    out.push({date,amount:Math.abs(amount),direction:amount<0?"outflow":"income",label,rawRow:i+1})
-  }
-  return {delimiter,headers:h,rows:out}
-}
-function paymentFingerprint(p){return `${p.date}|${p.direction}|${Number(p.amount||0).toFixed(2)}|${normalizeLabelText(p.label).slice(0,80)}`}
-function detectRentPayment(state,payment){
-  if(payment.direction!=="income")return null;let best=null;
-  for(const l of state.leases||[]){
-    for(const c of [{kind:"Gesamtmiete",value:Number(l.rent||0)+Number(l.advance||0)},{kind:"Kaltmiete",value:Number(l.rent||0)}].filter(x=>x.value>0)){
-      const diff=Math.abs(Number(payment.amount)-c.value);let score=diff<.01?80:diff/Math.max(1,c.value)<.03?55:0;
-      const tenant=normalizeLabelText(l.tenantName||"");if(tenant&&normalizeLabelText(payment.label).includes(tenant))score+=20;
-      if(score>Number(best?.score||0))best={leaseId:l.id,kind:c.kind,expected:c.value,score:Math.min(100,score)}
-    }
-  }
-  return best&&best.score>=55?best:null
-}
-function bankImportPreview(state,parsed){
-  const existing=new Set((state.payments||[]).map(paymentFingerprint));
-  return parsed.rows.map(r=>({...r,duplicate:existing.has(paymentFingerprint(r)),rentMatch:detectRentPayment(state,r)}))
-}
-function categoryLabel(k){return category(k)?.label||String(k||"Sonstige")}
-function periodCategoryTotals(state,year){
-  const a=billingAnalysis(state,year),map=new Map();
-  for(const e of a.events||[]){const cat=e.category||positionById(state,e.positionId)?.category||"other",prev=map.get(cat)||{category:cat,total:0,tenant:0,count:0};prev.total+=Number(e.amount||0);prev.tenant+=Number(e.tenantAmount||0);prev.count++;map.set(cat,prev)}
-  return [...map.values()]
-}
-function annualComparison(s,year){
-  const current=periodCategoryTotals(s,year),prior=periodCategoryTotals(s,year-1),keys=new Set([...current.map(x=>x.category),...prior.map(x=>x.category)]),cp=billingPeriodInfo(s,year),pp=billingPeriodInfo(s,year-1);
-  return [...keys].map(k=>{const c=current.find(x=>x.category===k)||{total:0,tenant:0},p=prior.find(x=>x.category===k)||{total:0,tenant:0},comparable=cp.days===cp.nominalDays&&pp.days===pp.nominalDays;
-    return {category:k,current:c.total,prior:p.total,tenantCurrent:c.tenant,change:c.total-p.total,pct:comparable&&p.total?((c.total-p.total)/p.total):null,comparable,currentPartial:cp.days!==cp.nominalDays,priorPartial:pp.days!==pp.nominalDays}
-  }).sort((a,b)=>Math.abs(b.change)-Math.abs(a.change))
-}
-function costTrendAlerts(s,year){
-  return annualComparison(s,year).filter(x=>x.comparable&&x.prior>0&&x.current>0&&x.pct!=null&&Math.abs(x.pct)>=.15).map(x=>({severity:x.pct>.25?"warn":"info",text:`${categoryLabel(x.category)}: ${x.pct>=0?"+":""}${Math.round(x.pct*100)} % gegenüber ${billingPeriodLabel(s,year-1)} (${euro(x.prior)} → ${euro(x.current)}).`}))
-}
-function meterTrend(meter){
-  const r=(meter?.readings||[]).filter(x=>x.date&&Number.isFinite(Number(x.value))).slice().sort((a,b)=>a.date.localeCompare(b.date)),segments=[];
-  for(let i=1;i<r.length;i++){const days=daysInclusive(r[i-1].date,r[i].date)-1,delta=Number(r[i].value)-Number(r[i-1].value);if(days>0&&delta>=0)segments.push({from:r[i-1],to:r[i],days,delta,perDay:delta/days,per30:delta/days*30})}
-  const avg=segments.length?segments.reduce((s,x)=>s+x.perDay,0)/segments.length:0;return{segments,avgPerDay:avg,avgPer30:avg*30}
-}
-function meterAnomalies(meter){
-  const t=meterTrend(meter);if(t.segments.length<2)return[];const baseline=t.segments.slice(0,-1).reduce((s,x)=>s+x.perDay,0)/Math.max(1,t.segments.length-1),last=t.segments.at(-1),out=[];
-  if(baseline>0&&last.perDay>baseline*1.75&&last.delta>1)out.push({severity:"warn",text:`${meter.name}: letzter Verbrauch liegt ${Math.round((last.perDay/baseline-1)*100)} % über dem bisherigen Tagesmittel.`});return out
-}
-
-function dataQualityScore(state){
-  const integrity=integritySummary(state),checks=billingReadiness(state,currentPeriodYear()),openDocs=(state.documentsCache||[]).filter(d=>documentWorkflowState(d)!=="done").length;
-  const matchable=(state.payments||[]).filter(p=>p.direction==="outflow"&&!p.positionId&&paymentMatchSuggestions(state,p,1)[0]?.score>=45).length;
-  let score=100;score-=integrity.errors.length*20;score-=integrity.warnings.length*4;score-=checks.filter(x=>!x.ok).length*7;score-=Math.min(15,openDocs*3);score-=Math.min(10,matchable*2);
-  return Math.max(0,Math.round(score))
-}
-
-
+/* Phase 8 runtime bridge: Implementierung in src/domain/quality.ts */
+const {
+  QUALITY_VERSION,
+  parseGermanNumber,
+  parseFlexibleDate,
+  csvDetectDelimiter,
+  csvRows,
+  bankHeaderIndex,
+  parseBankCSV,
+  paymentFingerprint,
+  detectRentPayment,
+  bankImportPreview,
+  categoryLabel,
+  periodCategoryTotals,
+  annualComparison,
+  costTrendAlerts,
+  meterTrend,
+  meterAnomalies,
+  dataQualityScore
+}=AppQuality;
 /* ===== smart-engine.js ===== */
-const SMART_ENGINE_VERSION=1;
-
-function smartToday(){return localDateISO()}
-function smartMonthKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`}
-function smartMonthOffset(offset){
-  const d=new Date(),x=new Date(d.getFullYear(),d.getMonth()+offset,1);
-  return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}`
-}
-function smartMonthRange(key){
-  const [y,m]=String(key).split("-").map(Number),start=`${y}-${String(m).padStart(2,"0")}-01`,end=new Date(y,m,0).toISOString().slice(0,10);
-  return {start,end}
-}
-function activeLeaseInMonth(lease,key){
-  const {start,end}=smartMonthRange(key);return !!lease&&(!lease.start||lease.start<=end)&&(!lease.end||lease.end>=start)
-}
-function rentMonthStatus(state,key=smartMonthKey()){
-  const lease=(state.leases||[]).find(l=>activeLeaseInMonth(l,key));if(!lease)return {key,status:"none",expected:0,paid:0,confidence:0,payments:[]};
-  const expected=Number(lease.rent||0)+Number(lease.advance||0),tenant=normalizeLabelText(lease.tenantName||"");
-  const pays=(state.payments||[]).filter(p=>p.direction==="income"&&paymentMonthKey(p.date)===key).filter(p=>{
-    const label=normalizeLabelText(p.label),det=detectRentPayment(state,p);
-    return det?.leaseId===lease.id || /\bmiete\b|betriebskosten|nebenkosten|\bbk\b/.test(label) || (tenant&&label.includes(tenant))
-  });
-  const paid=pays.reduce((s,p)=>s+Number(p.amount||0),0),ratio=expected?paid/expected:0;
-  let status=paid<=0?"missing":ratio>=.995?"paid":"partial";
-  if(ratio>1.08)status="over";
-  let confidence=0;
-  if(pays.length)confidence=Math.max(...pays.map(p=>Number(detectRentPayment(state,p)?.score||(/\bmiete\b/.test(normalizeLabelText(p.label))?70:45))));
-  return {key,lease,expected,paid,difference:paid-expected,status,confidence,payments:pays}
-}
-function rentMonitor(state,months=8){return Array.from({length:months},(_,i)=>rentMonthStatus(state,smartMonthOffset(-i)))}
-function rentStatusLabel(s){return s.status==="paid"?"vollständig erkannt":s.status==="partial"?"teilweise erkannt":s.status==="over"?"über Soll erkannt":s.status==="missing"?"noch nicht erkannt":"kein aktiver Mietvertrag"}
-
-function latestBillingSnapshot(state){
-  return (state.billingSnapshots||[]).slice().sort((a,b)=>Number(b.periodYear)-Number(a.periodYear))[0]||null
-}
-function billingProjection(s,year=currentPeriodYear()){
-  const current=billingAnalysis(s,year),cur=periodCategoryTotals(s,year),prior=periodCategoryTotals(s,year-1),pp=billingPeriodInfo(s,year-1),currentCats=new Set(cur.filter(x=>x.total>0).map(x=>x.category)),factor=pp.active&&pp.days>0?pp.nominalDays/pp.days:1;
-  const missing=prior.filter(x=>x.total>0&&!currentCats.has(x.category)).map(x=>({...x,estimatedTenant:Number(x.tenant||0)*(pp.days<pp.nominalDays?factor:1),annualized:pp.days<pp.nominalDays}));
-  const estimatedMissingTenant=missing.reduce((sum,x)=>sum+Number(x.estimatedTenant||0),0),projectedTenantCosts=Number(current.tenantCosts||0)+estimatedMissingTenant,projectedResult=projectedTenantCosts-Number(current.advances||0);
-  const priorCats=prior.filter(x=>x.total>0).length,matched=prior.filter(x=>currentCats.has(x.category)).length;
-  let confidence=priorCats?Math.round(55+40*(matched/priorCats)):Math.min(55,25+(current.events||[]).length*5);if(pp.days<pp.nominalDays&&missing.length)confidence=Math.max(35,confidence-15);
-  return {year,knownTenantCosts:Number(current.tenantCosts||0),estimatedMissingTenant,projectedTenantCosts,advances:Number(current.advances||0),projectedResult,missingCategories:missing,confidence:Math.max(20,Math.min(95,confidence)),period:current.period}
-}
-
+/* Phase 8 runtime bridge: Implementierung in src/domain/smart-engine.ts */
+const {
+  SMART_ENGINE_VERSION,
+  smartToday,
+  smartMonthKey,
+  smartMonthOffset,
+  smartMonthRange,
+  activeLeaseInMonth,
+  rentMonthStatus,
+  rentMonitor,
+  rentStatusLabel,
+  latestBillingSnapshot,
+  billingProjection
+}=AppSmartEngine;
 /* ===== V18 billing assistant preview ===== */
-const V18_ASSISTANT_VERSION=1;
-const V18_EXPECTED_BILLING_CATEGORIES=[
-  {category:"propertyTax",label:"Grundsteuer",route:"data",sub:"positions"},
-  {category:"rainwater",label:"Niederschlagswasser",route:"data",sub:"positions"},
-  {category:"street",label:"Straßenreinigung / Winterdienst",route:"data",sub:"positions"},
-  {category:"waste",label:"Abfall",route:"data",sub:"positions"},
-  {category:"insurance",label:"Gebäudeversicherung",route:"data",sub:"positions"},
-  {category:"water",label:"Kaltwasser / Kanal",route:"rental",sub:"water"}
-];
-
-function v18CategoryForecast(s,year,def){
-  const cp=billingPeriodInfo(s,year),current=periodCategoryTotals(s,year).find(x=>x.category===def.category),water=def.category==="water"?settlementConsumption(s,settlementByPeriod(s,year)):null;
-  if(current?.total>0){
-    if(def.category==="water"&&!water?.valid)return {...def,status:"open",amount:0,knownTotal:Number(current.total||0),detail:"Kosten sind vorhanden, aber vollständige Verbrauchsdaten fehlen."};
-    return {...def,status:"known",amount:Number(current.tenant||0),knownTotal:Number(current.total||0),detail:"Bestätigte Daten dieser Abrechnungsperiode."}
-  }
-  const prior=periodCategoryTotals(s,year-1).find(x=>x.category===def.category),pp=billingPeriodInfo(s,year-1);
-  if(prior?.total>0&&pp.active&&pp.days>0){
-    const currentFull=cp.active&&!cp.isTakeoverPeriod&&cp.days===cp.nominalDays;
-    const priorFull=pp.active&&!pp.isTakeoverPeriod&&pp.days===pp.nominalDays;
-    const scale=currentFull&&priorFull?1:(cp.days>0?cp.days/pp.days:1);
-    const amount=Number(prior.tenant||0)*scale;
-    const detail=currentFull&&priorFull
-      ?`Aus ${billingPeriodLabel(s,year-1)} als Jahresvergleich übernommen.`
-      :`Aus ${billingPeriodLabel(s,year-1)} zeitanteilig auf die aktuelle Teilperiode hochgerechnet.`;
-    return {...def,status:"estimated",amount,knownTotal:0,detail}
-  }
-  return {...def,status:"open",amount:0,knownTotal:0,detail:"Noch kein aktueller oder ausreichend vergleichbarer historischer Wert vorhanden."}
-}
-function v18BackupStatus(s){
-  const at=s.meta?.lastBackupAt||"",age=at?Math.max(0,calendarDayDiff(String(at).slice(0,10),smartToday())):null;
-  if(age==null)return {status:"open",label:"Noch kein Backup",detail:"Noch keine verschlüsselte Vollsicherung dokumentiert.",age:null,route:"more",sub:"backup"};
-  if(age>30)return {status:"open",label:"Backup überfällig",detail:`Letzte verschlüsselte Sicherung vor ${age} Tagen.`,age,route:"more",sub:"backup"};
-  return {status:"known",label:"Backup aktuell",detail:`Letzte verschlüsselte Sicherung vor ${age} Tagen.`,age,route:"more",sub:"backup"}
-}
-function v18StatusWeight(status){return status==="known"?1:status==="estimated"?.5:0}
-function v18StatusLabel(status){return status==="known"?"Bekannt":status==="estimated"?"Geschätzt":"Offen"}
-function v18StatusClass(status){return status==="known"?"good":status==="estimated"?"warn":"bad"}
-function v18BillingAssistant(s,year=preferredBillingYear()){
-  const period=billingPeriodInfo(s,year),analysis=billingAnalysis(s,year),lease=analysis.lease||s.leases?.[0]||null,owner=unitByType(s,"owner"),rental=unitByType(s,"rental"),rows=V18_EXPECTED_BILLING_CATEGORIES.map(d=>v18CategoryForecast(s,year,d));
-  const leaseItem={id:"lease",label:"Mietvertrag",status:lease?"known":"open",detail:lease?`${euro(lease.rent)} Kaltmiete · ${euro(lease.advance)} BK-Vorauszahlung`:"Mietvertrag fehlt.",route:"rental",sub:"overview"};
-  const areaOK=Number(s.property?.totalArea||0)>0&&Number(rental?.area||0)>0&&Number(owner?.area||0)>0;
-  const areaItem={id:"area",label:"Wohnflächen",status:areaOK?"known":"open",detail:areaOK?`${rental.area} m² Mietwohnung von ${s.property.totalArea} m² gesamt`:"Wohnflächen sind noch nicht vollständig.",route:"data",sub:"object"};
-  const correspondenceOK=!!String(s.correspondence?.landlordName||"").trim()&&!!String(s.correspondence?.landlordAddress||s.property?.address||"").trim();
-  const correspondenceItem={id:"correspondence",label:"Absenderdaten",status:correspondenceOK?"known":"open",detail:correspondenceOK?"Für die spätere PDF vorhanden.":"Absenderdaten für die Endabrechnung ergänzen.",route:"data",sub:"object"};
-  const evidence=lease?actualAdvanceEvidenceInPeriod(s,lease,year):{amount:0,recognizedPayments:0},scheduled=lease?monthlyAdvanceInPeriod(s,lease,year):0,periodEnded=!!period.end&&smartToday()>period.end;
-  const advanceStatus=Number(evidence.recognizedPayments||0)>0?"known":lease&&Number(lease.advance||0)>0&&!periodEnded?"estimated":"open";
-  const advanceItem={id:"advances",label:"Vorauszahlungen",status:advanceStatus,detail:advanceStatus==="known"?`${evidence.recognizedPayments} Zahlung(en) erkannt · bisher ${euro(evidence.amount)}`:advanceStatus==="estimated"?`Vertraglich geplant: ${euro(scheduled)}`:"Keine belastbare Vorauszahlungsbasis.",route:"owner",sub:"cashflow"};
-  const checklist=[leaseItem,areaItem,correspondenceItem,...rows,advanceItem],score=Math.round(100*checklist.reduce((sum,x)=>sum+v18StatusWeight(x.status),0)/Math.max(1,checklist.length));
-  const estimatedTenant=rows.filter(x=>x.status==="estimated").reduce((sum,x)=>sum+Number(x.amount||0),0),knownTenant=Number(analysis.tenantCosts||0),projectedTenantCosts=knownTenant+estimatedTenant;
-  const projectedAdvances=periodEnded?Number(analysis.advances||0):Math.max(Number(analysis.advances||0),Number(scheduled||0)),projectedResult=projectedTenantCosts-projectedAdvances;
-  const openItems=checklist.filter(x=>x.status==="open"),estimatedItems=checklist.filter(x=>x.status==="estimated"),knownItems=checklist.filter(x=>x.status==="known"),backup=v18BackupStatus(s);
-  let confidence=Math.round(100*(knownItems.length+.55*estimatedItems.length)/Math.max(1,checklist.length));
-  if(openItems.length)confidence-=Math.min(20,openItems.length*3);
-  confidence=Math.max(20,Math.min(96,confidence));
-  const label=score>=90?"Fast fertig":score>=75?"Gut vorbereitet":score>=50?"Im Aufbau":"Noch unvollständig";
-  return {year,period,analysis,rows,checklist,score,label,confidence,knownTenant,estimatedTenant,projectedTenantCosts,actualAdvances:Number(analysis.advances||0),scheduledAdvances:Number(scheduled||0),projectedAdvances,projectedResult,openItems,estimatedItems,knownItems,backup,periodEnded}
-}
-function v18BillingAssistantHTML(s,year,{compact=false}={}){
-  const m=v18BillingAssistant(s,year),cb=confidenceBand(m.confidence),resultLabel=m.projectedResult>=0?"voraussichtliche Nachzahlung":"voraussichtliches Guthaben",problem=m.openItems.length+m.estimatedItems.length;
-  if(compact){
-    const next=[...m.openItems,...m.estimatedItems].slice(0,3);
-    return `<section id="v18BillingAssistant" class="card"><div class="card-head"><div><p class="eyebrow">ABRECHNUNGSASSISTENT</p><h3>${m.score}% vorbereitet · ${esc(m.label)}</h3><p class="muted">${esc(billingPeriodLabel(s,year))}</p></div><span class="confidence confidence-${cb.id}">${esc(cb.short)}</span></div>
-      <div class="storage-meter" aria-label="Vorbereitungsgrad"><span style="width:${m.score}%"></span></div>
-      <div class="grid cards"><article class="card metric-card"><span>Bekannte Kosten</span><strong>${euro(m.knownTenant)}</strong></article><article class="card metric-card"><span>Geschätzt</span><strong>${euro(m.estimatedTenant)}</strong></article><article class="card metric-card"><span>Prognose</span><strong>${euro(Math.abs(m.projectedResult))}</strong><small>${resultLabel}</small></article></div>
-      ${next.length?`<div class="card"><strong>${problem} Punkt(e) noch nicht endgültig</strong>${next.map(x=>`<div class="fact-row"><span>${esc(x.label)}</span><strong>${v18StatusLabel(x.status)}</strong></div>`).join("")}</div>`:`<div class="legal-ok">✓ Alle für die Prognose erwarteten Daten sind vorhanden.</div>`}
-      <div class="${m.backup.status==="known"?"legal-ok":"legal-warn"}"><strong>${esc(m.backup.label)}</strong><br>${esc(m.backup.detail)}</div>
-      <button class="primary wide" data-v18-go="rental|billing">Abrechnung vorbereiten</button></section>`
-  }
-  return `<section id="v18BillingAssistantFull" class="card"><div class="card-head"><div><p class="eyebrow">ABRECHNUNGSASSISTENT</p><h3>${m.score}% vorbereitet · ${esc(m.label)}</h3><p class="muted">Planungsansicht für ${esc(billingPeriodLabel(s,year))}. Schätzwerte werden niemals automatisch in die endgültige Abrechnung übernommen.</p></div><span class="confidence confidence-${cb.id}">${esc(cb.label)} · ${m.confidence}%</span></div>
-    <div class="storage-meter" aria-label="Vorbereitungsgrad"><span style="width:${m.score}%"></span></div>
-    <div class="grid cards">
-      <article class="card metric-card"><span>Bekannte Kosten</span><strong>${euro(m.knownTenant)}</strong><small>abrechnungswirksam</small></article>
-      <article class="card metric-card"><span>Geschätzte Ergänzung</span><strong>${euro(m.estimatedTenant)}</strong><small>nur Prognose</small></article>
-      <article class="card metric-card"><span>Geplante Vorauszahlungen</span><strong>${euro(m.projectedAdvances)}</strong><small>bisher tatsächlich ${euro(m.actualAdvances)}</small></article>
-      <article class="card metric-card"><span>Prognose</span><strong>${euro(Math.abs(m.projectedResult))}</strong><small>${resultLabel}</small></article>
-    </div>
-    <div class="tablewrap"><table class="costtable"><thead><tr><th>Baustein</th><th>Status</th><th>Prognoseanteil</th><th>Nächster Schritt</th></tr></thead><tbody>
-      ${m.checklist.map(x=>`<tr ${x.category?`data-v18-category="${x.category}"`:""}><td><strong>${esc(x.label)}</strong><br><small>${esc(x.detail||"")}</small></td><td><span class="pill ${v18StatusClass(x.status)}">${v18StatusLabel(x.status)}</span></td><td>${x.category&&x.status!=="open"?euro(x.amount):"–"}</td><td>${x.status==="known"?"✓":`<button class="secondary compact" data-v18-go="${x.route}|${x.sub}">${x.status==="estimated"?"Aktualisieren":"Erfassen"}</button>`}</td></tr>`).join("")}
-    </tbody></table></div>
-    <div class="${m.backup.status==="known"?"legal-ok":"legal-warn"}"><strong>${esc(m.backup.label)}</strong><br>${esc(m.backup.detail)} ${m.backup.status!=="known"?`<button class="linkbutton" data-v18-go="more|backup">Sicherung öffnen</button>`:""}</div>
-    <div class="info"><strong>Trennung von Prognose und Abrechnung:</strong> Nur bestätigte Kosten, echte Zählerdaten und tatsächlich geleistete Vorauszahlungen fließen in Abschluss, Snapshot und PDF ein. Gelbe Schätzwerte dienen ausschließlich der Planung.</div>
-  </section>`
-}
-function bindV18AssistantActions(root=document){
-  root.querySelectorAll("[data-v18-go]").forEach(b=>b.onclick=()=>{const [r,s]=String(b.dataset.v18Go||"").split("|");if(r)go(r,s||DEFAULT_SUB[r])})
-}
-
-function advanceAdjustmentSuggestion(state){
-  const snap=latestBillingSnapshot(state),lease=state.leases?.[0];if(!snap||!lease||Number(lease.advance||0)<=0)return null;
-  const basisLease=snap.lease||lease,months=monthlyAdvanceInPeriod(state,{...basisLease,advance:1},Number(snap.periodYear));
-  if(months<=0)return null;
-  const recommended=Number(snap.tenantCosts||0)/months,current=Number(lease.advance||0),diff=recommended-current;
-  return {periodYear:snap.periodYear,current,recommended,diff,relative:current?diff/current:0,material:Math.abs(diff)>=5&&Math.abs(diff/current)>=.05,basis:"Rechnerischer Richtwert aus der letzten abgeschlossenen Abrechnung; eine Anpassung nach einer Abrechnung ist nach § 560 Abs. 4 BGB grundsätzlich möglich, die angemessene Höhe ist im Einzelfall zu prüfen."}
-}
-function billingDeadlineInsights(state){
-  const out=[],today=smartToday(),cy=currentPeriodYear(),lease=state.leases?.[0];
-  for(let y=cy-4;y<=cy;y++){
-    const p=billingPeriodInfo(state,y);if(!lease||!p.active||snapshotFor(state,y)||p.end>=today)continue;
-    const leaseStart=lease.start||p.start,leaseEnd=lease.end||p.end;
-    if(leaseStart>p.end||leaseEnd<p.start)continue;
-    const target=periodBillingTargetISO(y),legal=periodDeadlineISO(y),targetDays=calendarDayDiff(today,target),legalDays=calendarDayDiff(today,legal);
-    if(targetDays>=0&&targetDays<=120){
-      out.push({id:`target-${y}`,severity:targetDays<=30?"warn":"info",title:`Endabrechnung ${billingPeriodLabel(state,y)} vorbereiten`,detail:`Eigene Zielfrist: ${new Date(target+"T00:00:00").toLocaleDateString("de-DE")} · noch ${targetDays} Tage.`,why:"Eigene Arbeitszielfrist",confidence:100,route:"rental",sub:"billing"})
-    }else if(targetDays<0&&legalDays>=0){
-      out.push({id:`target-${y}`,severity:"warn",title:`Eigene Zielfrist für ${billingPeriodLabel(state,y)} überschritten`,detail:`Die Endabrechnung sollte bis ${new Date(target+"T00:00:00").toLocaleDateString("de-DE")} fertig sein. Die gesetzliche Abrechnungsfrist läuft bis ${new Date(legal+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"Interne Zielfrist; gesetzliche Frist separat",confidence:100,route:"rental",sub:"billing"})
-    }else if(legalDays<0){
-      out.push({id:`deadline-${y}`,severity:"bad",title:`Gesetzliche Abrechnungsfrist ${billingPeriodLabel(state,y)} überschritten`,detail:`Die reguläre Frist endete am ${new Date(legal+"T00:00:00").toLocaleDateString("de-DE")}.`,why:"§ 556 Abs. 3 BGB",confidence:100,route:"rental",sub:"billing"})
-    }
-  }
-  return out
-}
-function sourceExpectedAmounts(state,source){
-  const vals=[];
-  if(Number(source?.amount||0)>0)vals.push(Number(source.amount));
-  const ps=sourcePositions(state,source?.id).filter(p=>p.confirmed),sum=ps.reduce((s,p)=>s+Number(p.amount||0),0);
-  if(sum>0)vals.push(sum);
-  return [...new Set(vals.map(x=>Number(x.toFixed(2))))]
-}
-function sourcePaymentMatchScore(state,payment,source){
-  if(payment.direction!=="outflow")return {score:0,reasons:[]};
-  let score=0,reasons=[],expected=sourceExpectedAmounts(state,source);
-  if(expected.length){
-    const best=Math.min(...expected.map(a=>Math.abs(Number(payment.amount||0)-a)/Math.max(1,a)));
-    if(best<.005){score+=58;reasons.push("Betrag passt zur Kostenquelle")}
-    else if(best<.03){score+=42;reasons.push("Betrag ist sehr ähnlich")}
-    else if(best<.10){score+=18;reasons.push("Betrag ist plausibel")}
-  }
-  const sim=tokenSimilarity(payment.label,source.name||"");score+=Math.round(sim*25);if(sim>.4)reasons.push("Buchungstext passt zur Quelle");
-  const dues=Array.isArray(source.dueDates)?source.dueDates:[];
-  if(dues.length){const dd=Math.min(...dues.map(d=>daysDistance(payment.date,d)));if(dd<=2){score+=17;reasons.push("Datum passt zur Fälligkeit")}else if(dd<=14){score+=9;reasons.push("Datum liegt im Fälligkeitsfenster")}}
-  return {score:Math.min(100,score),reasons}
-}
-function smartPaymentSuggestions(state,payment,limit=5){
-  const pos=paymentMatchSuggestions(state,payment,limit).map(x=>({type:"position",target:x.position,score:x.score,reasons:x.reasons}));
-  const src=(state.sources||[]).map(s=>({type:"source",target:s,...sourcePaymentMatchScore(state,payment,s)})).filter(x=>x.score>=35);
-  return [...pos,...src].sort((a,b)=>b.score-a.score).slice(0,limit)
-}
-function smartPaymentPlan(state){
-  const candidates=(state.payments||[]).filter(p=>p.direction==="outflow"&&!p.positionId&&!p.sourceId).map(payment=>({payment,suggestions:smartPaymentSuggestions(state,payment,4)})).filter(x=>x.suggestions.length);
-  candidates.sort((a,b)=>(b.suggestions[0]?.score||0)-(a.suggestions[0]?.score||0));
-  const reservedPositions=new Set(),out=[];
-  for(const x of candidates){
-    const suggestions=x.suggestions.filter(s=>s.type!=="position"||!reservedPositions.has(s.target.id));
-    const best=suggestions[0];if(!best||best.score<45)continue;
-    if(best.type==="position")reservedPositions.add(best.target.id);
-    out.push({...x,suggestions})
-  }
-  return out
-}
-
-function medianValue(values){const a=values.filter(Number.isFinite).slice().sort((x,y)=>x-y);if(!a.length)return 0;const m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
-function robustMeterAnomalies(meter){
-  const t=meterTrend(meter),segs=t.segments;if(segs.length<3)return meterAnomalies(meter);
-  const hist=segs.slice(0,-1).map(x=>x.perDay),med=medianValue(hist),dev=medianValue(hist.map(x=>Math.abs(x-med))),last=segs.at(-1),out=[];
-  const threshold=med+Math.max(med*.65,dev*4);
-  if(med>0&&last.perDay>threshold&&last.delta>1)out.push({severity:"warn",text:`${meter.name}: der jüngste Verbrauch liegt deutlich über dem robusten bisherigen Niveau (${last.per30.toFixed(2)} statt etwa ${(med*30).toFixed(2)} ${meter.unit||""} je 30 Tage).`,confidence:Math.min(99,Math.round(70+(last.perDay/Math.max(threshold,.0001)-1)*20))});
-  return out
-}
-function smartDataAnomalies(state){
-  const out=[],positions=state.costPositions||[],groups=new Map();
-  for(const p of positions){
-    const k=`${normalizeLabelText(p.label)}|${Number(p.amount||0).toFixed(2)}|${p.serviceStart}|${p.serviceEnd}|${p.assignment}`;
-    const a=groups.get(k)||[];a.push(p);groups.set(k,a)
-  }
-  for(const a of groups.values())if(a.length>1)out.push({id:`dup-pos-${a[0].id}`,severity:"warn",title:"Mögliche doppelte Kostenposition",detail:`${a[0].label} · ${euro(a[0].amount)} ist ${a.length}-mal mit gleichem Zeitraum und gleicher Zuordnung vorhanden.`,why:"Duplikatprüfung",confidence:96,route:"data",sub:"positions"});
-  const payGroups=new Map();
-  for(const p of state.payments||[]){const k=paymentFingerprint(p),a=payGroups.get(k)||[];a.push(p);payGroups.set(k,a)}
-  for(const a of payGroups.values())if(a.length>1)out.push({id:`dup-pay-${a[0].id}`,severity:"warn",title:"Mögliche doppelte Zahlung",detail:`${a[0].date} · ${euro(a[0].amount)} · ${a[0].label}`,why:"Import-/Buchungsprüfung",confidence:94,route:"owner",sub:"cashflow"});
-  for(const m of state.meters||[]){
-    const r=(m.readings||[]).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
-    for(let i=1;i<r.length;i++)if(Number(r[i].value)<Number(r[i-1].value)&&!r[i].synthetic)out.push({id:`meter-drop-${m.id}-${r[i].id}`,severity:"warn",title:`Zählerstand bei ${m.name} gesunken`,detail:`${r[i-1].value} → ${r[i].value} am ${r[i].date}. Zählerwechsel oder Eingabefehler prüfen.`,why:"Plausibilitätsprüfung",confidence:98,route:"data",sub:"infrastructure"});
-    for(const a of robustMeterAnomalies(m))out.push({id:`meter-spike-${m.id}`,severity:"warn",title:"Ungewöhnlicher Verbrauch",detail:a.text,why:"Robuste Verbrauchsanalyse",confidence:a.confidence||80,route:"owner",sub:"analytics"})
-  }
-  return out
-}
-
-function historicalAssignmentPrediction(state,label,categoryId){
-  const nl=normalizeLabelText(label),candidates=(state.costPositions||[]).filter(p=>p.confirmed&&p.assignment!=="review"&&(p.category===categoryId||tokenSimilarity(p.label,label)>.65));
-  if(!candidates.length)return null;
-  const counts={};for(const p of candidates)counts[p.assignment]=(counts[p.assignment]||0)+1;
-  const [assignment,count]=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
-  return {assignment,confidence:Math.round(100*count/candidates.length),samples:candidates.length}
-}
-function smartClassifyCostText(text){
-  const s=normalizeLabelText(text);
-  const defs=[
-    {category:"repair",rx:/reparatur|instandsetzung|instandhaltung|sanierung|ersatzteil|defekt|erneuerung/,confidence:.96,reason:"Hinweis auf Instandhaltung/Reparatur"},
-    {category:"admin",rx:/verwaltung|verwalter|buchfuhrung|kontofuhrung|geschaftsfuhrung/,confidence:.94,reason:"Hinweis auf Verwaltungskosten"},
-    {category:"propertyTax",rx:/grundsteuer|grundbesitzabgabe.*steuer/,confidence:.98,reason:"Grundsteuer erkannt"},
-    {category:"rainwater",rx:/niederschlagswasser|regenwasser/,confidence:.97,reason:"Niederschlagswasser erkannt"},
-    {category:"water",rx:/schmutzwasser|frischwasser|wasserverbrauch|wasserversorgung|kanal|abwasser|grundgebuhr wasser/,confidence:.94,reason:"Wasser/Kanal erkannt"},
-    {category:"waste",rx:/restmull|restmuell|bioabfall|biomull|biomuell|papier.*tonne|abfall|mullabfuhr|muellabfuhr/,confidence:.94,reason:"Abfallkosten erkannt"},
-    {category:"street",rx:/strassenreinigung|straßenreinigung|winterdienst|schneeraum|schneeräum/,confidence:.94,reason:"Straßenreinigung/Winterdienst erkannt"},
-    {category:"insurance",rx:/gebaudeversicherung|gebäudeversicherung|sachversicherung|haftpflicht.*gebaude|haftpflicht.*gebäude/,confidence:.91,reason:"Gebäudeversicherung erkannt"},
-    {category:"chimney",rx:/schornsteinfeger|kehrgebuhr|kehrgebühr|feuerstattenschau|feuerstättenschau/,confidence:.94,reason:"Schornsteinfeger erkannt"},
-    {category:"garden",rx:/gartenpflege|grunpflege|grünpflege|rasenpflege|heckenschnitt/,confidence:.88,reason:"Gartenpflege erkannt"},
-    {category:"cleaning",rx:/gebaudereinigung|gebäudereinigung|treppenhausreinigung|ungeziefer|schadlingsbekampfung|schädlingsbekämpfung/,confidence:.88,reason:"Gebäudereinigung erkannt"}
-  ];
-  for(const d of defs)if(d.rx.test(s))return d;
-  return {category:"other",confidence:.28,reason:"Keine eindeutige Kostenart erkannt"}
-}
-function cleanProposalLabel(line,categoryId){
-  let x=String(line||"").replace(/\b\d{1,6}(?:\.\d{3})*,\d{2}\s*€?/g,"").replace(/\s{2,}/g," ").replace(/[·;:,\-–]+$/,"").trim();
-  if(x.length<4||x.length>80)x=category(categoryId).label;return x
-}
-function smartGenericPositionProposals(state,text,fields){
-  const lines=String(text||"").split(/\r?\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean),out=[];
-  const start=fields.serviceStart||`${fields.year||new Date().getFullYear()}-01-01`,end=fields.serviceEnd||`${fields.year||new Date().getFullYear()}-12-31`;
-  for(const line of lines){
-    if(/gesamtsumme|gesamtbetrag|summe neu|zahlbetrag|zu zahlen|endbetrag|umsatzsteuer|mwst|ust\b/i.test(line))continue;
-    const cls=smartClassifyCostText(line);if(cls.confidence<.78)continue;
-    const ms=[...line.matchAll(/(\d{1,6}(?:\.\d{3})*,\d{2})\s*€?/g)];if(!ms.length)continue;
-    const amount=parseMoney(ms.at(-1)[1]);if(!(amount>0))continue;
-    const label=cleanProposalLabel(line,cls.category),hist=historicalAssignmentPrediction(state,label,cls.category);
-    let assignment=hist?.confidence>=70?hist.assignment:(["repair","admin"].includes(cls.category)?"owner":cls.category==="waste"?"review":"house");
-    out.push({id:uid(),label,category:cls.category,amount,serviceStart:start,serviceEnd:end,assignment,agreement:"auto",confidence:Math.min(.96,cls.confidence*(hist?.confidence>=70?1:.96)),evidence:line,confirmed:false,smartReason:hist?.confidence>=70?`${cls.reason}; Zuordnung aus ${hist.samples} früheren Position(en) gelernt`:cls.reason})
-  }
-  return out
-}
-function enrichDocumentProposalsSmart(state,text,fields,base){
-  const out=(base||[]).slice(),generic=smartGenericPositionProposals(state,text,fields);
-  for(const p of generic){
-    const duplicate=out.some(x=>tokenSimilarity(x.label,p.label)>.78&&Math.abs(Number(x.amount)-Number(p.amount))<.02);
-    if(!duplicate)out.push(p)
-  }
-  return out.slice(0,30)
-}
-function smartDocumentSummary(state,text,fields){
-  const cls=smartClassifyCostText(text),issuer=fields.intelligence?.issuer||"",sourceMatches=(state.sources||[]).map(s=>({source:s,score:tokenSimilarity(issuer,s.name||"")})).filter(x=>x.score>.32).sort((a,b)=>b.score-a.score);
-  const warnings=[];
-  if(["repair","admin"].includes(cls.category))warnings.push(`Die Dokumentanalyse erkennt wahrscheinlich ${category(cls.category).label}. Diese Kostenart wird nicht automatisch auf die Mieterin umgelegt.`);
-  if((fields.positionProposals||[]).some(p=>p.assignment==="review"))warnings.push("Mindestens eine Kostenposition benötigt eine ausdrückliche Zuordnungsentscheidung.");
-  return {category:cls.category,categoryConfidence:Math.round(cls.confidence*100),reason:cls.reason,sourceId:sourceMatches[0]?.source.id||"",sourceName:sourceMatches[0]?.source.name||"",sourceConfidence:sourceMatches[0]?Math.round(sourceMatches[0].score*100):0,warnings}
-}
-
-function smartTaskSuggestions(state){
-  const out=[],today=smartToday(),existing=new Set(taskList().map(t=>`${normalizeLabelText(t.title)}|${t.due}`));
-  for(const s of state.sources||[])for(const d of s.dueDates||[]){
-    if(d<today)continue;const title=`${s.name} – Fälligkeit`;const k=`${normalizeLabelText(title)}|${d}`;if(!existing.has(k))out.push({title,due:d,lead:14,reason:"Fälligkeit aus Kostenquelle"})
-  }
-  for(const m of state.meters||[]){
-    const last=latestMeterReading(m),age=last?Math.max(0,calendarDayDiff(last.date,smartToday())):999;
-    if(age>90){const due=new Date();due.setDate(due.getDate()+7);const title=`${m.name} ablesen`;const ds=localDateISO(due),k=`${normalizeLabelText(title)}|${ds}`;if(!existing.has(k))out.push({title,due:ds,lead:2,reason:last?`Letzte Ablesung vor ${age} Tagen`:"Noch keine Ablesung"})}
-  }
-  const backupAge=state.meta?.lastBackupAt?Math.max(0,calendarDayDiff(String(state.meta.lastBackupAt).slice(0,10),smartToday())):999;
-  if(backupAge>30){const due=new Date();due.setDate(due.getDate()+3);out.push({title:"Verschlüsselte Datensicherung erstellen",due:localDateISO(due),lead:1,reason:"Datensicherung ist nicht aktuell"})}
-  return out.slice(0,12)
-}
-function smartInsights(state){
-  const out=[],today=smartToday(),rent=rentMonthStatus(state),proj=billingProjection(state),paymentPlan=smartPaymentPlan(state),todayDay=Number(today.slice(8,10)),rentAttention=rentAttentionDay(state);
-  for(const c of billingReadiness(state,currentPeriodYear()).filter(x=>!x.ok))out.push({id:`ready-${c.id}`,severity:"warn",title:c.label,detail:"Die Abrechnung ist an dieser Stelle noch nicht vollständig.",why:"Abschlussprüfung",confidence:100,route:c.route,sub:c.sub});
-  if(rent.status==="missing"&&Number(rent.expected)>0&&todayDay>=rentAttention){const late=todayDay-rentAttention;out.push({id:`rent-${rent.key}`,severity:late>=7?"bad":"warn",title:`Mietzahlung ${rent.key} noch nicht erkannt`,detail:`Erwartet ${euro(rent.expected)}. In den erfassten Kontobewegungen wurde noch keine passende Zahlung gefunden.`,why:"Abgleich Mietvertrag ↔ Zahlungseingänge; Zeitpunkt orientiert sich – wenn vorhanden – an bisherigen Zahlungseingängen. Keine automatische Mahnaussage.",confidence:78,route:"owner",sub:"cashflow"})}
-  if(rent.status==="partial")out.push({id:`rent-${rent.key}`,severity:"warn",title:`Mietzahlung ${rent.key} nur teilweise erkannt`,detail:`Erkannt ${euro(rent.paid)} von ${euro(rent.expected)}.`,why:"Zahlungseingangsabgleich",confidence:rent.confidence||65,route:"owner",sub:"cashflow"});
-  if(paymentPlan.length)out.push({id:"payment-match",severity:"warn",title:`${paymentPlan.length} Zahlung(en) mit plausiblem Zuordnungsvorschlag`,detail:`Bester aktueller Treffer: ${paymentPlan[0].suggestions[0].score} %.`,why:"Betrag, Text, Quelle und Fälligkeit",confidence:paymentPlan[0].suggestions[0].score,route:"owner",sub:"reconciliation"});
-  const docs=(state.documentsCache||[]),reviewDocs=docs.filter(d=>documentWorkflowState(d)==="review").length,newDocs=docs.filter(d=>documentWorkflowState(d)==="new").length;
-  if(reviewDocs||newDocs)out.push({id:"docs-review",severity:"warn",title:`${reviewDocs+newDocs} Dokument(e) warten auf Prüfung`,detail:`${newDocs} neu · ${reviewDocs} mit Prüfschritt.`,why:"Dokumenten-Inbox",confidence:100,route:"data",sub:"documents"});
-  for(const d of billingDeadlineInsights(state))out.push(d);
-  for(const a of smartDataAnomalies(state))out.push(a);
-  const adv=advanceAdjustmentSuggestion(state);if(adv?.material)out.push({id:"advance",severity:"info",title:"Betriebskostenvorauszahlung prüfen",detail:`Aktuell ${euro(adv.current)} / Monat · rechnerischer Richtwert aus letzter Abrechnung ${euro(adv.recommended)} / Monat.`,why:"§ 560 Abs. 4 BGB; nur rechnerischer Vorschlag",confidence:80,route:"rental",sub:"calculation"});
-  if(proj.missingCategories.length&&proj.confidence>=55)out.push({id:"projection",severity:"info",title:"Abrechnungsprognose nutzt Vorjahreswerte",detail:`Für ${proj.missingCategories.map(x=>categoryLabel(x.category)).join(", ")} fehlen noch aktuelle Werte. Prognose: ${euro(Math.abs(proj.projectedResult))} ${proj.projectedResult>=0?"Nachzahlung":"Guthaben"}.`,why:"Bekannte Kosten + fehlende Vorjahreskategorien",confidence:proj.confidence,route:"rental",sub:"calculation"});
-  const age=state.meta?.lastBackupAt?Math.max(0,calendarDayDiff(String(state.meta.lastBackupAt).slice(0,10),smartToday())):9999;if(age>30)out.push({id:"backup",severity:"warn",title:state.meta?.lastBackupAt?"Datensicherung älter als 30 Tage":"Noch keine verschlüsselte Datensicherung",detail:"Eine aktuelle Vollsicherung schützt Daten und Dokumente bei Geräteverlust.",why:"Datensicherheit",confidence:100,route:"more",sub:"backup"});
-  const rank={bad:0,warn:1,info:2,good:3};return out.sort((a,b)=>(rank[a.severity]??9)-(rank[b.severity]??9)||Number(b.confidence||0)-Number(a.confidence||0))
-}
-
-const DECISION_UI_VERSION=1;
-function confidenceBand(score){const n=Math.max(0,Math.min(100,Number(score||0)));if(n>=90)return{id:"high",label:"Sehr sicher",short:"Sicher"};if(n>=75)return{id:"good",label:"Gut begründet",short:"Plausibel"};if(n>=55)return{id:"medium",label:"Mit Vorbehalt",short:"Prüfen"};return{id:"low",label:"Unsicher",short:"Unsicher"}}
-function qualityBand(score){const n=Number(score||0);if(n>=90)return{id:"high",label:"Sehr gut"};if(n>=75)return{id:"good",label:"Gut"};if(n>=55)return{id:"medium",label:"Prüfen"};return{id:"low",label:"Unvollständig"}}
-function decisionSeverityWeight(s){return s==="bad"?400:s==="warn"?260:s==="info"?100:0}
-function decisionActionLabel(x){if(x.route==="rental"&&x.sub==="calculation")return"Abrechnung prüfen";if(x.route==="rental"&&x.sub==="water")return"Wasser prüfen";if(x.route==="owner"&&x.sub==="cashflow")return"Zahlungen öffnen";if(x.route==="owner"&&x.sub==="reconciliation")return"Zuordnung prüfen";if(x.route==="data"&&x.sub==="documents")return"Dokumente prüfen";if(x.route==="data"&&x.sub==="positions")return"Kosten prüfen";if(x.route==="more"&&x.sub==="backup")return"Sicherung öffnen";return"Öffnen"}
-function decisionKind(x){if((x.why||"").includes("§"))return"Regel";if(/Prognose|Richtwert|Analyse|Abgleich|Plausibil/i.test(x.why||""))return"Auswertung";return Number(x.confidence||0)>=95?"Fakt":"Hinweis"}
-function smartDecisionQueue(s){const raw=smartInsights(s),seen=new Set(),out=[];for(const x of raw){const key=`${normalizeLabelText(x.title)}|${x.route}|${x.sub||""}`;if(seen.has(key))continue;seen.add(key);const confidence=Math.max(0,Math.min(100,Number(x.confidence||0))),band=confidenceBand(confidence),blocker=x.severity==="bad"||/fehlt|offen|ungeklärt|abschließen|nicht erkannt/i.test(`${x.title} ${x.detail||""}`),actionability=x.route&&x.route!=="home"?60:0;if(x.severity==="info"&&confidence<55&&!blocker)continue;out.push({...x,confidence,band,blocker,kind:decisionKind(x),actionLabel:decisionActionLabel(x),decisionScore:decisionSeverityWeight(x.severity)+confidence+actionability+(blocker?50:0)})}return out.sort((a,b)=>b.decisionScore-a.decisionScore)}
-function decisionWhyHTML(x){return `<details class="decision-details"><summary>Warum zeigt mir die App das?</summary><div><p>${esc(x.why||"Auswertung der vorhandenen Daten")}</p><p><strong>Einordnung:</strong> ${esc(x.kind)} · ${esc(x.band.label)}${x.confidence?` (${Math.round(x.confidence)} %)`:""}</p>${x.severity==="info"?`<p class="muted">Dieser Hinweis ist nicht dringend. Er soll eine Entscheidung vorbereiten, nicht automatisch ausführen.</p>`:""}</div></details>`}
-function rentAttentionDay(s){const days=(s.payments||[]).filter(p=>p.direction==="income"&&detectRentPayment(s,p)?.score>=70&&p.date).map(p=>Number(p.date.slice(8,10))).filter(n=>n>=1&&n<=28).sort((a,b)=>a-b);if(days.length>=2){const mid=days[Math.floor(days.length/2)];return Math.max(6,Math.min(14,mid+3))}return 10}
-
-function smartSummaryText(state){
-  const ins=smartInsights(state),rent=rentMonthStatus(state),p=billingProjection(state),q=dataQualityScore(state);
-  return `Datenqualität ${q} %. ${ins.length?`${ins.filter(x=>x.severity==="bad").length} dringende und ${ins.filter(x=>x.severity==="warn").length} wichtige Hinweise.`:"Keine offenen Smart-Hinweise."} Mietzahlung aktuell: ${rentStatusLabel(rent)}. Abrechnungsprognose: ${euro(Math.abs(p.projectedResult))} ${p.projectedResult>=0?"Nachzahlung":"Guthaben"} bei ${p.confidence} % Modellkonfidenz.`
-}
-function smartAnswer(state,query){
-  const q=normalizeLabelText(query),y=currentPeriodYear(),rent=rentMonthStatus(state),proj=billingProjection(state),ins=smartInsights(state);
-  if(/miete|mietzahlung|zahlungseingang/.test(q))return {title:"Mietzahlung",answer:rent.status==="none"?"Für den aktuellen Monat ist kein aktiver Mietvertrag hinterlegt.":`Für ${rent.key} sind ${euro(rent.paid)} von ${euro(rent.expected)} als passende Mietzahlung erkannt. Status: ${rentStatusLabel(rent)}. Erkennungs-Sicherheit ${rent.confidence||0} %.`,route:"owner",sub:"cashflow"};
-  if(/abrechnung|nachzahlung|guthaben|nebenkosten/.test(q))return {title:"Abrechnung",answer:`Aktuell bestätigte Mieter-Kosten: ${euro(proj.knownTenantCosts)}. Vorauszahlungen im Zeitraum: ${euro(proj.advances)}. Prognose: ${euro(Math.abs(proj.projectedResult))} ${proj.projectedResult>=0?"Nachzahlung":"Guthaben"} (${proj.confidence} % Modellkonfidenz).${proj.missingCategories.length?` Noch geschätzt aus dem Vorjahr: ${proj.missingCategories.map(x=>categoryLabel(x.category)).join(", ")}.`:""}`,route:"rental",sub:"calculation"};
-  if(/wasser|zahler|zaehler|verbrauch/.test(q)){const {main,owner}=ensureDefaultMeters(state),tm=meterTrend(main),to=meterTrend(owner),sett=settlementConsumption(state,settlementByPeriod(state,y));return {title:"Wasser",answer:sett?.valid?`Abrechnungsperiode: Haus ${sett.house.toFixed(3)} m³, Eigennutzung ${sett.owner.toFixed(3)} m³, Mietwohnung ${sett.tenant.toFixed(3)} m³. Jüngerer Trend: Hauptzähler Ø ${tm.avgPer30.toFixed(2)} m³ / 30 Tage, Zwischenzähler Ø ${to.avgPer30.toFixed(2)} m³ / 30 Tage.`:"Für die aktuelle Abrechnungsperiode fehlen noch vollständige Verbrauchsdaten.",route:"rental",sub:"water"}}
-  if(/kosten|steiger|teuer|entwicklung/.test(q)){const al=costTrendAlerts(state,y);return {title:"Kostenentwicklung",answer:al.length?al.map(x=>x.text).join(" "):"Es gibt derzeit keine belastbare Kostenveränderung ab 15 % gegenüber der Vorperiode.",route:"owner",sub:"analytics"}}
-  if(/zahlung|zuord|bezahlt|rechnung/.test(q)){const p=smartPaymentPlan(state);return {title:"Zahlungszuordnung",answer:p.length?`${p.length} offene Ausgabe(n) haben plausible Treffer. Der beste Treffer liegt bei ${p[0].suggestions[0].score} % und bezieht sich auf „${p[0].suggestions[0].target.label||p[0].suggestions[0].target.name}“.`:"Aktuell gibt es keine unzugeordnete Ausgabe mit einem ausreichend starken Treffer.",route:"owner",sub:"reconciliation"}}
-  if(/dokument|beleg|bescheid|post/.test(q)){const d=state.documentsCache||[],n=d.filter(x=>documentWorkflowState(x)==="new").length,r=d.filter(x=>documentWorkflowState(x)==="review").length;return {title:"Dokumente",answer:`Dokumenten-Inbox: ${n} neu, ${r} zu prüfen, ${d.filter(x=>documentWorkflowState(x)==="done").length} erledigt.`,route:"data",sub:"documents"}}
-  if(/backup|sicherung/.test(q)){const age=state.meta?.lastBackupAt?Math.max(0,calendarDayDiff(String(state.meta.lastBackupAt).slice(0,10),smartToday())):null;return {title:"Datensicherung",answer:age==null?"Es ist noch keine verschlüsselte Vollsicherung dokumentiert.":`Die letzte verschlüsselte Vollsicherung ist ${age} Tag(e) alt.`,route:"more",sub:"backup"}}
-  if(/frist|recht|rechtsstand/.test(q)){const dl=billingDeadlineInsights(state);return {title:"Fristen & Rechtsstand",answer:`Hinterlegter Rechtsstand: ${ACTIVE_LEGAL_PACK?.effectiveDate||LAW_DATE}. ${dl.length?dl.map(x=>x.detail).join(" "):"Aktuell erkennt die App keine unmittelbar bevorstehende offene Abrechnungsfrist."}`,route:"more",sub:"legal"}}
-  if(/was fehlt.*abrechnung|abrechnung.*fehlt|abrechnung.*vorberei/.test(q)){const v=v18BillingAssistant(state,preferredBillingYear()),parts=[...v.openItems,...v.estimatedItems].slice(0,5).map(x=>`${x.label} (${v18StatusLabel(x.status)})`);return {title:"Abrechnung vorbereiten",answer:`${v.score} % vorbereitet. ${parts.length?`Noch zu klären: ${parts.join(", ")}.`:"Alle erwarteten Datenbausteine sind vorhanden."} Prognose: ${euro(Math.abs(v.projectedResult))} ${v.projectedResult>=0?"Nachzahlung":"Guthaben"}.`,route:"rental",sub:"billing"}}
-  if(/vorauszahlung|abschlag/.test(q)){const a=advanceAdjustmentSuggestion(state);return {title:"Betriebskostenvorauszahlung",answer:a?`${a.basis} Aktuell ${euro(a.current)}, rechnerischer Richtwert ${euro(a.recommended)} pro Monat.`:"Für einen belastbaren rechnerischen Vorschlag wird zunächst eine abgeschlossene Abrechnung benötigt.",route:"rental",sub:"calculation"}}
-  return {title:"Gesamtstatus",answer:smartSummaryText(state),route:ins[0]?.route||"home",sub:ins[0]?.sub||""}
-}
-
+/* Phase 8 runtime bridge: Implementierung in src/domain/v18-assistant.ts */
+const {
+  V18_ASSISTANT_VERSION,
+  V18_EXPECTED_BILLING_CATEGORIES,
+  v18CategoryForecast,
+  v18BackupStatus,
+  v18StatusWeight,
+  v18StatusLabel,
+  v18StatusClass,
+  v18BillingAssistant,
+  v18BillingAssistantHTML,
+  bindV18AssistantActions,
+  advanceAdjustmentSuggestion,
+  billingDeadlineInsights,
+  sourceExpectedAmounts,
+  sourcePaymentMatchScore,
+  smartPaymentSuggestions,
+  smartPaymentPlan,
+  medianValue,
+  robustMeterAnomalies,
+  smartDataAnomalies,
+  historicalAssignmentPrediction,
+  smartClassifyCostText,
+  cleanProposalLabel,
+  smartGenericPositionProposals,
+  enrichDocumentProposalsSmart,
+  smartDocumentSummary,
+  smartTaskSuggestions,
+  smartInsights,
+  DECISION_UI_VERSION,
+  confidenceBand,
+  qualityBand,
+  decisionSeverityWeight,
+  decisionActionLabel,
+  decisionKind,
+  smartDecisionQueue,
+  decisionWhyHTML,
+  rentAttentionDay,
+  smartSummaryText,
+  smartAnswer
+}=AppV18Assistant;
 /* ===== legal-rules.js ===== */
 const LAW_DATE=AppLegalRules.LAW_DATE;
 const LEGAL_SOURCES=AppLegalRules.LEGAL_SOURCES;

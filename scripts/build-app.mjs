@@ -50,6 +50,10 @@ const typedRuntime = (
     compileModule("src/domain/property-domain.ts", "AppPropertyDomain"),
     compileModule("src/domain/legal-rules.ts", "AppLegalRules"),
     compileModule("src/domain/billing-domain.ts", "AppBillingDomain"),
+    compileModule("src/domain/intelligence.ts", "AppIntelligence"),
+    compileModule("src/domain/quality.ts", "AppQuality"),
+    compileModule("src/domain/smart-engine.ts", "AppSmartEngine"),
+    compileModule("src/domain/v18-assistant.ts", "AppV18Assistant"),
     compileModule("src/io/backup-codec.ts", "AppBackupCodec")
   ])
 ).join("");
