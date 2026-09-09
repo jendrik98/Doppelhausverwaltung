@@ -1394,7 +1394,7 @@ jobs:
           tests/deployment.spec.js
           tests/presentation-workspace.spec.js
           EOF
-          git diff --name-only HEAD | sort > /tmp/d-actual-files.txt
+          { git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u > /tmp/d-actual-files.txt
           sort -o /tmp/d-expected-files.txt /tmp/d-expected-files.txt
           diff -u /tmp/d-expected-files.txt /tmp/d-actual-files.txt
 
