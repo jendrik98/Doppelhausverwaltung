@@ -709,7 +709,7 @@ jobs:
             await openApp(page, '#home');
             await expect(page.locator('#buildingSelect')).toHaveValue('building-b');
             await expect(page.locator('.experience-hero .muted')).toContainText('Haus B');
-            await expect(page.locator('.metric-card').filter({ hasText: 'Kaltmiete' }).locator('strong')).toContainText('800');
+            await expect(page.locator('.metric-card').filter({ hasText: 'Kaltmiete' }).locator('strong').first()).toContainText('800');
 
             await openApp(page, '#owner/payments');
             await expect(page.locator('#buildingSelect')).toHaveValue('building-b');
@@ -750,7 +750,7 @@ jobs:
             await openApp(page, '#home');
             await expect(page.locator('#buildingSelect')).toHaveValue('building-a');
             await expect(page.locator('.experience-hero .muted')).toContainText('Haus A');
-            await expect(page.locator('.metric-card').filter({ hasText: 'Kaltmiete' }).locator('strong')).toContainText('700');
+            await expect(page.locator('.metric-card').filter({ hasText: 'Kaltmiete' }).locator('strong').first()).toContainText('700');
             guard.assertClean();
           });
 
