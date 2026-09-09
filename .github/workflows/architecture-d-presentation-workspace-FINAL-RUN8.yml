@@ -1,0 +1,1457 @@
+name: Architecture D – Presentation workspace
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: architecture-d-presentation-workspace
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      E2E_BASE_URL: http://127.0.0.1:4173/
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Exakten D-Ausgangsstand schützen
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRODUCT_SHA="ed5b97bd4f18684fdf98c4753c59ad9dbac04ac9"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/architecture-d-presentation-workspace.yml"
+          git merge-base --is-ancestor "$PRODUCT_SHA" HEAD^
+          test -z "$(git diff --name-only "$PRODUCT_SHA" HEAD^ -- . ':(exclude).github/workflows/*')"
+
+          test "$(git hash-object scripts/build-app.mjs)" = "8264c33cbc3527e2397d75180e3e7214e583eed3"
+          test "$(git hash-object src/ui/app-runtime.ts)" = "e09d0454430493c681bb00b3305ac8eabd26f648"
+          test "$(git hash-object src/runtime/040-traceability.js)" = "10e1bfab210985ce71f79739829951e818f68bbb"
+          test "$(git hash-object src/runtime/110-db.js)" = "987211eb31708104b36183bd635f0f9dae653750"
+          test "$(git hash-object src/runtime/130-backup.js)" = "2280a024f55547106819b9c944e9430f3ede68ec"
+          test "$(git hash-object src/core/traceability.ts)" = "8e2553cd026b91eb42ade1c983f3f1ee4813a1d0"
+          test "$(git hash-object package.json)" = "0636026d4180dab9026cdea6dba03e20ca3d1be0"
+          test "$(git hash-object index.html)" = "8b789343f6a1b9465b464672788d915de52ba647"
+          test "$(git hash-object service-worker.js)" = "d641419043775801808d208d24e4d4c433d7dd70"
+          test "$(git hash-object scripts/test-pwa-update.mjs)" = "deb025b28f97dff3440105872ff8ebf92d8ddb22"
+          test "$(git hash-object tests/deployment.spec.js)" = "2538c8a3816fde028296ea29397c5e1529f7b1db"
+          test "$(git hash-object ARCHITECTURE.md)" = "f9a32928e11914957b868ac8d80390a737219ae8"
+          test "$(git hash-object scripts/test-architecture.mjs)" = "ec4836eea64513abdfeb46aeaf5ebb32699e5afd"
+          test "$(git hash-object scripts/test-quality.mjs)" = "7dfb837346e2cee8517030d3825ad2593f5e0607"
+          test "$(git hash-object src/application/queries.ts)" = "1236119cfce261214a7444d342e1d4b52dc12d7f"
+          test "$(git hash-object scripts/test-application-layer.mjs)" = "d4e0d294b284aee36eeb4f711039432b7dcbe6de"
+          test "$(git hash-object tests/helpers.js)" = "0c94f8665f531a6f1643ca7f4497f3545bce4868"
+          test ! -e src/presentation
+          test ! -e scripts/test-presentation-layer.mjs
+          test ! -e tests/presentation-workspace.spec.js
+
+      - name: Presentation-D Patch anwenden
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, textwrap
+
+          root = Path(".")
+
+          def B(value):
+              return textwrap.dedent(value).lstrip("\n")
+
+          def read(path):
+              return (root / path).read_text(encoding="utf-8")
+
+          def write(path, content):
+              p = root / path
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_text(content, encoding="utf-8")
+
+          def replace_once(path, old, new):
+              text = read(path)
+              # Exakte Strings (inkl. beabsichtigter Einrückung) zuerst verwenden.
+              if text.count(old) == 1:
+                  write(path, text.replace(old, new, 1))
+                  return
+              # Mehrzeilige eingebettete Literale sind im Workflow selbst eingerückt;
+              # dafür kontrolliert dedenten und erneut exakt prüfen.
+              dedented_old, dedented_new = B(old), B(new)
+              count = text.count(dedented_old)
+              if count != 1:
+                  raise SystemExit(
+                      f"{path}: erwartete genau 1 Fundstelle, gefunden {count}: {dedented_old[:100]!r}"
+                  )
+              write(path, text.replace(dedented_old, dedented_new, 1))
+
+          replace_once(
+              "src/application/queries.ts",
+              r'''
+          function billingTarget(year: number): string {
+            return `${year + 1}-03-31`;
+          }
+          ''',
+              r'''
+          function billingTarget(year: number): string {
+            return `${year + 1}-03-31`;
+          }
+
+          function germanDate(value: string): string {
+            const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            return match ? `${match[3]}.${match[2]}.${match[1]}` : String(value || "");
+          }
+
+          function billingPeriodForWorkspace(state: AnyRecord, workspace: BuildingWorkspace, year: number): {
+            active: boolean;
+            start: string;
+            end: string;
+            label: string;
+          } {
+            const startOfYear = `${year}-01-01`;
+            const end = `${year}-12-31`;
+            const primaryBuildingId = String(state?.meta?.primaryBuildingId || "");
+            const buildingTakeover = String(
+              workspace.building?.billingTakeoverDate || workspace.building?.ownershipEffective || ""
+            );
+            const propertyTakeover = workspace.context.buildingId === primaryBuildingId
+              ? String(state?.property?.billingTakeoverDate || state?.property?.ownershipEffective || "")
+              : "";
+            const takeover = buildingTakeover || propertyTakeover;
+            if (takeover && takeover > end) return { active: false, start: startOfYear, end, label: "" };
+            const start = takeover && takeover > startOfYear ? takeover : startOfYear;
+            return {
+              active: true,
+              start,
+              end,
+              label: `${germanDate(start)} – ${germanDate(end)}`
+            };
+          }
+          '''
+          )
+          replace_once(
+              "src/application/queries.ts",
+              r'''
+            const year = Number(today.slice(0, 4));
+            const snapshotYears = new Set(workspace.billingSnapshots.map((item) => Number(item.periodYear)).filter(Number.isFinite));
+            for (let y = year - 3; y <= year; y++) {
+              const end = `${y}-12-31`;
+              if (end >= today || snapshotYears.has(y)) continue;
+              push({
+                id: `billing-${workspace.context.buildingId}-${y}`,
+                title: `Endabrechnung ${y} fertigstellen`,
+                due: billingTarget(y),
+                lead: 30,
+                origin: "billing",
+                periodYear: y,
+                buildingId: workspace.context.buildingId
+              });
+            }
+          ''',
+              r'''
+            const year = Number(today.slice(0, 4));
+            const snapshotYears = new Set(workspace.billingSnapshots.map((item) => Number(item.periodYear)).filter(Number.isFinite));
+            for (let y = year - 3; y <= year; y++) {
+              const period = billingPeriodForWorkspace(state, workspace, y);
+              if (!period.active || period.end >= today || snapshotYears.has(y)) continue;
+              push({
+                id: `billing-${workspace.context.buildingId}-${y}`,
+                title: `Endabrechnung ${period.label} fertigstellen`,
+                due: billingTarget(y),
+                lead: 30,
+                origin: "billing",
+                periodYear: y,
+                buildingId: workspace.context.buildingId
+              });
+            }
+          '''
+          )
+
+          replace_once(
+              "scripts/test-application-layer.mjs",
+              '''
+          const tasksB = app.queryTaskList(state, { buildingId: "building-b" }, "2026-09-09");
+          assert.ok(tasksB.some((item) => item.id === "task-b"));
+          assert.ok(tasksB.some((item) => item.id === "source-source-b-2026-10-02"));
+          assert.equal(tasksB.some((item) => item.id === "task-a"), false);
+          assert.equal(tasksB.some((item) => item.id === "source-source-a-2026-10-01"), false);
+          assert.ok(tasksB.every((item) => item.buildingId === "building-b"));
+          ''',
+              '''
+          const tasksB = app.queryTaskList(state, { buildingId: "building-b" }, "2026-09-09");
+          assert.ok(tasksB.some((item) => item.id === "task-b"));
+          assert.ok(tasksB.some((item) => item.id === "source-source-b-2026-10-02"));
+          assert.equal(tasksB.some((item) => item.id === "task-a"), false);
+          assert.equal(tasksB.some((item) => item.id === "source-source-a-2026-10-01"), false);
+          assert.ok(tasksB.every((item) => item.buildingId === "building-b"));
+
+          const takeoverState = stateFixture();
+          takeoverState.property.billingTakeoverDate = "2025-07-15";
+          takeoverState.buildings.find((item) => item.id === "building-a").billingTakeoverDate = "2025-07-15";
+          const takeoverTasks = app.queryTaskList(takeoverState, { buildingId: "building-a" }, "2026-09-09");
+          const billingTasks = takeoverTasks.filter((item) => item.origin === "billing");
+          assert.deepEqual(billingTasks.map((item) => item.periodYear), [2025], "Jahre vor Übernahme dürfen keine Abrechnungsaufgabe erzeugen");
+          assert.equal(billingTasks[0].title, "Endabrechnung 15.07.2025 – 31.12.2025 fertigstellen");
+          assert.equal(billingTasks[0].due, "2026-03-31");
+          '''
+          )
+
+          write("src/presentation/navigation.ts", B(r'''
+          export const ROUTE_LABELS = {
+            home: "Start",
+            rental: "Vermietung",
+            data: "Haus",
+            owner: "Finanzen",
+            more: "Mehr"
+          } as const;
+
+          export type TopRoute = keyof typeof ROUTE_LABELS;
+
+          export const DEFAULT_SUB: Record<Exclude<TopRoute, "home">, string> = {
+            data: "overview",
+            rental: "overview",
+            owner: "overview",
+            more: "smart"
+          };
+
+          export const SUB_PARENT: Record<string, Record<string, string>> = {
+            data: { object: "overview", property: "overview", units: "overview", sources: "costs", positions: "costs", assessment: "costs" },
+            rental: { lease: "overview", calculation: "billing", workflow: "billing" },
+            owner: { tasks: "overview", cashflow: "payments", reconciliation: "payments", finance: "planning", analytics: "planning" },
+            more: { overview: "smart", legal: "app", security: "protection", backup: "protection", recovery: "protection", audit: "app", diagnostics: "app" }
+          };
+
+          export function normalizeSub(routeName: string, subName: string): string {
+            if (!subName) return DEFAULT_SUB[routeName as keyof typeof DEFAULT_SUB] || "";
+            if (routeName === "more" && subName === "overview") return "smart";
+            if (routeName === "rental" && (subName === "calculation" || subName === "workflow")) return subName;
+            return subName;
+          }
+
+          export function visibleSub(routeName: string, subName: string): string {
+            return SUB_PARENT[routeName]?.[subName]
+              || subName
+              || DEFAULT_SUB[routeName as keyof typeof DEFAULT_SUB]
+              || "";
+          }
+
+          export function parseRouteHash(hash: string): { route: TopRoute; sub: string } {
+            const raw = decodeURIComponent(String(hash || "").replace(/^#/, "")).trim();
+            const parts = raw.split("/").filter(Boolean);
+            const route = Object.prototype.hasOwnProperty.call(ROUTE_LABELS, parts[0])
+              ? parts[0] as TopRoute
+              : "home";
+            const sub = route === "home"
+              ? ""
+              : normalizeSub(route, parts[1] || DEFAULT_SUB[route as keyof typeof DEFAULT_SUB]);
+            return { route, sub };
+          }
+
+          export function routeHash(route: string, sub: string | null = null): string {
+            const safeRoute: TopRoute = Object.prototype.hasOwnProperty.call(ROUTE_LABELS, route)
+              ? route as TopRoute
+              : "home";
+            if (safeRoute === "home") return "#home";
+            return `#${safeRoute}/${encodeURIComponent(sub || DEFAULT_SUB[safeRoute as keyof typeof DEFAULT_SUB])}`;
+          }
+          '''))
+
+          write("src/presentation/building-workspace.ts", B(r'''
+          import {
+            buildingScopedCollections,
+            portfolioNavigation,
+            queryBuildingWorkspace,
+            queryTaskList
+          } from "../application";
+
+          type AnyRecord = Record<string, any>;
+
+          export const PRESENTATION_VERSION = 1;
+          export const ACTIVE_BUILDING_STORAGE_KEY = "mietverwaltung-active-building-v1";
+
+          const clone = <T>(value: T): T => {
+            if (typeof structuredClone === "function") return structuredClone(value);
+            return JSON.parse(JSON.stringify(value)) as T;
+          };
+
+          const records = (value: unknown): AnyRecord[] =>
+            Array.isArray(value)
+              ? value.filter((item): item is AnyRecord => !!item && typeof item === "object")
+              : [];
+
+          function recordBelongsToBuilding(item: AnyRecord, buildingId: string, primaryBuildingId: string): boolean {
+            const itemBuildingId = String(item?.buildingId || "");
+            return itemBuildingId ? itemBuildingId === buildingId : buildingId === primaryBuildingId;
+          }
+
+          export interface BuildingChoice {
+            id: string;
+            name: string;
+            address: string;
+            active: boolean;
+          }
+
+          export interface PresentationWorkspace {
+            portfolioId: string;
+            portfolioName: string;
+            activeBuildingId: string;
+            activeBuildingName: string;
+            showBuildingSelector: boolean;
+            buildings: BuildingChoice[];
+            counts: {
+              units: number;
+              tenancies: number;
+              sources: number;
+              costPositions: number;
+              meters: number;
+              tasks: number;
+              payments: number;
+            };
+          }
+
+          export function resolveActiveBuildingId(state: AnyRecord, requestedBuildingId = ""): string {
+            const nav = portfolioNavigation(state);
+            const requested = String(requestedBuildingId || "");
+            if (requested && nav.buildings.some((item) => String(item.id || "") === requested)) return requested;
+            return String(nav.activeBuildingId || nav.buildings[0]?.id || "");
+          }
+
+          export function createPresentationWorkspace(state: AnyRecord, requestedBuildingId = ""): PresentationWorkspace {
+            const nav = portfolioNavigation(state);
+            const activeBuildingId = resolveActiveBuildingId(state, requestedBuildingId);
+            const workspace = queryBuildingWorkspace(state, { buildingId: activeBuildingId });
+            const active = nav.buildings.find((item) => String(item.id || "") === activeBuildingId) || workspace.building;
+            const tasks = queryTaskList(state, { buildingId: activeBuildingId });
+            return {
+              portfolioId: String(nav.portfolio?.id || ""),
+              portfolioName: String(nav.portfolio?.name || "Portfolio"),
+              activeBuildingId,
+              activeBuildingName: String(active?.name || active?.address || "Gebäude"),
+              showBuildingSelector: nav.showBuildingSelector,
+              buildings: nav.buildings.map((item) => ({
+                id: String(item.id || ""),
+                name: String(item.name || item.address || "Gebäude"),
+                address: String(item.address || ""),
+                active: String(item.id || "") === activeBuildingId
+              })),
+              counts: {
+                units: workspace.units.length,
+                tenancies: workspace.tenancies.length,
+                sources: workspace.sources.length,
+                costPositions: workspace.costPositions.length,
+                meters: workspace.meters.length,
+                tasks: tasks.length,
+                payments: workspace.payments.length
+              }
+            };
+          }
+
+          export function projectStateForBuilding(masterState: AnyRecord, requestedBuildingId = ""): AnyRecord {
+            const master = clone(masterState || {});
+            const activeBuildingId = resolveActiveBuildingId(master, requestedBuildingId);
+            if (!activeBuildingId) return master;
+
+            const primaryBuildingId = String(master?.meta?.primaryBuildingId || activeBuildingId);
+            const activeBuilding = records(master.buildings).find((item) => String(item.id || "") === activeBuildingId) || null;
+            const projected = clone(master);
+
+            for (const key of buildingScopedCollections()) {
+              projected[key] = records(master[key])
+                .filter((item) => recordBelongsToBuilding(item, activeBuildingId, primaryBuildingId))
+                .map((item) => ({ ...clone(item), buildingId: String(item.buildingId || activeBuildingId) }));
+            }
+            // Dokumente liegen separat im IndexedDB-Docs-Store. Dieser flüchtige UI-Cache
+            // darf beim Gebäudewechsel keine Titel oder Metadaten eines Fremdgebäudes mitnehmen.
+            projected.documentsCache = [];
+
+            projected.meta = {
+              ...(projected.meta || {}),
+              primaryBuildingId: activeBuildingId,
+              presentationBuildingId: activeBuildingId
+            };
+
+            projected.property = {
+              ...(projected.property || {}),
+              name: String(activeBuilding?.name || ""),
+              address: String(activeBuilding?.address || ""),
+              totalArea: Number(activeBuilding?.totalArea || 0),
+              year: activeBuilding?.year || "",
+              billingTakeoverDate: activeBuilding?.billingTakeoverDate || "",
+              predecessorBillingEnd: activeBuilding?.predecessorBillingEnd || ""
+            };
+
+            if (activeBuilding?.finance && typeof activeBuilding.finance === "object") {
+              projected.finance = clone(activeBuilding.finance);
+            } else if (activeBuildingId !== primaryBuildingId) {
+              projected.finance = { repayment: 0, fixed: 0 };
+            }
+
+            return projected;
+          }
+
+          export function mergeStateFromBuilding(masterState: AnyRecord, scopedState: AnyRecord, requestedBuildingId = ""): AnyRecord {
+            const master = clone(masterState || {});
+            const scoped = clone(scopedState || {});
+            const activeBuildingId = resolveActiveBuildingId(
+              master,
+              requestedBuildingId || scoped?.meta?.presentationBuildingId || scoped?.meta?.primaryBuildingId
+            );
+            if (!activeBuildingId) return scoped;
+
+            const primaryBuildingId = String(master?.meta?.primaryBuildingId || activeBuildingId);
+            const scopedKeys = new Set(buildingScopedCollections());
+            const result = clone(master);
+
+            for (const key of scopedKeys) {
+              const keep = records(master[key]).filter(
+                (item) => !recordBelongsToBuilding(item, activeBuildingId, primaryBuildingId)
+              );
+              const changed = records(scoped[key]).map((item) => ({
+                ...clone(item),
+                buildingId: String(item.buildingId || activeBuildingId)
+              }));
+              result[key] = [...keep, ...changed];
+            }
+
+            for (const [key, value] of Object.entries(scoped)) {
+              if (scopedKeys.has(key)) continue;
+              if (["property", "finance", "portfolios", "buildings", "documentsCache"].includes(key)) continue;
+              result[key] = clone(value);
+            }
+
+            result.portfolios = clone(master.portfolios || []);
+            result.buildings = clone(master.buildings || []);
+            result.documentsCache = [];
+
+            const scopedBuilding = records(scoped.buildings).find((item) => String(item.id || "") === activeBuildingId) || {};
+            const index = records(result.buildings).findIndex((item) => String(item.id || "") === activeBuildingId);
+            if (index >= 0) {
+              const prior = result.buildings[index];
+              result.buildings[index] = {
+                ...prior,
+                ...clone(scopedBuilding),
+                id: prior.id,
+                portfolioId: prior.portfolioId,
+                name: String(scoped?.property?.name || scopedBuilding.name || prior.name || "Gebäude"),
+                address: String(scoped?.property?.address ?? scopedBuilding.address ?? prior.address ?? ""),
+                totalArea: Number(scoped?.property?.totalArea ?? scopedBuilding.totalArea ?? prior.totalArea ?? 0),
+                year: scoped?.property?.year ?? scopedBuilding.year ?? prior.year ?? "",
+                billingTakeoverDate: scoped?.property?.billingTakeoverDate ?? scopedBuilding.billingTakeoverDate ?? prior.billingTakeoverDate ?? "",
+                predecessorBillingEnd: scoped?.property?.predecessorBillingEnd ?? scopedBuilding.predecessorBillingEnd ?? prior.predecessorBillingEnd ?? "",
+                finance: clone(scoped.finance || prior.finance || { repayment: 0, fixed: 0 })
+              };
+            }
+
+            result.meta = { ...(result.meta || {}) };
+            result.meta.primaryBuildingId = primaryBuildingId;
+            result.meta.primaryPortfolioId = String(master?.meta?.primaryPortfolioId || result.meta.primaryPortfolioId || "");
+            delete result.meta.presentationBuildingId;
+
+            if (activeBuildingId === primaryBuildingId) {
+              result.property = clone(scoped.property || master.property || {});
+              result.finance = clone(scoped.finance || master.finance || {});
+            } else {
+              result.property = clone(master.property || {});
+              result.finance = clone(master.finance || {});
+            }
+
+            return result;
+          }
+          '''))
+
+          write("src/presentation/index.ts", 'export * from "./navigation";\nexport * from "./building-workspace";\n')
+
+          write("scripts/test-presentation-layer.mjs", B(r'''
+          import assert from "node:assert/strict";
+          import { build } from "esbuild";
+
+          const compiled = await build({
+            entryPoints: ["src/presentation/index.ts"],
+            bundle: true,
+            write: false,
+            format: "esm",
+            platform: "node",
+            target: "node22",
+            logLevel: "silent"
+          });
+          const source = compiled.outputFiles[0].text;
+          const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
+          const presentation = await import(moduleUrl);
+
+          function fixture() {
+            return {
+              schemaVersion: 15,
+              meta: { primaryPortfolioId: "portfolio-1", primaryBuildingId: "building-a", revision: 7, commandLog: [] },
+              property: { name: "Haus A", address: "A-Straße 1", totalArea: 180, year: "1990" },
+              finance: { repayment: 900, fixed: 20 },
+              correspondence: { landlordName: "Vermieter" },
+              portfolios: [{ id: "portfolio-1", name: "Privatbestand", kind: "private" }],
+              buildings: [
+                { id: "building-a", portfolioId: "portfolio-1", name: "Haus A", address: "A-Straße 1", totalArea: 180, year: "1990" },
+                { id: "building-b", portfolioId: "portfolio-1", name: "Haus B", address: "B-Straße 2", totalArea: 210, year: "2001", finance: { repayment: 700, fixed: 12 } }
+              ],
+              units: [
+                { id: "unit-a", buildingId: "building-a", name: "Wohnung A", type: "rental" },
+                { id: "unit-b", buildingId: "building-b", name: "Wohnung B", type: "rental" }
+              ],
+              leases: [
+                { id: "lease-a", unitId: "unit-a", buildingId: "building-a", rent: 700 },
+                { id: "lease-b", unitId: "unit-b", buildingId: "building-b", rent: 800 }
+              ],
+              sources: [
+                { id: "source-a", buildingId: "building-a", name: "Quelle A" },
+                { id: "source-b", buildingId: "building-b", name: "Quelle B" }
+              ],
+              costPositions: [
+                { id: "position-a", buildingId: "building-a", sourceId: "source-a", label: "A", amount: 100, confirmed: true },
+                { id: "position-b", buildingId: "building-b", sourceId: "source-b", label: "B", amount: 200, confirmed: true }
+              ],
+              meters: [
+                { id: "meter-a", buildingId: "building-a" },
+                { id: "meter-b", buildingId: "building-b" }
+              ],
+              waterSettlements: [],
+              tasks: [
+                { id: "task-a", buildingId: "building-a", title: "A", due: "2026-10-01" },
+                { id: "task-b", buildingId: "building-b", title: "B", due: "2026-10-02" }
+              ],
+              payments: [
+                { id: "payment-a", buildingId: "building-a", amount: 10 },
+                { id: "payment-b", buildingId: "building-b", amount: 20 }
+              ],
+              billingWorkflows: [],
+              billingSnapshots: [],
+              containers: [],
+              water: [],
+              audit: [],
+              documentsCache: [{ id: "cached-a", buildingId: "building-a", label: "Nur Dokument A" }]
+            };
+          }
+
+          const state = fixture();
+          assert.equal(presentation.PRESENTATION_VERSION, 1);
+          assert.equal(presentation.parseRouteHash("#data/property").route, "data");
+          assert.equal(presentation.parseRouteHash("#data/property").sub, "property");
+          assert.equal(presentation.routeHash("rental", "water"), "#rental/water");
+
+          const workspace = presentation.createPresentationWorkspace(state, "building-b");
+          assert.equal(workspace.showBuildingSelector, true);
+          assert.equal(workspace.activeBuildingId, "building-b");
+          assert.equal(workspace.activeBuildingName, "Haus B");
+          assert.equal(workspace.counts.units, 1);
+          assert.equal(workspace.counts.tenancies, 1);
+          assert.equal(workspace.counts.payments, 1);
+
+          const scopedB = presentation.projectStateForBuilding(state, "building-b");
+          assert.equal(scopedB.meta.primaryBuildingId, "building-b");
+          assert.equal(scopedB.meta.presentationBuildingId, "building-b");
+          assert.equal(scopedB.property.name, "Haus B");
+          assert.equal(scopedB.finance.repayment, 700);
+          assert.deepEqual(scopedB.units.map((item) => item.id), ["unit-b"]);
+          assert.deepEqual(scopedB.leases.map((item) => item.id), ["lease-b"]);
+          assert.deepEqual(scopedB.payments.map((item) => item.id), ["payment-b"]);
+          assert.deepEqual(scopedB.documentsCache, [], "Dokumentcache darf nicht gebäudeübergreifend projiziert werden");
+
+          scopedB.property.name = "Haus B neu";
+          scopedB.finance.repayment = 710;
+          scopedB.payments.push({ id: "payment-b-new", amount: 33 });
+          const merged = presentation.mergeStateFromBuilding(state, scopedB, "building-b");
+
+          assert.equal(merged.meta.primaryBuildingId, "building-a");
+          assert.equal(merged.property.name, "Haus A");
+          assert.equal(merged.finance.repayment, 900);
+          assert.equal(merged.buildings.find((item) => item.id === "building-b").name, "Haus B neu");
+          assert.equal(merged.buildings.find((item) => item.id === "building-b").finance.repayment, 710);
+          assert.equal(merged.payments.find((item) => item.id === "payment-a").amount, 10);
+          assert.equal(merged.payments.find((item) => item.id === "payment-b").amount, 20);
+          assert.equal(merged.payments.find((item) => item.id === "payment-b-new").buildingId, "building-b");
+          assert.deepEqual(merged.documentsCache, [], "Transienter Dokumentcache darf nicht in den Portfolio-State zurückgeschrieben werden");
+
+          const scopedAAfter = presentation.projectStateForBuilding(merged, "building-a");
+          const scopedBAfter = presentation.projectStateForBuilding(merged, "building-b");
+          assert.equal(scopedAAfter.payments.some((item) => item.id === "payment-b-new"), false);
+          assert.equal(scopedBAfter.payments.some((item) => item.id === "payment-b-new"), true);
+
+          const single = fixture();
+          single.buildings = [single.buildings[0]];
+          single.units = [single.units[0]];
+          single.leases = [single.leases[0]];
+          assert.equal(presentation.createPresentationWorkspace(single).showBuildingSelector, false);
+
+          console.log("Presentation-Layer D: Routing, Gebäudeprojektion, Merge und Ein-/Mehrgebäude-UX bestanden.");
+          '''))
+
+          write("tests/presentation-workspace.spec.js", B(r'''
+          const { test, expect } = require('@playwright/test');
+          const { runtimeGuard, openApp } = require('./helpers');
+
+          test('D wechselt Gebäude ohne Datenvermischung und persistiert neue Zahlungen im aktiven Gebäude', async ({ page }) => {
+            const guard = runtimeGuard(page);
+            await openApp(page);
+
+            const fixture = {
+              schemaVersion: 15,
+              meta: { primaryPortfolioId: 'portfolio-1', primaryBuildingId: 'building-a', revision: 12 },
+              property: { name: 'Haus A', address: 'A-Straße 1', totalArea: 180, year: '1990' },
+              finance: { repayment: 900, fixed: 0 },
+              correspondence: { landlordName: 'Test' },
+              portfolios: [{ id: 'portfolio-1', name: 'Privatbestand', kind: 'private' }],
+              buildings: [
+                { id: 'building-a', portfolioId: 'portfolio-1', name: 'Haus A', address: 'A-Straße 1', totalArea: 180, year: '1990' },
+                { id: 'building-b', portfolioId: 'portfolio-1', name: 'Haus B', address: 'B-Straße 2', totalArea: 210, year: '2001', finance: { repayment: 700, fixed: 0 } }
+              ],
+              units: [
+                { id: 'unit-a', buildingId: 'building-a', type: 'rental', name: 'Wohnung A', area: 80 },
+                { id: 'unit-b', buildingId: 'building-b', type: 'rental', name: 'Wohnung B', area: 90 }
+              ],
+              leases: [
+                { id: 'lease-a', unitId: 'unit-a', buildingId: 'building-a', tenantName: 'Mieter A', rent: 700, advance: 100 },
+                { id: 'lease-b', unitId: 'unit-b', buildingId: 'building-b', tenantName: 'Mieter B', rent: 800, advance: 120 }
+              ],
+              sources: [
+                { id: 'source-a', buildingId: 'building-a', name: 'Quelle A', dueDates: [] },
+                { id: 'source-b', buildingId: 'building-b', name: 'Quelle B', dueDates: [] }
+              ],
+              costPositions: [],
+              meters: [],
+              waterSettlements: [],
+              tasks: [],
+              payments: [
+                { id: 'payment-a', buildingId: 'building-a', date: '2026-09-01', direction: 'income', label: 'Nur A', amount: 700 },
+                { id: 'payment-b', buildingId: 'building-b', date: '2026-09-01', direction: 'income', label: 'Nur B', amount: 800 }
+              ],
+              billingWorkflows: [],
+              billingSnapshots: [],
+              containers: [],
+              water: [],
+              audit: []
+            };
+
+            const documents = [
+              { id: 'doc-a', buildingId: 'building-a', name: 'Dokument A', label: 'Dokument A', type: 'application/pdf', size: 100, created: '2026-09-01T10:00:00.000Z', pages: [], analysis: { status: 'done', acceptedAt: '2026-09-01T10:00:00.000Z', fields: {} } },
+              { id: 'doc-b', buildingId: 'building-b', name: 'Dokument B', label: 'Dokument B', type: 'application/pdf', size: 100, created: '2026-09-01T10:00:00.000Z', pages: [], analysis: { status: 'done', acceptedAt: '2026-09-01T10:00:00.000Z', fields: {} } },
+              { id: 'doc-legacy', name: 'Legacy Dokument', label: 'Legacy Dokument', type: 'application/pdf', size: 100, created: '2026-09-01T10:00:00.000Z', pages: [], analysis: { status: 'done', acceptedAt: '2026-09-01T10:00:00.000Z', fields: {} } }
+            ];
+
+            await page.evaluate(async ({ state, documents }) => {
+              localStorage.removeItem('mietverwaltung-active-building-v1');
+              const db = await new Promise((resolve, reject) => {
+                const request = indexedDB.open('mietverwaltung-v6', 3);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+              });
+              await new Promise((resolve, reject) => {
+                const tx = db.transaction(['state', 'docs'], 'readwrite');
+                tx.objectStore('state').put({ id: 'main', data: state });
+                const docs = tx.objectStore('docs');
+                docs.clear();
+                for (const document of documents) docs.put(document);
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+                tx.onabort = () => reject(tx.error);
+              });
+              db.close();
+            }, { state: fixture, documents });
+
+            await page.reload();
+            await expect(page.locator('#buildingSwitchWrap')).toBeVisible();
+            await expect(page.locator('#buildingSelect')).toHaveValue('building-a');
+            await expect(page.locator('#buildingSelect option')).toHaveCount(2);
+            await expect(page.locator('.experience-hero .muted')).toContainText('Haus A');
+
+            await openApp(page, '#data/documents');
+            await expect(page.locator('#workspaceBody')).toContainText('Dokument A');
+            await expect(page.locator('#workspaceBody')).toContainText('Legacy Dokument');
+            await expect(page.locator('#workspaceBody')).not.toContainText('Dokument B');
+
+            await page.locator('#buildingSelect').selectOption('building-b');
+            await expect(page.locator('#buildingSelect')).toHaveValue('building-b');
+            await expect(page.locator('#workspaceBody')).toContainText('Dokument B');
+            await expect(page.locator('#workspaceBody')).not.toContainText('Dokument A');
+            await expect(page.locator('#workspaceBody')).not.toContainText('Legacy Dokument');
+
+            // Der Docs-Store bleibt vollständig; die Isolation ist eine UI-/Runtime-Projektion.
+            const storedDocumentIds = await page.evaluate(async () => {
+              const db = await new Promise((resolve, reject) => {
+                const request = indexedDB.open('mietverwaltung-v6', 3);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+              });
+              const rows = await new Promise((resolve, reject) => {
+                const request = db.transaction('docs', 'readonly').objectStore('docs').getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+              });
+              db.close();
+              return rows.map((item) => item.id).sort();
+            });
+            expect(storedDocumentIds).toEqual(['doc-a', 'doc-b', 'doc-legacy']);
+
+            // Auch der flüchtige Suchcache darf nach dem Gebäudewechsel nichts aus A preisgeben.
+            await page.locator('#searchBtn').click();
+            await page.locator('#searchInput').fill('Dokument A');
+            await expect(page.locator('#searchResults')).not.toContainText('Dokument A');
+            await page.locator('#searchInput').fill('Dokument B');
+            await expect(page.locator('#searchResults')).toContainText('Dokument B');
+            await page.locator('#searchClose').click();
+
+            await openApp(page, '#home');
+            await expect(page.locator('#buildingSelect')).toHaveValue('building-b');
+            await expect(page.locator('.experience-hero .muted')).toContainText('Haus B');
+            await expect(page.locator('.metric-card').filter({ hasText: 'Kaltmiete' }).locator('strong')).toContainText('800');
+
+            await openApp(page, '#owner/payments');
+            await expect(page.locator('#buildingSelect')).toHaveValue('building-b');
+            await page.getByRole('button', { name: 'Schnell hinzufügen' }).click();
+            await page.locator('#quickOverlay').getByRole('button', { name: /^Zahlung\b/ }).click();
+            await page.getByLabel('Bezeichnung').fill('D Zahlung B');
+            await page.getByLabel('Betrag €').fill('33');
+            await page.getByRole('button', { name: 'Speichern' }).click();
+            await expect(page.locator('#modal')).toHaveClass(/hidden/);
+
+            const saved = await page.evaluate(async () => {
+              const db = await new Promise((resolve, reject) => {
+                const request = indexedDB.open('mietverwaltung-v6', 3);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+              });
+              const record = await new Promise((resolve, reject) => {
+                const tx = db.transaction('state', 'readonly');
+                const request = tx.objectStore('state').get('main');
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+              });
+              db.close();
+              return record.data;
+            });
+
+            const created = saved.payments.find((item) => item.label === 'D Zahlung B');
+            expect(created).toBeTruthy();
+            expect(created.buildingId).toBe('building-b');
+            expect(saved.payments.find((item) => item.id === 'payment-a').buildingId).toBe('building-a');
+            expect(saved.meta.primaryBuildingId).toBe('building-a');
+            expect(saved.property.name).toBe('Haus A');
+            expect(saved.finance.repayment).toBe(900);
+            expect(saved.buildings.find((item) => item.id === 'building-b').name).toBe('Haus B');
+            expect(saved.buildings.find((item) => item.id === 'building-b').finance.repayment).toBe(700);
+
+            await page.locator('#buildingSelect').selectOption('building-a');
+            await openApp(page, '#home');
+            await expect(page.locator('#buildingSelect')).toHaveValue('building-a');
+            await expect(page.locator('.experience-hero .muted')).toContainText('Haus A');
+            await expect(page.locator('.metric-card').filter({ hasText: 'Kaltmiete' }).locator('strong')).toContainText('700');
+            guard.assertClean();
+          });
+
+          test('D verändert die Ein-Gebäude-UX nicht durch einen unnötigen Selector', async ({ page }) => {
+            await openApp(page);
+            await expect(page.locator('#buildingSwitchWrap')).toBeHidden();
+          });
+          '''))
+
+          replace_once(
+              "scripts/build-app.mjs",
+              '''
+              compileModule("src/application/index.ts", "AppApplication"),
+                  compileModule("src/core/persistence.ts", "AppPersistence"),
+              ''',
+              '''
+              compileModule("src/application/index.ts", "AppApplication"),
+                  compileModule("src/presentation/index.ts", "AppPresentation"),
+                  compileModule("src/core/persistence.ts", "AppPersistence"),
+              '''
+          )
+
+          pkg = json.loads(read("package.json"))
+          pkg["scripts"]["test:presentation"] = "node scripts/test-presentation-layer.mjs"
+          pkg["scripts"]["test:architecture"] = "node scripts/test-architecture.mjs && npm run test:portfolio && npm run test:repository && npm run test:application && npm run test:presentation"
+          write("package.json", json.dumps(pkg, ensure_ascii=False, indent=2) + "\n")
+
+          replace_once(
+              "src/runtime/040-traceability.js",
+              '''
+              const applicationExecuteCommand=(type,payload,handler,options={})=>
+                APPLICATION_COMMAND_BUS.executeCommand(type,payload,handler,options);
+              ''',
+              '''
+              const applicationExecuteCommand=(type,payload,handler,options={})=>{
+                const scopedPayload=payload&&typeof payload==="object"&&!Array.isArray(payload)
+                  ? {...payload,buildingId:activeBuildingId||payload.buildingId||""}
+                  : payload;
+                return APPLICATION_COMMAND_BUS.executeCommand(type,scopedPayload,handler,options)
+              };
+              '''
+          )
+
+          write("src/runtime/110-db.js", B(r'''
+          /* ===== db.js ===== */
+
+          const {
+            DB_NAME,
+            DB_VERSION,
+            STATE_ID,
+            openDB,
+            addDocument:addDocumentRecord,
+            getDocument:getDocumentRecord,
+            listDocuments:listAllDocuments,
+            deleteDocument:deleteDocumentRecord,
+            updateDocument:updateDocumentRecord,
+            replaceDocuments:replaceAllDocuments
+          }=AppPersistence;
+          const {
+            readStateRecord,
+            saveState,
+            listPortfolios,
+            listBuildings,
+            listUnitsByBuilding,
+            listTenanciesByBuilding,
+            listTenanciesByUnit,
+            getProjectionMeta,
+            getBuildingGraph
+          }=AppPortfolioRepository;
+
+          const {loadApplicationState}=AppApplication;
+
+          async function loadState(){
+            const result=await loadApplicationState({
+              readStateRecord,
+              saveState,
+              createEmptyState,
+              repairState:repairDomainState,
+              validateState:validateDomainState
+            });
+            LAST_STABLE_STATE=cloneState(result.state);
+            return result.state
+          }
+
+          function documentBelongsToActiveBuilding(document){
+            if(!document)return false;
+            const buildingId=String(document.buildingId||"");
+            if(buildingId)return buildingId===activeBuildingId;
+            const primary=String(portfolioState?.meta?.primaryBuildingId||state?.meta?.primaryBuildingId||"");
+            return !!activeBuildingId&&activeBuildingId===primary
+          }
+          async function addDocument(document){
+            return addDocumentRecord({...document,buildingId:document?.buildingId||activeBuildingId||""})
+          }
+          async function getDocument(id){
+            const document=await getDocumentRecord(id);
+            return documentBelongsToActiveBuilding(document)?document:null
+          }
+          async function listDocuments(){
+            return (await listAllDocuments()).filter(documentBelongsToActiveBuilding)
+          }
+          async function deleteDocument(id){
+            const document=await getDocumentRecord(id);
+            if(!documentBelongsToActiveBuilding(document))throw new Error("Dokument gehört zu einem anderen Gebäude.");
+            return deleteDocumentRecord(id)
+          }
+          async function updateDocument(document){
+            const existing=document?.id?await getDocumentRecord(document.id):null;
+            if(existing&&!documentBelongsToActiveBuilding(existing))throw new Error("Dokument gehört zu einem anderen Gebäude.");
+            return updateDocumentRecord({...document,buildingId:document?.buildingId||activeBuildingId||""})
+          }
+          const replaceDocuments=replaceAllDocuments;
+          '''))
+
+          write("src/runtime/130-backup.js", B(r'''
+          /* ===== backup.js ===== */
+
+          async function createFullBackup(state,password){
+            const docs=await listAllDocuments();
+            return AppBackupCodec.createFullBackup(state,password,docs)
+          }
+
+          const {encodeBlobForBackup,decodeFullBackup}=AppBackupCodec;
+          '''))
+
+          replace_once(
+              "src/core/traceability.ts",
+              '''
+              declare function saveState(value: any): Promise<void>;
+              declare function persist(action?: string | null, detail?: string | null): Promise<boolean>;
+              ''',
+              '''
+              declare function saveState(value: any): Promise<void>;
+              declare function fullPortfolioState(): any;
+              declare function applyRestoredPortfolioState(value: any): void;
+              declare function persist(action?: string | null, detail?: string | null): Promise<boolean>;
+              '''
+          )
+          replace_once(
+              "src/core/traceability.ts",
+              '''
+                const snapshot = cloneState(state);
+              ''',
+              '''
+                const snapshot = cloneState(fullPortfolioState());
+              '''
+          )
+          replace_once(
+              "src/core/traceability.ts",
+              "  const current = cloneState(state);\n  const currentSnapshot = cloneState(state);\n",
+              "  const current = cloneState(fullPortfolioState());\n  const currentSnapshot = cloneState(current);\n"
+          )
+          replace_once(
+              "src/core/traceability.ts",
+              "  try {\n    state = restored;\n    LAST_STABLE_STATE = cloneState(state);\n    await saveState(state);\n    return true;\n  } catch (error) {\n    state = current;\n    LAST_STABLE_STATE = cloneState(current);\n    throw error;\n  }\n",
+              "  try {\n    await saveState(restored);\n    applyRestoredPortfolioState(restored);\n    return true;\n  } catch (error) {\n    applyRestoredPortfolioState(current);\n    throw error;\n  }\n"
+          )
+
+          runtime = read("src/ui/app-runtime.ts")
+
+          old_start = B('''
+          let storageError=null;
+          let state;
+          try{
+            state=repairDomainState(await loadState());LAST_STABLE_STATE=cloneState(state);
+          }catch(e){
+            storageError=e;
+            console.error("IndexedDB-Startfehler:",e);
+            state=createEmptyState();
+            state.meta.storageWarning=String(e?.message||e);
+          }
+          ''')
+          new_start = B('''
+          const ACTIVE_BUILDING_STORAGE_KEY=AppPresentation.ACTIVE_BUILDING_STORAGE_KEY;
+          let storageError=null;
+          let portfolioState;
+          let activeBuildingId="";
+          let state;
+
+          function storedBuildingId(){
+            try{return localStorage.getItem(ACTIVE_BUILDING_STORAGE_KEY)||""}catch{return""}
+          }
+          function rememberBuildingId(value){
+            try{if(value)localStorage.setItem(ACTIVE_BUILDING_STORAGE_KEY,value)}catch{}
+          }
+          function projectActiveState(master,requested=""){
+            activeBuildingId=AppPresentation.resolveActiveBuildingId(master,requested||activeBuildingId);
+            const projected=AppPresentation.projectStateForBuilding(master,activeBuildingId);
+            rememberBuildingId(activeBuildingId);
+            return projected
+          }
+          function fullPortfolioState(){
+            return AppPresentation.mergeStateFromBuilding(portfolioState,state,activeBuildingId)
+          }
+          function applyRestoredPortfolioState(value){
+            portfolioState=repairDomainState(value);
+            state=projectActiveState(portfolioState,activeBuildingId);
+            LAST_STABLE_STATE=cloneState(state)
+          }
+
+          try{
+            portfolioState=repairDomainState(await loadState());
+            state=projectActiveState(portfolioState,storedBuildingId());
+            LAST_STABLE_STATE=cloneState(state);
+          }catch(e){
+            storageError=e;
+            console.error("IndexedDB-Startfehler:",e);
+            portfolioState=repairDomainState(createEmptyState());
+            state=projectActiveState(portfolioState);
+            state.meta.storageWarning=String(e?.message||e);
+          }
+          ''')
+          if runtime.count(old_start) != 1:
+              raise SystemExit("src/ui/app-runtime.ts: Startblock nicht eindeutig")
+          runtime = runtime.replace(old_start, new_start, 1)
+
+          old_routes = B('''
+          const ROUTE_LABELS={home:"Start",rental:"Vermietung",data:"Haus",owner:"Finanzen",more:"Mehr"};
+          const DEFAULT_SUB={data:"overview",rental:"overview",owner:"overview",more:"smart"};
+          const SUB_PARENT={
+            data:{object:"overview",property:"overview",units:"overview",sources:"costs",positions:"costs",assessment:"costs"},
+            rental:{lease:"overview",calculation:"billing",workflow:"billing"},
+            owner:{tasks:"overview",cashflow:"payments",reconciliation:"payments",finance:"planning",analytics:"planning"},
+            more:{overview:"smart",legal:"app",security:"protection",backup:"protection",recovery:"protection",audit:"app",diagnostics:"app"}
+          };
+          let route="home";
+          let sub={...DEFAULT_SUB};
+
+          function normalizeSub(routeName,subName){
+            if(!subName)return DEFAULT_SUB[routeName]||"";
+            if(routeName==="more"&&subName==="overview")return "smart";
+            if(routeName==="rental"&&(subName==="calculation"||subName==="workflow"))return subName;
+            return subName
+          }
+          function visibleSub(routeName,subName){return SUB_PARENT[routeName]?.[subName]||subName||DEFAULT_SUB[routeName]||""}
+          function syncRouteFromHash(){
+            const raw=decodeURIComponent(location.hash.replace(/^#/,"")).trim(),parts=raw.split("/").filter(Boolean);
+            const r=ROUTE_LABELS[parts[0]]?parts[0]:"home";
+            route=r;
+            if(r!=="home")sub[r]=normalizeSub(r,parts[1]||DEFAULT_SUB[r])
+          }
+          function routeHash(r,s=null){return r==="home"?"#home":`#${r}/${encodeURIComponent(s||DEFAULT_SUB[r])}`}
+          ''')
+          new_routes = B('''
+          const {ROUTE_LABELS,DEFAULT_SUB,SUB_PARENT,normalizeSub,visibleSub,parseRouteHash,routeHash}=AppPresentation;
+          let route="home";
+          let sub={...DEFAULT_SUB};
+
+          function syncRouteFromHash(){
+            const parsed=parseRouteHash(location.hash);
+            route=parsed.route;
+            if(route!=="home")sub[route]=parsed.sub
+          }
+          ''')
+          if runtime.count(old_routes) != 1:
+              raise SystemExit("src/ui/app-runtime.ts: Routingblock nicht eindeutig")
+          runtime = runtime.replace(old_routes, new_routes, 1)
+
+          old_persist = B('''
+          async function persist(action,detail){
+            const before=LAST_STABLE_STATE?cloneState(LAST_STABLE_STATE):null;
+            try{
+              state=repairDomainState(state);
+              const check=validateDomainState(state);if(check.errors.length)throw new Error("Datenintegrität: "+check.errors.join(" · "));
+              if(action)audit(action,detail);
+              state.meta.revision=Number(state.meta.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
+              await saveState(state);LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};if(action)AppFeedback.showToast(action,{kind:"success"});return true
+            }catch(e){
+              recordClientError("persist",e);storageError=e;console.error("Speicher-/Integritätsfehler:",e);
+              if(before){state=before;LAST_STABLE_STATE=cloneState(before)}
+              AppFeedback.showToast("Speichern fehlgeschlagen – Änderung wurde zurückgenommen.",{kind:"error",timeoutMs:5000});
+              alert("Die Änderung wurde nicht gespeichert und zurückgenommen: "+String(e.message||e));try{render()}catch{};return false
+            }
+          }
+          ''')
+          new_persist = B('''
+          async function persist(action,detail){
+            const before=LAST_STABLE_STATE?cloneState(LAST_STABLE_STATE):null;
+            try{
+              state=repairDomainState(state);
+              const scopedCheck=validateDomainState(state);if(scopedCheck.errors.length)throw new Error("Datenintegrität: "+scopedCheck.errors.join(" · "));
+              if(action)audit(action,detail);
+              state.meta.revision=Number(state.meta?.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
+              const merged=repairDomainState(fullPortfolioState()),fullCheck=validateDomainState(merged);
+              if(fullCheck.errors.length)throw new Error("Portfolio-Integrität: "+fullCheck.errors.join(" · "));
+              await saveState(merged);
+              portfolioState=merged;
+              state=projectActiveState(portfolioState,activeBuildingId);
+              LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};if(action)AppFeedback.showToast(action,{kind:"success"});return true
+            }catch(e){
+              recordClientError("persist",e);storageError=e;console.error("Speicher-/Integritätsfehler:",e);
+              if(before){state=before;LAST_STABLE_STATE=cloneState(before)}
+              AppFeedback.showToast("Speichern fehlgeschlagen – Änderung wurde zurückgenommen.",{kind:"error",timeoutMs:5000});
+              alert("Die Änderung wurde nicht gespeichert und zurückgenommen: "+String(e.message||e));try{render()}catch{};return false
+            }
+          }
+          ''')
+          if runtime.count(old_persist) != 1:
+              raise SystemExit("src/ui/app-runtime.ts: Persistblock nicht eindeutig")
+          runtime = runtime.replace(old_persist, new_persist, 1)
+
+          old_nav = B('''
+          function nav(){
+            document.querySelectorAll(".main-tabs button").forEach(b=>{
+              const active=b.dataset.route===route;b.classList.toggle("active",active);
+              if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")
+            });
+            const ctx=$("pageContext");if(ctx)ctx.textContent=route==="home"?(state.property?.name||"Start"):ROUTE_LABELS[route];
+            document.title=`${ROUTE_LABELS[route]||"Mietverwaltung"} · Mietverwaltung`
+          }
+          ''')
+          new_nav = B('''
+          function renderBuildingSwitcher(){
+            const wrap=$("buildingSwitchWrap"),select=$("buildingSelect");if(!wrap||!select)return;
+            const model=AppPresentation.createPresentationWorkspace(portfolioState,activeBuildingId);
+            wrap.classList.toggle("hidden",!model.showBuildingSelector);
+            if(!model.showBuildingSelector){select.innerHTML="";return}
+            select.innerHTML=model.buildings.map(item=>`<option value="${esc(item.id)}" ${item.active?"selected":""}>${esc(item.name)}</option>`).join("");
+            select.onchange=()=>{
+              const next=select.value;
+              if(next===activeBuildingId)return;
+              if(!closeModal(false)){select.value=activeBuildingId;return}
+              activeBuildingId=AppPresentation.resolveActiveBuildingId(portfolioState,next);
+              state=projectActiveState(portfolioState,activeBuildingId);
+              LAST_STABLE_STATE=cloneState(state);
+              render();window.scrollTo({top:0,left:0,behavior:"auto"})
+            }
+          }
+          function nav(){
+            document.querySelectorAll(".main-tabs button").forEach(b=>{
+              const active=b.dataset.route===route;b.classList.toggle("active",active);
+              if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")
+            });
+            renderBuildingSwitcher();
+            const ctx=$("pageContext");if(ctx)ctx.textContent=route==="home"?(state.property?.name||"Start"):ROUTE_LABELS[route];
+            const building=state.property?.name?` · ${state.property.name}`:"";
+            document.title=`${ROUTE_LABELS[route]||"Mietverwaltung"}${building} · Mietverwaltung`
+          }
+          ''')
+          if runtime.count(old_nav) != 1:
+              raise SystemExit("src/ui/app-runtime.ts: Navblock nicht eindeutig")
+          runtime = runtime.replace(old_nav, new_nav, 1)
+
+          old_task = B('''
+          function taskList(){
+            const out=[],seen=new Set(),today=smartToday(),cy=currentPeriodYear();
+            const push=t=>{if(!t?.due||!t?.title)return;const k=`${t.due}|${normalizeLabelText(t.title)}`;if(seen.has(k))return;seen.add(k);out.push(t)};
+            for(const s of state.sources||[]){
+              for(const d of Array.isArray(s.dueDates)?s.dueDates:[]){
+                push({id:`source-${s.id}-${d}`,title:`Fälligkeit: ${s.name||"Kostenquelle"}`,due:d,lead:14,origin:"source",sourceId:s.id})
+              }
+            }
+            for(let y=cy-3;y<=cy;y++){
+              const info=billingPeriodInfo(state,y);
+              if(!info.active||info.end>=today||snapshotFor(state,y))continue;
+              push({id:`billing-${y}`,title:`Endabrechnung ${billingPeriodLabel(state,y)} fertigstellen`,due:periodBillingTargetISO(y),lead:30,origin:"billing",periodYear:y})
+            }
+            for(const t of state.tasks||[])push(t);
+            return out.sort((a,b)=>(a.due||"").localeCompare(b.due||""))
+          }
+          ''')
+          new_task = B('''
+          function taskList(){
+            return AppApplication.queryTaskList(state,{buildingId:activeBuildingId},smartToday())
+          }
+          ''')
+          if runtime.count(old_task) != 1:
+              raise SystemExit("src/ui/app-runtime.ts: taskList nicht eindeutig")
+          runtime = runtime.replace(old_task, new_task, 1)
+
+          replacements = [
+              ('const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"})',
+               'const blob=new Blob([JSON.stringify(fullPortfolioState(),null,2)],{type:"application/json"})'),
+              ('const wrapper=await createFullBackup(state,pw)',
+               'const wrapper=await createFullBackup(fullPortfolioState(),pw)'),
+              ('const oldState=cloneState(state),oldDocs=await listDocuments();',
+               'const oldState=cloneState(fullPortfolioState()),oldDocs=await listAllDocuments();'),
+              ('await replaceDocuments(decoded.documents);state=next;state.meta.restorePoints=[...(oldState.meta?.restorePoints||[]),...(state.meta.restorePoints||[])].slice(0,5);await saveState(state);LAST_STABLE_STATE=cloneState(state);',
+               'const importRestorePoints=fullPortfolioState().meta?.restorePoints||[];await replaceAllDocuments(decoded.documents);next.meta.restorePoints=[...importRestorePoints,...(next.meta.restorePoints||[])].slice(0,5);await saveState(next);applyRestoredPortfolioState(next);'),
+              ('await replaceDocuments(oldDocs);state=oldState;await saveState(oldState);LAST_STABLE_STATE=cloneState(oldState)',
+               'await replaceAllDocuments(oldDocs);await saveState(oldState);applyRestoredPortfolioState(oldState)')
+          ]
+          for old, new in replacements:
+              if runtime.count(old) != 1:
+                  raise SystemExit(f"src/ui/app-runtime.ts: Backup-Anker nicht eindeutig: {old[:60]}")
+              runtime = runtime.replace(old, new, 1)
+
+          write("src/ui/app-runtime.ts", runtime)
+
+          replace_once(
+              "index.html",
+              '<div class="top-actions"><span id="connectionState"',
+              '<label id="buildingSwitchWrap" class="building-switch hidden"><span>Gebäude</span><select id="buildingSelect" aria-label="Aktives Gebäude"></select></label>\n  <div class="top-actions"><span id="connectionState"'
+          )
+          replace_once("index.html", 'href="style.css?v=1810p2"', 'href="style.css?v=1810p3"')
+          replace_once("index.html", 'src="app.js?v=1803"', 'src="app.js?v=1804"')
+
+          style = read("style.css") + B(r'''
+
+          /* ===== D Presentation / Building context ===== */
+          .building-switch{display:flex;align-items:center;gap:7px;min-width:0;margin-left:auto}
+          .building-switch.hidden{display:none}
+          .building-switch>span{font-size:11px;font-weight:750;color:var(--muted)}
+          .building-switch select{min-height:38px;max-width:210px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--text);padding:7px 30px 7px 10px;font-weight:700}
+          @media(max-width:700px){
+            .building-switch>span{display:none}
+            .building-switch select{max-width:132px;min-width:0}
+            .topbar{gap:7px}
+            .brand{flex:1 1 auto}
+            .top-actions{flex:0 0 auto}
+          }
+          @media(max-width:480px){
+            .building-switch select{max-width:108px;font-size:12px}
+          }
+          ''')
+          write("style.css", style)
+
+          replace_once("service-worker.js", 'const CACHE="mietverwaltung-v18-application-c-1";', 'const CACHE="mietverwaltung-v18-presentation-d-1";')
+          replace_once("service-worker.js", '"./style.css?v=1810p2"', '"./style.css?v=1810p3"')
+          replace_once("service-worker.js", '"./app.js?v=1803"', '"./app.js?v=1804"')
+
+          replace_once(
+              "scripts/test-pwa-update.mjs",
+              '''
+              must(sw.includes("mietverwaltung-v18-application-c-1"),"Application-C Production-Cache fehlt");
+              ''',
+              '''
+              must(sw.includes("mietverwaltung-v18-presentation-d-1"),"Presentation-D Production-Cache fehlt");
+              must(!sw.includes("mietverwaltung-v18-application-c-1"),"alter Application-C Cache ist noch vorhanden");
+              '''
+          )
+
+          dep = read("tests/deployment.spec.js")
+          dep = dep.replace("./app.js?v=1803", "./app.js?v=1804")
+          dep = dep.replace("app.js?v=1803", "app.js?v=1804")
+          dep = dep.replace("style.css?v=1810p2", "style.css?v=1810p3")
+          dep = dep.replace("mietverwaltung-v18-application-c-1", "mietverwaltung-v18-presentation-d-1")
+          dep = dep.replace(
+              "expect(coreText).toContain('compiled src/application/index.ts');",
+              "expect(coreText).toContain('compiled src/application/index.ts');\n  expect(coreText).toContain('compiled src/presentation/index.ts');"
+          )
+          write("tests/deployment.spec.js", dep)
+
+          arch_test = read("scripts/test-architecture.mjs")
+          needle = 'const uiCore = read("src/ui/ui-core.ts");\n'
+          if arch_test.count(needle) != 1:
+              raise SystemExit("scripts/test-architecture.mjs: uiCore-Anker fehlt")
+          arch_test = arch_test.replace(
+              needle,
+              needle + 'const presentation = read("src/presentation/building-workspace.ts");\nconst presentationNavigation = read("src/presentation/navigation.ts");\n',
+              1
+          )
+          legacy_route_assert = 'assert(appRuntime.includes("const ROUTE_LABELS="), "Routing-Konfiguration fehlt in app-runtime.ts.");'
+          if arch_test.count(legacy_route_assert) != 1:
+              raise SystemExit("scripts/test-architecture.mjs: alter Routing-Vertrag fehlt")
+          arch_test = arch_test.replace(
+              legacy_route_assert,
+              'assert(appRuntime.includes("parseRouteHash,routeHash}=AppPresentation;"), "App-Runtime bindet typisiertes Presentation-Routing nicht ein.");\n'
+              'assert(!appRuntime.includes("const ROUTE_LABELS={"), "Routing-Konfiguration liegt noch doppelt in app-runtime.ts.");',
+              1
+          )
+
+          marker = 'assert(buildScript.includes("bundle: true"), "Build bündelt TypeScript-Importe nicht.");'
+          if arch_test.count(marker) != 1:
+              raise SystemExit("scripts/test-architecture.mjs: Build-Anker fehlt")
+          arch_asserts = B('''
+          assert(buildScript.includes('compileModule("src/presentation/index.ts", "AppPresentation")'), "Presentation-Bundle fehlt.");
+          assert(presentation.includes("export const PRESENTATION_VERSION = 1"), "Presentation-Version fehlt.");
+          assert(presentation.includes("projectStateForBuilding"), "Gebäudeprojektion fehlt in Presentation.");
+          assert(presentation.includes("mergeStateFromBuilding"), "Gebäude-Merge fehlt in Presentation.");
+          assert(presentation.includes("projected.documentsCache = []"), "Transienter Dokumentcache wird bei Gebäudeprojektion nicht geleert.");
+          assert(presentation.includes("result.documentsCache = []"), "Transienter Dokumentcache wird beim Portfolio-Merge nicht entfernt.");
+          assert(presentationNavigation.includes("parseRouteHash"), "Typisiertes Presentation-Routing fehlt.");
+          assert(appRuntime.includes("AppPresentation.createPresentationWorkspace"), "Runtime verwendet den Presentation-Workspace nicht.");
+          assert(appRuntime.includes("AppApplication.queryTaskList"), "Runtime verwendet noch nicht die Application-Task-Query.");
+          assert(!appRuntime.includes("const out=[],seen=new Set(),today=smartToday(),cy=currentPeriodYear()"), "Doppelte ungescopte taskList liegt noch in der Runtime.");
+          const applicationQueries = read("src/application/queries.ts");
+          assert(applicationQueries.includes("billingPeriodForWorkspace"), "Application-Task-Query bewahrt Übernahmeperioden nicht.");
+          ''')
+          arch_test = arch_test.replace(marker, arch_asserts + "\n" + marker, 1)
+          write("scripts/test-architecture.mjs", arch_test)
+
+          arch = read("ARCHITECTURE.md") + B(r'''
+
+          ## Schritt D: Presentation-/Building-Workspace-Schicht
+
+          `src/presentation/` bildet die neue Präsentationsgrenze zwischen Application-Schicht und Browser-UI.
+          Routing und Mehrgebäude-Workspace werden strikt typisiert aufgebaut. Die Browser-Runtime verwendet
+          für Aufgaben die gebäudeisolierte Application-Query statt einer zweiten, ungescopten Implementierung.
+          Dabei bleiben Übernahmeperioden erhalten: Jahre vor der Verwaltungsübernahme erzeugen keine falschen
+          Abrechnungsaufgaben, und die erste Teilperiode wird mit ihrem tatsächlichen Zeitraum bezeichnet.
+
+          Für die UI wird der vollständige Portfolio-State nicht mehr direkt als Arbeitszustand verwendet.
+          Stattdessen projiziert die Presentation-Schicht genau das aktive Gebäude in den bestehenden
+          Kompatibilitäts-State. Beim Speichern wird diese Projektion kontrolliert in den vollständigen
+          Portfolio-State zurückgeführt. Dadurch bleiben bestehende Fachansichten weitgehend unverändert,
+          während Einheiten, Mietverhältnisse, Quellen, Kosten, Zähler, Wasserperioden, Aufgaben, Zahlungen,
+          Abrechnungsdaten und Dokumente zwischen Gebäuden getrennt bleiben.
+
+          Der Gebäude-Selector erscheint ausschließlich bei mehr als einem Gebäude. Die Auswahl ist eine
+          Präsentationspräferenz und verändert `meta.primaryBuildingId` des Domainmodells nicht. Das bestehende
+          `property`-Objekt bleibt im vollständigen Persistenz-State die Kompatibilitätsprojektion des
+          Primärgebäudes. Vollbackups und Restore-Points enthalten weiterhin das komplette Portfolio und alle
+          Dokumente, nicht nur das gerade sichtbare Gebäude. Der flüchtige `documentsCache` wird beim
+          Gebäudewechsel und Portfolio-Merge bewusst geleert; Dokument-Metadaten werden ausschließlich über den
+          gebäudegefilterten IndexedDB-Dokumentpfad neu geladen.
+
+          Schritt D ändert weder App-Version (`18.0.0`) noch State-Schema (`15`) oder IndexedDB-Version (`3`).
+          Der PWA-Asset-Key wird auf `app.js?v=1804`, `style.css?v=1810p3` und
+          `mietverwaltung-v18-presentation-d-1` angehoben.
+          ''')
+          write("ARCHITECTURE.md", arch)
+
+          print("Presentation-D Quellen und Tests geschrieben.")
+          PY
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: App reproduzierbar bauen
+        run: npm run build
+
+      - name: TypeScript prüfen
+        id: typecheck
+        continue-on-error: true
+        run: npm run typecheck
+
+      - name: Validierung prüfen
+        id: validation
+        continue-on-error: true
+        run: npm run test:validation
+
+      - name: Architektur einschließlich D prüfen
+        id: architecture
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          failed=0
+          run_check() {
+            echo "::group::$1"
+            shift
+            "$@"
+            status=$?
+            echo "::endgroup::"
+            if [ "$status" -ne 0 ]; then failed=1; fi
+          }
+          run_check "Architekturvertrag" node scripts/test-architecture.mjs
+          run_check "Portfolio-Modell" npm run test:portfolio
+          run_check "Repository" npm run test:repository
+          run_check "Application" npm run test:application
+          run_check "Presentation" npm run test:presentation
+          exit "$failed"
+
+      - name: Quality-Ratchet prüfen
+        id: quality
+        continue-on-error: true
+        run: npm run test:quality
+
+      - name: PWA-Vertrag prüfen
+        id: pwa
+        continue-on-error: true
+        run: npm run test:pwa
+
+      - name: Chromium installieren
+        run: npx playwright install --with-deps chromium
+
+      - name: PDF-Prüfwerkzeuge installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+
+      - name: Lokalen Server starten
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/d-server.log 2>&1 &
+          echo $! > /tmp/d-server.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/d-server.log
+          exit 1
+
+      - name: Vollständige lokale Browser-E2E-Suite
+        id: e2e
+        continue-on-error: true
+        run: npm run test:e2e
+
+      - name: D-Prüfmatrix auswerten
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          check() {
+            local name="$1" outcome="$2"
+            if [ "$outcome" = "success" ]; then
+              echo "✓ $name"
+            else
+              echo "✗ $name: $outcome"
+              failed=1
+            fi
+          }
+          check "TypeScript" "${{ steps.typecheck.outcome }}"
+          check "Validation" "${{ steps.validation.outcome }}"
+          check "Architecture" "${{ steps.architecture.outcome }}"
+          check "Quality" "${{ steps.quality.outcome }}"
+          check "PWA" "${{ steps.pwa.outcome }}"
+          check "E2E" "${{ steps.e2e.outcome }}"
+          test "$failed" -eq 0
+
+      - name: D-Änderungsumfang verifizieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+
+          cat > /tmp/d-expected-files.txt <<'EOF'
+          ARCHITECTURE.md
+          app.js
+          index.html
+          package.json
+          scripts/build-app.mjs
+          scripts/test-application-layer.mjs
+          scripts/test-architecture.mjs
+          scripts/test-presentation-layer.mjs
+          scripts/test-pwa-update.mjs
+          service-worker.js
+          src/application/queries.ts
+          src/core/traceability.ts
+          src/presentation/building-workspace.ts
+          src/presentation/index.ts
+          src/presentation/navigation.ts
+          src/runtime/040-traceability.js
+          src/runtime/110-db.js
+          src/runtime/130-backup.js
+          src/ui/app-runtime.ts
+          style.css
+          tests/deployment.spec.js
+          tests/presentation-workspace.spec.js
+          EOF
+          git diff --name-only HEAD | sort > /tmp/d-actual-files.txt
+          sort -o /tmp/d-expected-files.txt /tmp/d-expected-files.txt
+          diff -u /tmp/d-expected-files.txt /tmp/d-actual-files.txt
+
+          test -e src/presentation/index.ts
+          test -e src/presentation/navigation.ts
+          test -e src/presentation/building-workspace.ts
+          test -e scripts/test-presentation-layer.mjs
+          test -e tests/presentation-workspace.spec.js
+          grep -q 'app.js?v=1804' index.html
+          grep -q 'style.css?v=1810p3' index.html
+          grep -q 'mietverwaltung-v18-presentation-d-1' service-worker.js
+          grep -q 'compiled src/presentation/index.ts' app.js
+          grep -q 'billingPeriodForWorkspace' src/application/queries.ts
+          grep -q 'projected.documentsCache = \[\]' src/presentation/building-workspace.ts
+          grep -q 'parseRouteHash,routeHash}=AppPresentation' src/ui/app-runtime.ts
+
+          test -z "$(git diff --name-only HEAD -- .github/workflows/ci.yml .github/workflows/e2e-live.yml)"
+          echo "D-Änderungen:"
+          git status --short
+
+      - name: D-Produktcommit erstellen
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            ARCHITECTURE.md \
+            app.js \
+            index.html \
+            style.css \
+            service-worker.js \
+            package.json \
+            scripts/build-app.mjs \
+            scripts/test-application-layer.mjs \
+            scripts/test-architecture.mjs \
+            scripts/test-presentation-layer.mjs \
+            scripts/test-pwa-update.mjs \
+            src/application/queries.ts \
+            src/presentation/index.ts \
+            src/presentation/navigation.ts \
+            src/presentation/building-workspace.ts \
+            src/core/traceability.ts \
+            src/runtime/040-traceability.js \
+            src/runtime/110-db.js \
+            src/runtime/130-backup.js \
+            src/ui/app-runtime.ts \
+            tests/deployment.spec.js \
+            tests/presentation-workspace.spec.js
+
+          git diff --cached --check
+          git commit -m "Introduce presentation workspace and building-scoped UI context"
+          git push origin HEAD:main
+          echo "D_PRODUCT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Ergebnis
+        run: |
+          echo "Architecture D Produktcommit: ${D_PRODUCT_SHA}"
+          echo "Als Nächstes CI, Pages und Live-E2E für exakt diesen SHA prüfen."
