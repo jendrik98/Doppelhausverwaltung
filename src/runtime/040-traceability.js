@@ -18,3 +18,19 @@ const {
   snapshotVerification
 }=AppTraceability;
 
+const APPLICATION_COMMAND_BUS=AppApplication.createCommandBus({
+  getState:()=>state,
+  setState:value=>{state=value},
+  getLastStableState:()=>LAST_STABLE_STATE,
+  setLastStableState:value=>{LAST_STABLE_STATE=value},
+  cloneState,
+  repairState:repairDomainState,
+  validateState:validateDomainState,
+  persist:(action,detail)=>persist(action,detail),
+  recordError:(context,error)=>recordClientError(context,error),
+  createRestorePoint,
+  uid:()=>uid()
+});
+const applicationExecuteCommand=(type,payload,handler,options={})=>
+  APPLICATION_COMMAND_BUS.executeCommand(type,payload,handler,options);
+

@@ -252,3 +252,22 @@ B2 führt eine Repository-Schicht zwischen Browser-Runtime und IndexedDB ein. De
 - Beim Laden eines bestehenden Snapshots repariert/migriert die Runtime zuerst das Domainmodell und schreibt anschließend die atomare Projektion neu.
 - Die bisherige `property`-Oberfläche bleibt vorerst die editierbare Projektion des primären Gebäudes; bei nur einem Gebäude entsteht kein zusätzlicher Gebäudewähler.
 - Browser-E2E prüft den Upgradepfad, die Projektions-Metadaten und die Isolation zweier Gebäude.
+
+## Schritt C: Application-/Use-Case-Schicht
+
+`src/application/` ist die neue Orchestrierungsschicht zwischen UI/Runtime, Fachlogik und Infrastruktur.
+Sie enthält einen browserunabhängigen Application-Kontext, gebäudeisolierte Queries, den App-Lifecycle
+und einen Command-Bus. Commands protokollieren den wirksamen Portfolio-/Gebäude-/Einheiten-/
+Mietverhältnis-Kontext und blockieren unbeabsichtigte Änderungen oder Löschungen in einem anderen
+Gebäude. Der bestehende Laufzeitname `executeCommand` bleibt als Kompatibilitätsgrenze erhalten,
+delegiert seine Orchestrierung aber vollständig an die Application-Schicht.
+
+Der App-Start läuft ebenfalls über den Application-Lifecycle: vorhandener oder neuer State wird
+repariert, validiert und atomar über das B2-Repository gespeichert. Der Zahlungsabgleich verwendet
+eine gebäudeisolierte Application-Query. Damit sind wichtige aktuelle Schreib- und Lesepfade bereits
+funktional verdrahtet, ohne die bestehende Ein-Gebäude-Oberfläche zu verändern. Ein Gebäude-Selector
+wird vom Application-Modell erst dann vorgesehen, wenn tatsächlich mehr als ein Gebäude vorhanden ist.
+
+Schritt C ändert weder App-Version (`18.0.0`) noch State-Schema (`15`), IndexedDB (`mietverwaltung-v6`,
+Version `3`) oder Backupformate. Nur der PWA-Asset-Key wird auf `app.js?v=1803` und einen neuen Cache
+angehoben, damit GitHub Pages die neue Application-Schicht nachweislich frisch ausliefert.

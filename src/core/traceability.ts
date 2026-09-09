@@ -107,37 +107,20 @@ export function commandResult(ok: boolean, message = "", data: any = null): {
 
 type CommandOptions = { auditText?: string | null; restorePoint?: boolean };
 
+declare function applicationExecuteCommand(
+  type: string,
+  payload: any,
+  handler: (payload: any) => any | Promise<any>,
+  options?: CommandOptions,
+): Promise<{ ok: boolean; message: string; data: any }>;
+
 export async function executeCommand(
   type: string,
   payload: any,
   handler: (payload: any) => any | Promise<any>,
   { auditText = null, restorePoint = false }: CommandOptions = {},
 ): Promise<{ ok: boolean; message: string; data: any }> {
-  if (restorePoint) createRestorePoint(`Vor ${type}`);
-  const before = cloneState(state);
-  try {
-    const result = await handler(payload);
-    state = ensureTraceShape(repairDomainState(state));
-    const check = validateDomainState(state);
-    if (check.errors.length) throw new Error(check.errors.join(" · "));
-    state.meta.commandLog.unshift({
-      id: uid(),
-      at: new Date().toISOString(),
-      type,
-      payloadSummary: safeCommandSummary(payload),
-      revisionBefore: Number(before.meta?.revision || 0),
-      revisionAfter: Number(before.meta?.revision || 0) + 1,
-    });
-    state.meta.commandLog = state.meta.commandLog.slice(0, 250);
-    const saved = await persist(auditText || type, safeCommandSummary(payload));
-    if (!saved) throw new Error("Speichern fehlgeschlagen.");
-    return commandResult(true, "Gespeichert", result);
-  } catch (error: any) {
-    state = before;
-    LAST_STABLE_STATE = cloneState(before);
-    recordClientError(`command:${type}`, error);
-    return commandResult(false, String(error.message || error));
-  }
+  return applicationExecuteCommand(type, payload, handler, { auditText, restorePoint });
 }
 
 export function safeCommandSummary(payload: any): string {

@@ -24,17 +24,17 @@ const {
   getBuildingGraph
 }=AppPortfolioRepository;
 
-async function loadState(){
-  const rec=await readStateRecord();
-  if(rec?.data){
-    const migrated=repairDomainState(rec.data);
-    await saveState(migrated);
-    return migrated
-  }
+const {loadApplicationState}=AppApplication;
 
-  const fresh=repairDomainState(createEmptyState());
-  LAST_STABLE_STATE=cloneState(fresh);
-  await saveState(fresh);
-  return fresh
+async function loadState(){
+  const result=await loadApplicationState({
+    readStateRecord,
+    saveState,
+    createEmptyState,
+    repairState:repairDomainState,
+    validateState:validateDomainState
+  });
+  LAST_STABLE_STATE=cloneState(result.state);
+  return result.state
 }
 

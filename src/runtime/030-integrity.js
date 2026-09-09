@@ -13,7 +13,7 @@ const {
   stableJSON,
   finalizeSnapshotIntegrity,
   blobSha256,
-  documentFingerprint,
-  reconciliationSummary
+  documentFingerprint
 }=AppIntegrity;
+const {reconciliationSummary}=AppApplication;
 

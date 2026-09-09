@@ -920,6 +920,366 @@ var AppPortfolioRepository = (() => {
 })();
 
 
+/* ===== compiled src/application/index.ts ===== */
+"use strict";
+var AppApplication = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/application/index.ts
+  var index_exports = {};
+  __export(index_exports, {
+    APPLICATION_VERSION: () => APPLICATION_VERSION,
+    assertBuildingScopedMutation: () => assertBuildingScopedMutation,
+    assertContextIntegrity: () => assertContextIntegrity,
+    buildingScopedCollections: () => buildingScopedCollections,
+    commandResult: () => commandResult,
+    createCommandBus: () => createCommandBus,
+    loadApplicationState: () => loadApplicationState,
+    portfolioNavigation: () => portfolioNavigation,
+    queryBuildingWorkspace: () => queryBuildingWorkspace,
+    queryTaskList: () => queryTaskList,
+    reconciliationSummary: () => reconciliationSummary,
+    resolveApplicationContext: () => resolveApplicationContext,
+    safeCommandSummary: () => safeCommandSummary
+  });
+
+  // src/application/contracts.ts
+  var APPLICATION_VERSION = 1;
+
+  // src/application/context.ts
+  var BUILDING_SCOPED_COLLECTIONS = [
+    "units",
+    "leases",
+    "sources",
+    "costPositions",
+    "meters",
+    "waterSettlements",
+    "tasks",
+    "payments",
+    "billingWorkflows",
+    "billingSnapshots",
+    "containers",
+    "water"
+  ];
+  function records(value) {
+    return Array.isArray(value) ? value.filter((item) => !!item && typeof item === "object") : [];
+  }
+  function byId(state, collection, id) {
+    if (!id) return null;
+    const key = String(id);
+    return records(state?.[collection]).find((item) => String(item.id || "") === key) || null;
+  }
+  function recordBuildingId(state, collection, id) {
+    return String(byId(state, collection, id)?.buildingId || "");
+  }
+  function inferBuildingFromPayload(state, type, payload) {
+    if (payload.buildingId) return String(payload.buildingId);
+    const directRefs = [
+      ["unitId", "units"],
+      ["tenancyId", "leases"],
+      ["leaseId", "leases"],
+      ["sourceId", "sources"],
+      ["positionId", "costPositions"],
+      ["meterId", "meters"],
+      ["paymentId", "payments"]
+    ];
+    for (const [key, collection] of directRefs) {
+      const buildingId = recordBuildingId(state, collection, payload[key]);
+      if (buildingId) return buildingId;
+    }
+    if (payload.id) {
+      const typeCollection = type.startsWith("unit.") ? "units" : type.startsWith("tenancy.") || type.startsWith("lease.") ? "leases" : type.startsWith("source.") ? "sources" : type.startsWith("costPosition.") ? "costPositions" : type.startsWith("meter.") ? "meters" : type.startsWith("payment.") ? "payments" : "";
+      if (typeCollection) {
+        const buildingId = recordBuildingId(state, typeCollection, payload.id);
+        if (buildingId) return buildingId;
+      }
+    }
+    return "";
+  }
+  function resolveApplicationContext(state, type = "", payload = {}) {
+    const buildings = records(state?.buildings);
+    const units = records(state?.units);
+    const leases = records(state?.leases);
+    let buildingId = inferBuildingFromPayload(state, type, payload) || String(state?.meta?.primaryBuildingId || buildings[0]?.id || "");
+    let unitId = String(payload.unitId || "");
+    let tenancyId = String(payload.tenancyId || payload.leaseId || "");
+    if (!unitId && tenancyId) unitId = String(byId(state, "leases", tenancyId)?.unitId || "");
+    if (!tenancyId && payload.paymentId) {
+      const payment = byId(state, "payments", payload.paymentId);
+      tenancyId = String(payment?.tenancyId || payment?.leaseId || "");
+      unitId ||= String(payment?.unitId || "");
+    }
+    if (!unitId && payload.id && (type.startsWith("tenancy.") || type.startsWith("lease."))) {
+      unitId = String(byId(state, "leases", payload.id)?.unitId || "");
+      tenancyId ||= String(payload.id);
+    }
+    const unit = units.find((item) => String(item.id || "") === unitId) || null;
+    const tenancy = leases.find((item) => String(item.id || "") === tenancyId) || null;
+    if (!buildingId) buildingId = String(unit?.buildingId || tenancy?.buildingId || "");
+    if (!unitId && tenancy?.unitId) unitId = String(tenancy.unitId);
+    const building = buildings.find((item) => String(item.id || "") === buildingId) || null;
+    const portfolioId = String(payload.portfolioId || building?.portfolioId || state?.meta?.primaryPortfolioId || state?.portfolios?.[0]?.id || "");
+    return { portfolioId, buildingId, unitId, tenancyId };
+  }
+  function assertContextIntegrity(state, context) {
+    const buildings = records(state?.buildings);
+    const building = buildings.find((item) => String(item.id || "") === context.buildingId) || null;
+    if (context.buildingId && !building) throw new Error(`Application-Kontext: Gebäude ${context.buildingId} fehlt`);
+    if (building && context.portfolioId && String(building.portfolioId || "") !== context.portfolioId) {
+      throw new Error("Application-Kontext: Gebäude gehört zu einem anderen Portfolio");
+    }
+    if (context.unitId) {
+      const unit = byId(state, "units", context.unitId);
+      if (!unit) throw new Error(`Application-Kontext: Einheit ${context.unitId} fehlt`);
+      if (context.buildingId && String(unit.buildingId || "") !== context.buildingId) {
+        throw new Error("Application-Kontext: Einheit gehört zu einem anderen Gebäude");
+      }
+    }
+    if (context.tenancyId) {
+      const tenancy = byId(state, "leases", context.tenancyId);
+      if (!tenancy) throw new Error(`Application-Kontext: Mietverhältnis ${context.tenancyId} fehlt`);
+      if (context.buildingId && String(tenancy.buildingId || "") !== context.buildingId) {
+        throw new Error("Application-Kontext: Mietverhältnis gehört zu einem anderen Gebäude");
+      }
+      if (context.unitId && tenancy.unitId && String(tenancy.unitId) !== context.unitId) {
+        throw new Error("Application-Kontext: Mietverhältnis gehört zu einer anderen Einheit");
+      }
+    }
+  }
+  function changedRecords(before, after, collection) {
+    const beforeItems = records(before?.[collection]);
+    const afterItems = records(after?.[collection]);
+    const prior = new Map(beforeItems.map((item) => [String(item.id || ""), JSON.stringify(item)]));
+    const afterIds = new Set(afterItems.map((item) => String(item.id || "")));
+    const changed = afterItems.filter((item) => {
+      const id = String(item.id || "");
+      return !id || prior.get(id) !== JSON.stringify(item);
+    });
+    const deleted = beforeItems.filter((item) => item.id && !afterIds.has(String(item.id)));
+    return [...changed, ...deleted];
+  }
+  function assertBuildingScopedMutation(before, after, context) {
+    if (!context.buildingId) return;
+    for (const collection of BUILDING_SCOPED_COLLECTIONS) {
+      for (const record of changedRecords(before, after, collection)) {
+        const buildingId = String(record.buildingId || "");
+        if (buildingId && buildingId !== context.buildingId) {
+          throw new Error(`Application-Scope: ${collection}/${record.id || "?"} gehört zu ${buildingId} statt ${context.buildingId}`);
+        }
+      }
+    }
+  }
+  function buildingScopedCollections() {
+    return BUILDING_SCOPED_COLLECTIONS;
+  }
+
+  // src/application/queries.ts
+  function records2(value) {
+    return Array.isArray(value) ? value.filter((item) => !!item && typeof item === "object") : [];
+  }
+  function scoped(items, buildingId) {
+    return buildingId ? items.filter((item) => String(item.buildingId || "") === buildingId) : items.slice();
+  }
+  function queryBuildingWorkspace(state, requested = {}) {
+    const context = resolveApplicationContext(state, "query.buildingWorkspace", requested);
+    const buildingId = context.buildingId;
+    const building = records2(state.buildings).find((item) => String(item.id || "") === buildingId) || null;
+    return {
+      context,
+      building,
+      units: scoped(records2(state.units), buildingId),
+      tenancies: scoped(records2(state.leases), buildingId),
+      sources: scoped(records2(state.sources), buildingId),
+      costPositions: scoped(records2(state.costPositions), buildingId),
+      meters: scoped(records2(state.meters), buildingId),
+      waterSettlements: scoped(records2(state.waterSettlements), buildingId),
+      tasks: scoped(records2(state.tasks), buildingId),
+      payments: scoped(records2(state.payments), buildingId),
+      billingWorkflows: scoped(records2(state.billingWorkflows), buildingId),
+      billingSnapshots: scoped(records2(state.billingSnapshots), buildingId),
+      containers: scoped(records2(state.containers), buildingId),
+      water: scoped(records2(state.water), buildingId)
+    };
+  }
+  function portfolioNavigation(state, portfolioId = "") {
+    const activePortfolioId = portfolioId || String(state?.meta?.primaryPortfolioId || state?.portfolios?.[0]?.id || "");
+    const portfolio = records2(state.portfolios).find((item) => String(item.id || "") === activePortfolioId) || null;
+    const buildings = records2(state.buildings).filter((item) => !activePortfolioId || String(item.portfolioId || "") === activePortfolioId);
+    const activeBuildingId = String(state?.meta?.primaryBuildingId || buildings[0]?.id || "");
+    return { portfolio, buildings, activeBuildingId, showBuildingSelector: buildings.length > 1 };
+  }
+  function reconciliationSummary(state, requested = {}) {
+    const workspace = queryBuildingWorkspace(state, requested);
+    const positionPaid = /* @__PURE__ */ new Map();
+    for (const payment of workspace.payments) {
+      if (!payment.positionId) continue;
+      const key = String(payment.positionId);
+      positionPaid.set(
+        key,
+        (positionPaid.get(key) || 0) + (payment.direction === "outflow" ? Number(payment.amount || 0) : -Number(payment.amount || 0))
+      );
+    }
+    const rows = workspace.costPositions.filter((position) => position.confirmed).map((position) => ({
+      position,
+      paid: positionPaid.get(String(position.id)) || 0,
+      difference: Number(position.amount || 0) - (positionPaid.get(String(position.id)) || 0)
+    }));
+    return {
+      context: workspace.context,
+      rows,
+      unmatchedPayments: workspace.payments.filter((payment) => !payment.positionId && !payment.sourceId)
+    };
+  }
+  function isoToday() {
+    const d = /* @__PURE__ */ new Date();
+    const offset = d.getTimezoneOffset() * 6e4;
+    return new Date(d.getTime() - offset).toISOString().slice(0, 10);
+  }
+  function billingTarget(year) {
+    return `${year + 1}-03-31`;
+  }
+  function normalizeTitle(value) {
+    return String(value || "").trim().toLocaleLowerCase("de-DE").replace(/\s+/g, " ");
+  }
+  function queryTaskList(state, requested = {}, today = isoToday()) {
+    const workspace = queryBuildingWorkspace(state, requested);
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const push = (task) => {
+      if (!task?.due || !task?.title) return;
+      const key = `${task.due}|${normalizeTitle(task.title)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ ...task, buildingId: task.buildingId || workspace.context.buildingId });
+    };
+    for (const source of workspace.sources) {
+      for (const due of Array.isArray(source.dueDates) ? source.dueDates : []) {
+        push({
+          id: `source-${source.id}-${due}`,
+          title: `Fälligkeit: ${source.name || "Kostenquelle"}`,
+          due,
+          lead: 14,
+          origin: "source",
+          sourceId: source.id,
+          buildingId: workspace.context.buildingId
+        });
+      }
+    }
+    for (const task of workspace.tasks) push(task);
+    const year = Number(today.slice(0, 4));
+    const snapshotYears = new Set(workspace.billingSnapshots.map((item) => Number(item.periodYear)).filter(Number.isFinite));
+    for (let y = year - 3; y <= year; y++) {
+      const end = `${y}-12-31`;
+      if (end >= today || snapshotYears.has(y)) continue;
+      push({
+        id: `billing-${workspace.context.buildingId}-${y}`,
+        title: `Endabrechnung ${y} fertigstellen`,
+        due: billingTarget(y),
+        lead: 30,
+        origin: "billing",
+        periodYear: y,
+        buildingId: workspace.context.buildingId
+      });
+    }
+    return out.sort((a, b) => String(a.due || "").localeCompare(String(b.due || "")));
+  }
+
+  // src/application/lifecycle.ts
+  async function loadApplicationState(ports) {
+    const record = await ports.readStateRecord();
+    const created = !record?.data;
+    const repaired = ports.repairState(record?.data || ports.createEmptyState());
+    const validation = ports.validateState(repaired);
+    if (validation.errors.length) {
+      throw new Error(`Application-Start: ${validation.errors.join(" · ")}`);
+    }
+    await ports.saveState(repaired);
+    return {
+      state: repaired,
+      created,
+      context: resolveApplicationContext(repaired, "application.start", {})
+    };
+  }
+
+  // src/application/command-bus.ts
+  function commandResult(ok, message = "", data = null) {
+    return { ok, message, data };
+  }
+  function safeCommandSummary(payload) {
+    if (payload == null) return "";
+    if (typeof payload === "string") return payload.slice(0, 180);
+    const out = {};
+    for (const key of Object.keys(payload)) {
+      if (/blob|pages|text|image/i.test(key)) continue;
+      const value = payload[key];
+      out[key] = typeof value === "string" ? value.slice(0, 120) : value;
+    }
+    try {
+      return JSON.stringify(out);
+    } catch {
+      return "Command";
+    }
+  }
+  function createCommandBus(ports) {
+    const now = ports.now || (() => (/* @__PURE__ */ new Date()).toISOString());
+    const executeCommand = async (type, payload, handler, { auditText = null, restorePoint = false, allowCrossBuilding = false } = {}) => {
+      if (restorePoint) ports.createRestorePoint(`Vor ${type}`);
+      const before = ports.cloneState(ports.getState());
+      const contextBefore = resolveApplicationContext(before, type, payload || {});
+      try {
+        const result = await handler(payload || {}, contextBefore);
+        const repaired = ports.repairState(ports.getState());
+        ports.setState(repaired);
+        const contextAfter = resolveApplicationContext(repaired, type, payload || {});
+        assertContextIntegrity(repaired, contextAfter);
+        if (!allowCrossBuilding) assertBuildingScopedMutation(before, repaired, contextAfter);
+        const check = ports.validateState(repaired);
+        if (check.errors.length) throw new Error(check.errors.join(" · "));
+        repaired.meta = repaired.meta || {};
+        repaired.meta.commandLog = Array.isArray(repaired.meta.commandLog) ? repaired.meta.commandLog : [];
+        repaired.meta.commandLog.unshift({
+          id: ports.uid(),
+          at: now(),
+          type,
+          applicationVersion: APPLICATION_VERSION,
+          context: contextAfter,
+          payloadSummary: safeCommandSummary(payload),
+          revisionBefore: Number(before.meta?.revision || 0),
+          revisionAfter: Number(before.meta?.revision || 0) + 1
+        });
+        repaired.meta.commandLog = repaired.meta.commandLog.slice(0, 250);
+        const saved = await ports.persist(auditText || type, safeCommandSummary(payload));
+        if (!saved) throw new Error("Speichern fehlgeschlagen.");
+        return commandResult(true, "Gespeichert", result);
+      } catch (error) {
+        ports.setState(before);
+        ports.setLastStableState?.(ports.cloneState(before));
+        ports.recordError(`application-command:${type}`, error);
+        return commandResult(false, String(error?.message || error));
+      }
+    };
+    return { executeCommand };
+  }
+  return __toCommonJS(index_exports);
+})();
+
+
 /* ===== compiled src/core/persistence.ts ===== */
 "use strict";
 var AppPersistence = (() => {
@@ -1501,31 +1861,7 @@ var AppTraceability = (() => {
     return { ok, message, data };
   }
   async function executeCommand(type, payload, handler, { auditText = null, restorePoint = false } = {}) {
-    if (restorePoint) createRestorePoint(`Vor ${type}`);
-    const before = cloneState(state);
-    try {
-      const result = await handler(payload);
-      state = ensureTraceShape(repairDomainState(state));
-      const check = validateDomainState(state);
-      if (check.errors.length) throw new Error(check.errors.join(" · "));
-      state.meta.commandLog.unshift({
-        id: uid(),
-        at: (/* @__PURE__ */ new Date()).toISOString(),
-        type,
-        payloadSummary: safeCommandSummary(payload),
-        revisionBefore: Number(before.meta?.revision || 0),
-        revisionAfter: Number(before.meta?.revision || 0) + 1
-      });
-      state.meta.commandLog = state.meta.commandLog.slice(0, 250);
-      const saved = await persist(auditText || type, safeCommandSummary(payload));
-      if (!saved) throw new Error("Speichern fehlgeschlagen.");
-      return commandResult(true, "Gespeichert", result);
-    } catch (error) {
-      state = before;
-      LAST_STABLE_STATE = cloneState(before);
-      recordClientError(`command:${type}`, error);
-      return commandResult(false, String(error.message || error));
-    }
+    return applicationExecuteCommand(type, payload, handler, { auditText, restorePoint });
   }
   function safeCommandSummary(payload) {
     if (payload == null) return "";
@@ -4103,9 +4439,9 @@ const {
   stableJSON,
   finalizeSnapshotIntegrity,
   blobSha256,
-  documentFingerprint,
-  reconciliationSummary
+  documentFingerprint
 }=AppIntegrity;
+const {reconciliationSummary}=AppApplication;
 
 /* ===== traceability.js ===== */
 const TRACE_VERSION=1;
@@ -4126,6 +4462,22 @@ const {
   billingClosureChecklist,
   snapshotVerification
 }=AppTraceability;
+
+const APPLICATION_COMMAND_BUS=AppApplication.createCommandBus({
+  getState:()=>state,
+  setState:value=>{state=value},
+  getLastStableState:()=>LAST_STABLE_STATE,
+  setLastStableState:value=>{LAST_STABLE_STATE=value},
+  cloneState,
+  repairState:repairDomainState,
+  validateState:validateDomainState,
+  persist:(action,detail)=>persist(action,detail),
+  recordError:(context,error)=>recordClientError(context,error),
+  createRestorePoint,
+  uid:()=>uid()
+});
+const applicationExecuteCommand=(type,payload,handler,options={})=>
+  APPLICATION_COMMAND_BUS.executeCommand(type,payload,handler,options);
 
 /* ===== intelligence.js ===== */
 /* Phase 8 runtime bridge: Implementierung in src/domain/intelligence.ts */
@@ -4313,18 +4665,18 @@ const {
   getBuildingGraph
 }=AppPortfolioRepository;
 
-async function loadState(){
-  const rec=await readStateRecord();
-  if(rec?.data){
-    const migrated=repairDomainState(rec.data);
-    await saveState(migrated);
-    return migrated
-  }
+const {loadApplicationState}=AppApplication;
 
-  const fresh=repairDomainState(createEmptyState());
-  LAST_STABLE_STATE=cloneState(fresh);
-  await saveState(fresh);
-  return fresh
+async function loadState(){
+  const result=await loadApplicationState({
+    readStateRecord,
+    saveState,
+    createEmptyState,
+    repairState:repairDomainState,
+    validateState:validateDomainState
+  });
+  LAST_STABLE_STATE=cloneState(result.state);
+  return result.state
 }
 
 /* ===== security.js ===== */

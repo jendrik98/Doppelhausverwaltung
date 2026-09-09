@@ -267,7 +267,14 @@ assert(persistence.includes('TENANCY_STORE = "tenancies"'), "B2 Mietverhältnis-
 assert(persistence.includes('createIndex(index.name, index.keyPath'), "B2 IndexedDB-Indizes fehlen.");
 assert(buildScript.includes('compileModule("src/infrastructure/portfolio-repository.ts", "AppPortfolioRepository")'), "Build bindet AppPortfolioRepository nicht ein.");
 assert(db.includes("}=AppPortfolioRepository;"), "Runtime nutzt das Portfolio-Repository nicht.");
-assert(db.includes("await saveState(migrated);"), "B2 baut die Projektion beim Laden vorhandener Daten nicht auf.");
+assert(
+  db.includes("await saveState(migrated);") ||
+    (db.includes("loadApplicationState") &&
+      db.includes("saveState,") &&
+      db.includes("repairState:repairDomainState") &&
+      db.includes("validateState:validateDomainState")),
+  "B2 baut die Projektion beim Laden vorhandener Daten weder direkt noch über den Application-Lifecycle auf."
+);
 assert(portfolioRepositoryB2.includes("export async function saveState"), "Atomarer Repository-Save fehlt.");
 assert(portfolioRepositoryB2.includes("listUnitsByBuilding"), "Gebäudeisolierte Einheitenabfrage fehlt.");
 assert(portfolioRepositoryB2.includes("listTenanciesByBuilding"), "Gebäudeisolierte Mietverhältnisabfrage fehlt.");

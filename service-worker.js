@@ -1,9 +1,9 @@
-const CACHE="mietverwaltung-v18-prod-hardening-a-1";
+const CACHE="mietverwaltung-v18-application-c-1";
 const CORE=[
   "./",
   "./index.html",
   "./style.css?v=1810p2",
-  "./app.js?v=1802",
+  "./app.js?v=1803",
   "./manifest.webmanifest?v=1810p2",
   "./legal-rules.json",
   "./icon-192.png",
