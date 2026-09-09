@@ -623,6 +623,9 @@ jobs:
               .icon-action{width:44px;min-width:44px;justify-content:center;padding:8px}
               .building-switch>span{display:none}
               .building-switch select{max-width:108px;min-width:0;font-size:12px}
+              .experience-hero{display:grid;grid-template-columns:minmax(0,1fr) 68px;align-items:start}
+              .experience-hero>div:first-child{min-width:0;max-width:100%}
+              .experience-hero .quality-orb{width:68px;min-width:68px;max-width:68px;justify-self:end}
 
               #app .card-head{
                 display:grid;
@@ -682,6 +685,8 @@ jobs:
           @layer accessibility {
             button{min-height:var(--touch)}
             .quality-orb small{display:block;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            #modal .sheet-head{position:relative;z-index:6}
+            #modal .close-action{position:relative;z-index:7;pointer-events:auto}
             :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
             .field-error{color:var(--danger)}
             @media(prefers-reduced-motion:reduce){
@@ -766,6 +771,8 @@ jobs:
           assert(source.includes("nav.main-tabs{\n      top:88px") || source.includes("nav.main-tabs{\n                top:88px"), "Desktop-Hauptnavigation hat nicht die nötige Selektor-Spezifität.");
           assert(source.includes("button{min-height:var(--touch)}"), "Globaler 44px-Touch-Ratchet fehlt.");
           assert(source.includes(".quality-orb small{display:block;max-width:100%;min-width:0;overflow:hidden"), "Datenstatus-Label ist auf iPhone nicht im Qualitätsindikator begrenzt.");
+          assert(source.includes(".experience-hero{display:grid;grid-template-columns:minmax(0,1fr) 68px"), "Mobile Hero-Geometrie ist nicht hart auf die Viewportbreite begrenzt.");
+          assert(source.includes("#modal .close-action{position:relative;z-index:7;pointer-events:auto}"), "Modal-Schließen liegt nicht sicher über Sticky-Formularaktionen.");
           assert(source.includes("#buildingAdminForm>.form-actions"), "Gebäudeformular-Touchvertrag fehlt.");
           assert(source.includes("nav.main-tabs"), "Hauptnavigation fehlt im Design-System.");
           assert(source.includes(".workspace-sidebar"), "Desktop-Workspace-Navigation fehlt.");
@@ -857,6 +864,7 @@ jobs:
             await page.getByRole('button', { name: 'Gebäude hinzufügen' }).click();
             await expectNoHorizontalOverflow(page, 'Gebäudeformular');
             await expectHitAtCenter(page.getByRole('button', { name: 'Gebäude anlegen' }), 'Gebäude anlegen');
+            await expectHitAtCenter(page.getByRole('button', { name: 'Schließen' }), 'Modal Schließen');
 
             await context.close();
           });
