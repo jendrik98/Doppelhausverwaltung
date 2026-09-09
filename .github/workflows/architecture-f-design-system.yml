@@ -681,6 +681,7 @@ jobs:
 
           @layer accessibility {
             button{min-height:var(--touch)}
+            .quality-orb small{display:block;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
             :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
             .field-error{color:var(--danger)}
             @media(prefers-reduced-motion:reduce){
@@ -764,6 +765,7 @@ jobs:
           assert(source.includes("@media(min-width:1100px)"), "Desktop-Arbeitsoberfläche fehlt.");
           assert(source.includes("nav.main-tabs{\n      top:88px") || source.includes("nav.main-tabs{\n                top:88px"), "Desktop-Hauptnavigation hat nicht die nötige Selektor-Spezifität.");
           assert(source.includes("button{min-height:var(--touch)}"), "Globaler 44px-Touch-Ratchet fehlt.");
+          assert(source.includes(".quality-orb small{display:block;max-width:100%;min-width:0;overflow:hidden"), "Datenstatus-Label ist auf iPhone nicht im Qualitätsindikator begrenzt.");
           assert(source.includes("#buildingAdminForm>.form-actions"), "Gebäudeformular-Touchvertrag fehlt.");
           assert(source.includes("nav.main-tabs"), "Hauptnavigation fehlt im Design-System.");
           assert(source.includes(".workspace-sidebar"), "Desktop-Workspace-Navigation fehlt.");
