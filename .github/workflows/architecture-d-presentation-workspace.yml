@@ -50,6 +50,11 @@ jobs:
           test "$(git hash-object scripts/test-pwa-update.mjs)" = "deb025b28f97dff3440105872ff8ebf92d8ddb22"
           test "$(git hash-object tests/deployment.spec.js)" = "2538c8a3816fde028296ea29397c5e1529f7b1db"
           test "$(git hash-object ARCHITECTURE.md)" = "f9a32928e11914957b868ac8d80390a737219ae8"
+          test "$(git hash-object scripts/test-architecture.mjs)" = "ec4836eea64513abdfeb46aeaf5ebb32699e5afd"
+          test "$(git hash-object scripts/test-quality.mjs)" = "7dfb837346e2cee8517030d3825ad2593f5e0607"
+          test "$(git hash-object src/application/queries.ts)" = "1236119cfce261214a7444d342e1d4b52dc12d7f"
+          test "$(git hash-object scripts/test-application-layer.mjs)" = "d4e0d294b284aee36eeb4f711039432b7dcbe6de"
+          test "$(git hash-object tests/helpers.js)" = "0c94f8665f531a6f1643ca7f4497f3545bce4868"
           test ! -e src/presentation
           test ! -e scripts/test-presentation-layer.mjs
           test ! -e tests/presentation-workspace.spec.js
@@ -90,6 +95,117 @@ jobs:
                       f"{path}: erwartete genau 1 Fundstelle, gefunden {count}: {dedented_old[:100]!r}"
                   )
               write(path, text.replace(dedented_old, dedented_new, 1))
+
+          replace_once(
+              "src/application/queries.ts",
+              r'''
+          function billingTarget(year: number): string {
+            return `${year + 1}-03-31`;
+          }
+          ''',
+              r'''
+          function billingTarget(year: number): string {
+            return `${year + 1}-03-31`;
+          }
+
+          function germanDate(value: string): string {
+            const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            return match ? `${match[3]}.${match[2]}.${match[1]}` : String(value || "");
+          }
+
+          function billingPeriodForWorkspace(state: AnyRecord, workspace: BuildingWorkspace, year: number): {
+            active: boolean;
+            start: string;
+            end: string;
+            label: string;
+          } {
+            const startOfYear = `${year}-01-01`;
+            const end = `${year}-12-31`;
+            const primaryBuildingId = String(state?.meta?.primaryBuildingId || "");
+            const buildingTakeover = String(
+              workspace.building?.billingTakeoverDate || workspace.building?.ownershipEffective || ""
+            );
+            const propertyTakeover = workspace.context.buildingId === primaryBuildingId
+              ? String(state?.property?.billingTakeoverDate || state?.property?.ownershipEffective || "")
+              : "";
+            const takeover = buildingTakeover || propertyTakeover;
+            if (takeover && takeover > end) return { active: false, start: startOfYear, end, label: "" };
+            const start = takeover && takeover > startOfYear ? takeover : startOfYear;
+            return {
+              active: true,
+              start,
+              end,
+              label: `${germanDate(start)} – ${germanDate(end)}`
+            };
+          }
+          '''
+          )
+          replace_once(
+              "src/application/queries.ts",
+              r'''
+            const year = Number(today.slice(0, 4));
+            const snapshotYears = new Set(workspace.billingSnapshots.map((item) => Number(item.periodYear)).filter(Number.isFinite));
+            for (let y = year - 3; y <= year; y++) {
+              const end = `${y}-12-31`;
+              if (end >= today || snapshotYears.has(y)) continue;
+              push({
+                id: `billing-${workspace.context.buildingId}-${y}`,
+                title: `Endabrechnung ${y} fertigstellen`,
+                due: billingTarget(y),
+                lead: 30,
+                origin: "billing",
+                periodYear: y,
+                buildingId: workspace.context.buildingId
+              });
+            }
+          ''',
+              r'''
+            const year = Number(today.slice(0, 4));
+            const snapshotYears = new Set(workspace.billingSnapshots.map((item) => Number(item.periodYear)).filter(Number.isFinite));
+            for (let y = year - 3; y <= year; y++) {
+              const period = billingPeriodForWorkspace(state, workspace, y);
+              if (!period.active || period.end >= today || snapshotYears.has(y)) continue;
+              push({
+                id: `billing-${workspace.context.buildingId}-${y}`,
+                title: `Endabrechnung ${period.label} fertigstellen`,
+                due: billingTarget(y),
+                lead: 30,
+                origin: "billing",
+                periodYear: y,
+                buildingId: workspace.context.buildingId
+              });
+            }
+          '''
+          )
+
+          replace_once(
+              "scripts/test-application-layer.mjs",
+              '''
+          const tasksB = app.queryTaskList(state, { buildingId: "building-b" }, "2026-09-09");
+          assert.ok(tasksB.some((item) => item.id === "task-b"));
+          assert.ok(tasksB.some((item) => item.id === "source-source-b-2026-10-02"));
+          assert.equal(tasksB.some((item) => item.id === "task-a"), false);
+          assert.equal(tasksB.some((item) => item.id === "source-source-a-2026-10-01"), false);
+          assert.ok(tasksB.every((item) => item.buildingId === "building-b"));
+          ''',
+              '''
+          const tasksB = app.queryTaskList(state, { buildingId: "building-b" }, "2026-09-09");
+          assert.ok(tasksB.some((item) => item.id === "task-b"));
+          assert.ok(tasksB.some((item) => item.id === "source-source-b-2026-10-02"));
+          assert.equal(tasksB.some((item) => item.id === "task-a"), false);
+          assert.equal(tasksB.some((item) => item.id === "source-source-a-2026-10-01"), false);
+          assert.ok(tasksB.every((item) => item.buildingId === "building-b"));
+
+          const takeoverState = stateFixture();
+          takeoverState.property.billingTakeoverDate = "2025-07-15";
+          takeoverState.buildings.find((item) => item.id === "building-a").billingTakeoverDate = "2025-07-15";
+          const takeoverTasks = app.queryTaskList(takeoverState, { buildingId: "building-a" }, "2026-09-09");
+          const billingTasks = takeoverTasks.filter((item) => item.origin === "billing");
+          assert.deepEqual(billingTasks.map((item) => item.periodYear), [2025], "Jahre vor Übernahme dürfen keine Abrechnungsaufgabe erzeugen");
+          assert.equal(billingTasks[0].title, "Endabrechnung 15.07.2025 – 31.12.2025 fertigstellen");
+          assert.equal(billingTasks[0].due, "2026-03-31");
+          '''
+          )
 
           write("src/presentation/navigation.ts", B(r'''
           export const ROUTE_LABELS = {
@@ -255,6 +371,9 @@ jobs:
                 .filter((item) => recordBelongsToBuilding(item, activeBuildingId, primaryBuildingId))
                 .map((item) => ({ ...clone(item), buildingId: String(item.buildingId || activeBuildingId) }));
             }
+            // Dokumente liegen separat im IndexedDB-Docs-Store. Dieser flüchtige UI-Cache
+            // darf beim Gebäudewechsel keine Titel oder Metadaten eines Fremdgebäudes mitnehmen.
+            projected.documentsCache = [];
 
             projected.meta = {
               ...(projected.meta || {}),
@@ -307,12 +426,13 @@ jobs:
 
             for (const [key, value] of Object.entries(scoped)) {
               if (scopedKeys.has(key)) continue;
-              if (["property", "finance", "portfolios", "buildings"].includes(key)) continue;
+              if (["property", "finance", "portfolios", "buildings", "documentsCache"].includes(key)) continue;
               result[key] = clone(value);
             }
 
             result.portfolios = clone(master.portfolios || []);
             result.buildings = clone(master.buildings || []);
+            result.documentsCache = [];
 
             const scopedBuilding = records(scoped.buildings).find((item) => String(item.id || "") === activeBuildingId) || {};
             const index = records(result.buildings).findIndex((item) => String(item.id || "") === activeBuildingId);
@@ -414,7 +534,8 @@ jobs:
               billingSnapshots: [],
               containers: [],
               water: [],
-              audit: []
+              audit: [],
+              documentsCache: [{ id: "cached-a", buildingId: "building-a", label: "Nur Dokument A" }]
             };
           }
 
@@ -440,6 +561,7 @@ jobs:
           assert.deepEqual(scopedB.units.map((item) => item.id), ["unit-b"]);
           assert.deepEqual(scopedB.leases.map((item) => item.id), ["lease-b"]);
           assert.deepEqual(scopedB.payments.map((item) => item.id), ["payment-b"]);
+          assert.deepEqual(scopedB.documentsCache, [], "Dokumentcache darf nicht gebäudeübergreifend projiziert werden");
 
           scopedB.property.name = "Haus B neu";
           scopedB.finance.repayment = 710;
@@ -454,6 +576,7 @@ jobs:
           assert.equal(merged.payments.find((item) => item.id === "payment-a").amount, 10);
           assert.equal(merged.payments.find((item) => item.id === "payment-b").amount, 20);
           assert.equal(merged.payments.find((item) => item.id === "payment-b-new").buildingId, "building-b");
+          assert.deepEqual(merged.documentsCache, [], "Transienter Dokumentcache darf nicht in den Portfolio-State zurückgeschrieben werden");
 
           const scopedAAfter = presentation.projectStateForBuilding(merged, "building-a");
           const scopedBAfter = presentation.projectStateForBuilding(merged, "building-b");
@@ -515,7 +638,13 @@ jobs:
               audit: []
             };
 
-            await page.evaluate(async (state) => {
+            const documents = [
+              { id: 'doc-a', buildingId: 'building-a', name: 'Dokument A', label: 'Dokument A', type: 'application/pdf', size: 100, created: '2026-09-01T10:00:00.000Z', pages: [], analysis: { status: 'done', acceptedAt: '2026-09-01T10:00:00.000Z', fields: {} } },
+              { id: 'doc-b', buildingId: 'building-b', name: 'Dokument B', label: 'Dokument B', type: 'application/pdf', size: 100, created: '2026-09-01T10:00:00.000Z', pages: [], analysis: { status: 'done', acceptedAt: '2026-09-01T10:00:00.000Z', fields: {} } },
+              { id: 'doc-legacy', name: 'Legacy Dokument', label: 'Legacy Dokument', type: 'application/pdf', size: 100, created: '2026-09-01T10:00:00.000Z', pages: [], analysis: { status: 'done', acceptedAt: '2026-09-01T10:00:00.000Z', fields: {} } }
+            ];
+
+            await page.evaluate(async ({ state, documents }) => {
               localStorage.removeItem('mietverwaltung-active-building-v1');
               const db = await new Promise((resolve, reject) => {
                 const request = indexedDB.open('mietverwaltung-v6', 3);
@@ -523,14 +652,17 @@ jobs:
                 request.onerror = () => reject(request.error);
               });
               await new Promise((resolve, reject) => {
-                const tx = db.transaction(['state'], 'readwrite');
+                const tx = db.transaction(['state', 'docs'], 'readwrite');
                 tx.objectStore('state').put({ id: 'main', data: state });
+                const docs = tx.objectStore('docs');
+                docs.clear();
+                for (const document of documents) docs.put(document);
                 tx.oncomplete = resolve;
                 tx.onerror = () => reject(tx.error);
                 tx.onabort = () => reject(tx.error);
               });
               db.close();
-            }, fixture);
+            }, { state: fixture, documents });
 
             await page.reload();
             await expect(page.locator('#buildingSwitchWrap')).toBeVisible();
@@ -538,7 +670,22 @@ jobs:
             await expect(page.locator('#buildingSelect option')).toHaveCount(2);
             await expect(page.locator('.experience-hero .muted')).toContainText('Haus A');
 
+            await openApp(page, '#data/documents');
+            await expect(page.locator('#workspaceBody')).toContainText('Dokument A');
+            await expect(page.locator('#workspaceBody')).toContainText('Legacy Dokument');
+            await expect(page.locator('#workspaceBody')).not.toContainText('Dokument B');
+            expect(await page.evaluate(async () => (await listDocuments()).map((item) => item.id).sort())).toEqual(['doc-a', 'doc-legacy']);
+
             await page.locator('#buildingSelect').selectOption('building-b');
+            await expect(page.locator('#buildingSelect')).toHaveValue('building-b');
+            await expect(page.locator('#workspaceBody')).toContainText('Dokument B');
+            await expect(page.locator('#workspaceBody')).not.toContainText('Dokument A');
+            await expect(page.locator('#workspaceBody')).not.toContainText('Legacy Dokument');
+            expect(await page.evaluate(async () => (await listDocuments()).map((item) => item.id).sort())).toEqual(['doc-b']);
+            expect(await page.evaluate(async () => getDocument('doc-a'))).toBeNull();
+            expect(await page.evaluate(async () => getDocument('doc-legacy'))).toBeNull();
+
+            await openApp(page, '#home');
             await expect(page.locator('#buildingSelect')).toHaveValue('building-b');
             await expect(page.locator('.experience-hero .muted')).toContainText('Haus B');
             await expect(page.locator('.metric-card').filter({ hasText: 'Kaltmiete' }).locator('strong')).toContainText('800');
@@ -574,6 +721,9 @@ jobs:
             expect(saved.payments.find((item) => item.id === 'payment-a').buildingId).toBe('building-a');
             expect(saved.meta.primaryBuildingId).toBe('building-a');
             expect(saved.property.name).toBe('Haus A');
+            expect(saved.finance.repayment).toBe(900);
+            expect(saved.buildings.find((item) => item.id === 'building-b').name).toBe('Haus B');
+            expect(saved.buildings.find((item) => item.id === 'building-b').finance.repayment).toBe(700);
 
             await page.locator('#buildingSelect').selectOption('building-a');
             await openApp(page, '#home');
@@ -958,7 +1108,7 @@ jobs:
               ('const oldState=cloneState(state),oldDocs=await listDocuments();',
                'const oldState=cloneState(fullPortfolioState()),oldDocs=await listAllDocuments();'),
               ('await replaceDocuments(decoded.documents);state=next;state.meta.restorePoints=[...(oldState.meta?.restorePoints||[]),...(state.meta.restorePoints||[])].slice(0,5);await saveState(state);LAST_STABLE_STATE=cloneState(state);',
-               'await replaceAllDocuments(decoded.documents);next.meta.restorePoints=[...(oldState.meta?.restorePoints||[]),...(next.meta.restorePoints||[])].slice(0,5);await saveState(next);applyRestoredPortfolioState(next);'),
+               'const importRestorePoints=fullPortfolioState().meta?.restorePoints||[];await replaceAllDocuments(decoded.documents);next.meta.restorePoints=[...importRestorePoints,...(next.meta.restorePoints||[])].slice(0,5);await saveState(next);applyRestoredPortfolioState(next);'),
               ('await replaceDocuments(oldDocs);state=oldState;await saveState(oldState);LAST_STABLE_STATE=cloneState(oldState)',
                'await replaceAllDocuments(oldDocs);await saveState(oldState);applyRestoredPortfolioState(oldState)')
           ]
@@ -1032,6 +1182,16 @@ jobs:
               needle + 'const presentation = read("src/presentation/building-workspace.ts");\nconst presentationNavigation = read("src/presentation/navigation.ts");\n',
               1
           )
+          legacy_route_assert = 'assert(appRuntime.includes("const ROUTE_LABELS="), "Routing-Konfiguration fehlt in app-runtime.ts.");'
+          if arch_test.count(legacy_route_assert) != 1:
+              raise SystemExit("scripts/test-architecture.mjs: alter Routing-Vertrag fehlt")
+          arch_test = arch_test.replace(
+              legacy_route_assert,
+              'assert(appRuntime.includes("parseRouteHash,routeHash}=AppPresentation;"), "App-Runtime bindet typisiertes Presentation-Routing nicht ein.");\n'
+              'assert(!appRuntime.includes("const ROUTE_LABELS={"), "Routing-Konfiguration liegt noch doppelt in app-runtime.ts.");',
+              1
+          )
+
           marker = 'assert(buildScript.includes("bundle: true"), "Build bündelt TypeScript-Importe nicht.");'
           if arch_test.count(marker) != 1:
               raise SystemExit("scripts/test-architecture.mjs: Build-Anker fehlt")
@@ -1040,10 +1200,14 @@ jobs:
           assert(presentation.includes("export const PRESENTATION_VERSION = 1"), "Presentation-Version fehlt.");
           assert(presentation.includes("projectStateForBuilding"), "Gebäudeprojektion fehlt in Presentation.");
           assert(presentation.includes("mergeStateFromBuilding"), "Gebäude-Merge fehlt in Presentation.");
+          assert(presentation.includes("projected.documentsCache = []"), "Transienter Dokumentcache wird bei Gebäudeprojektion nicht geleert.");
+          assert(presentation.includes("result.documentsCache = []"), "Transienter Dokumentcache wird beim Portfolio-Merge nicht entfernt.");
           assert(presentationNavigation.includes("parseRouteHash"), "Typisiertes Presentation-Routing fehlt.");
           assert(appRuntime.includes("AppPresentation.createPresentationWorkspace"), "Runtime verwendet den Presentation-Workspace nicht.");
           assert(appRuntime.includes("AppApplication.queryTaskList"), "Runtime verwendet noch nicht die Application-Task-Query.");
           assert(!appRuntime.includes("const out=[],seen=new Set(),today=smartToday(),cy=currentPeriodYear()"), "Doppelte ungescopte taskList liegt noch in der Runtime.");
+          const applicationQueries = read("src/application/queries.ts");
+          assert(applicationQueries.includes("billingPeriodForWorkspace"), "Application-Task-Query bewahrt Übernahmeperioden nicht.");
           ''')
           arch_test = arch_test.replace(marker, arch_asserts + "\n" + marker, 1)
           write("scripts/test-architecture.mjs", arch_test)
@@ -1055,6 +1219,8 @@ jobs:
           `src/presentation/` bildet die neue Präsentationsgrenze zwischen Application-Schicht und Browser-UI.
           Routing und Mehrgebäude-Workspace werden strikt typisiert aufgebaut. Die Browser-Runtime verwendet
           für Aufgaben die gebäudeisolierte Application-Query statt einer zweiten, ungescopten Implementierung.
+          Dabei bleiben Übernahmeperioden erhalten: Jahre vor der Verwaltungsübernahme erzeugen keine falschen
+          Abrechnungsaufgaben, und die erste Teilperiode wird mit ihrem tatsächlichen Zeitraum bezeichnet.
 
           Für die UI wird der vollständige Portfolio-State nicht mehr direkt als Arbeitszustand verwendet.
           Stattdessen projiziert die Presentation-Schicht genau das aktive Gebäude in den bestehenden
@@ -1067,7 +1233,9 @@ jobs:
           Präsentationspräferenz und verändert `meta.primaryBuildingId` des Domainmodells nicht. Das bestehende
           `property`-Objekt bleibt im vollständigen Persistenz-State die Kompatibilitätsprojektion des
           Primärgebäudes. Vollbackups und Restore-Points enthalten weiterhin das komplette Portfolio und alle
-          Dokumente, nicht nur das gerade sichtbare Gebäude.
+          Dokumente, nicht nur das gerade sichtbare Gebäude. Der flüchtige `documentsCache` wird beim
+          Gebäudewechsel und Portfolio-Merge bewusst geleert; Dokument-Metadaten werden ausschließlich über den
+          gebäudegefilterten IndexedDB-Dokumentpfad neu geladen.
 
           Schritt D ändert weder App-Version (`18.0.0`) noch State-Schema (`15`) oder IndexedDB-Version (`3`).
           Der PWA-Asset-Key wird auf `app.js?v=1804`, `style.css?v=1810p3` und
@@ -1085,18 +1253,45 @@ jobs:
         run: npm run build
 
       - name: TypeScript prüfen
+        id: typecheck
+        continue-on-error: true
         run: npm run typecheck
 
       - name: Validierung prüfen
+        id: validation
+        continue-on-error: true
         run: npm run test:validation
 
       - name: Architektur einschließlich D prüfen
-        run: npm run test:architecture
+        id: architecture
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          failed=0
+          run_check() {
+            echo "::group::$1"
+            shift
+            "$@"
+            status=$?
+            echo "::endgroup::"
+            if [ "$status" -ne 0 ]; then failed=1; fi
+          }
+          run_check "Architekturvertrag" node scripts/test-architecture.mjs
+          run_check "Portfolio-Modell" npm run test:portfolio
+          run_check "Repository" npm run test:repository
+          run_check "Application" npm run test:application
+          run_check "Presentation" npm run test:presentation
+          exit "$failed"
 
       - name: Quality-Ratchet prüfen
+        id: quality
+        continue-on-error: true
         run: npm run test:quality
 
       - name: PWA-Vertrag prüfen
+        id: pwa
+        continue-on-error: true
         run: npm run test:pwa
 
       - name: Chromium installieren
@@ -1116,13 +1311,67 @@ jobs:
           exit 1
 
       - name: Vollständige lokale Browser-E2E-Suite
+        id: e2e
+        continue-on-error: true
         run: npm run test:e2e
+
+      - name: D-Prüfmatrix auswerten
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          check() {
+            local name="$1" outcome="$2"
+            if [ "$outcome" = "success" ]; then
+              echo "✓ $name"
+            else
+              echo "✗ $name: $outcome"
+              failed=1
+            fi
+          }
+          check "TypeScript" "${{ steps.typecheck.outcome }}"
+          check "Validation" "${{ steps.validation.outcome }}"
+          check "Architecture" "${{ steps.architecture.outcome }}"
+          check "Quality" "${{ steps.quality.outcome }}"
+          check "PWA" "${{ steps.pwa.outcome }}"
+          check "E2E" "${{ steps.e2e.outcome }}"
+          test "$failed" -eq 0
 
       - name: D-Änderungsumfang verifizieren
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
+
+          cat > /tmp/d-expected-files.txt <<'EOF'
+          ARCHITECTURE.md
+          app.js
+          index.html
+          package.json
+          scripts/build-app.mjs
+          scripts/test-application-layer.mjs
+          scripts/test-architecture.mjs
+          scripts/test-presentation-layer.mjs
+          scripts/test-pwa-update.mjs
+          service-worker.js
+          src/application/queries.ts
+          src/core/traceability.ts
+          src/presentation/building-workspace.ts
+          src/presentation/index.ts
+          src/presentation/navigation.ts
+          src/runtime/040-traceability.js
+          src/runtime/110-db.js
+          src/runtime/130-backup.js
+          src/ui/app-runtime.ts
+          style.css
+          tests/deployment.spec.js
+          tests/presentation-workspace.spec.js
+          EOF
+          git diff --name-only HEAD | sort > /tmp/d-actual-files.txt
+          sort -o /tmp/d-expected-files.txt /tmp/d-expected-files.txt
+          diff -u /tmp/d-expected-files.txt /tmp/d-actual-files.txt
+
           test -e src/presentation/index.ts
           test -e src/presentation/navigation.ts
           test -e src/presentation/building-workspace.ts
@@ -1132,6 +1381,9 @@ jobs:
           grep -q 'style.css?v=1810p3' index.html
           grep -q 'mietverwaltung-v18-presentation-d-1' service-worker.js
           grep -q 'compiled src/presentation/index.ts' app.js
+          grep -q 'billingPeriodForWorkspace' src/application/queries.ts
+          grep -q 'projected.documentsCache = \[\]' src/presentation/building-workspace.ts
+          grep -q 'parseRouteHash,routeHash}=AppPresentation' src/ui/app-runtime.ts
 
           test -z "$(git diff --name-only HEAD -- .github/workflows/ci.yml .github/workflows/e2e-live.yml)"
           echo "D-Änderungen:"
@@ -1152,9 +1404,11 @@ jobs:
             service-worker.js \
             package.json \
             scripts/build-app.mjs \
+            scripts/test-application-layer.mjs \
             scripts/test-architecture.mjs \
             scripts/test-presentation-layer.mjs \
             scripts/test-pwa-update.mjs \
+            src/application/queries.ts \
             src/presentation/index.ts \
             src/presentation/navigation.ts \
             src/presentation/building-workspace.ts \
