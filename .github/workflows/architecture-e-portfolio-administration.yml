@@ -430,7 +430,7 @@ jobs:
               ${formField({ name: "predecessorBillingEnd", label: "Voreigentümer rechnet bis", type: "date", value: existing?.predecessorBillingEnd || "" })}
               ${formField({ name: "repayment", label: "Hausrate € / Monat", type: "number", step: "0.01", min: 0, value: finance.repayment ?? 0 })}
               ${formField({ name: "fixed", label: "Feste Hauskosten € / Monat", type: "number", step: "0.01", min: 0, value: finance.fixed ?? 0 })}
-              <div class="full"><button class="primary">${existing ? "Gebäude speichern" : "Gebäude anlegen"}</button></div>
+              <div class="full form-actions"><button class="primary">${existing ? "Gebäude speichern" : "Gebäude anlegen"}</button></div>
             </form>`, () => {
               const form = element<HTMLFormElement>("buildingAdminForm");
               if (!form) return;
@@ -756,23 +756,26 @@ jobs:
           touch_css = B(r'''
 
           /* ===== Architecture E: mobile touch safety ===== */
-          main{position:relative;z-index:0}
-          .main-tabs{z-index:90}
+          body{isolation:isolate}
+          main{position:relative;z-index:0;padding-bottom:calc(128px + env(safe-area-inset-bottom))!important}
+          .main-tabs{position:fixed!important;z-index:900!important;pointer-events:auto!important;isolation:isolate}
+          .main-tabs button{position:relative;z-index:1;pointer-events:auto!important}
+          .overlay{z-index:1000!important}
           #buildingAdminForm{align-items:start;grid-auto-rows:max-content;isolation:isolate}
-          #buildingAdminForm>label,#buildingAdminForm>.full{position:relative;z-index:0}
-          #buildingAdminForm>.full:last-child{z-index:5;margin-top:4px}
-          #buildingAdminForm>.full:last-child>.primary{position:relative;z-index:6;width:100%}
+          #buildingAdminForm>label{position:relative;z-index:0}
+          #buildingAdminForm>.form-actions{position:sticky;bottom:-18px;z-index:20;margin-top:4px;padding-top:22px}
+          #buildingAdminForm>.form-actions>.primary{position:relative;z-index:1;width:100%}
           ''')
           if 'Architecture E: mobile touch safety' in style:
               raise SystemExit('style.css enthält E Touch-Safety bereits')
           write('style.css', style.rstrip() + '\n' + touch_css)
 
-          replace_once('index.html', 'style.css?v=1810p3', 'style.css?v=1810p4')
-          replace_once('service-worker.js', './style.css?v=1810p3', './style.css?v=1810p4')
+          replace_once('index.html', 'style.css?v=1810p3', 'style.css?v=1810p5')
+          replace_once('service-worker.js', './style.css?v=1810p3', './style.css?v=1810p5')
           deployment = read('tests/deployment.spec.js')
           if deployment.count('style.css?v=1810p3') != 3:
               raise SystemExit(f"tests/deployment.spec.js: erwartete 3 alte Style-Keys, gefunden {deployment.count('style.css?v=1810p3')}")
-          write('tests/deployment.spec.js', deployment.replace('style.css?v=1810p3', 'style.css?v=1810p4'))
+          write('tests/deployment.spec.js', deployment.replace('style.css?v=1810p3', 'style.css?v=1810p5'))
 
           replace_once('index.html', 'app.js?v=1804', 'app.js?v=1805')
           replace_once('service-worker.js', 'mietverwaltung-v18-presentation-d-1', 'mietverwaltung-v18-portfolio-admin-e-1')
@@ -819,7 +822,7 @@ jobs:
 
           Schritt E ändert weder App-Version (`18.0.0`) noch State-Schema (`15`), IndexedDB-Name/-Version
           (`mietverwaltung-v6`, Version `3`) oder Backupformate. Der PWA-Asset-Key steigt auf `app.js?v=1805`,
-          der Stylesheet-Key auf `style.css?v=1810p4` und der Production-Cache auf `mietverwaltung-v18-portfolio-admin-e-1`.
+          der Stylesheet-Key auf `style.css?v=1810p5` und der Production-Cache auf `mietverwaltung-v18-portfolio-admin-e-1`.
           ''')
           write('ARCHITECTURE.md', arch)
 
@@ -965,8 +968,10 @@ jobs:
           test -e scripts/test-portfolio-administration.mjs
           test -e tests/portfolio-administration.spec.js
           grep -q 'app.js?v=1805' index.html
-          grep -q 'style.css?v=1810p4' index.html
+          grep -q 'style.css?v=1810p5' index.html
           grep -q 'Architecture E: mobile touch safety' style.css
+          grep -q 'z-index:900!important' style.css
+          grep -q 'full form-actions' src/ui/building-workspace-ui.ts
           grep -q 'mietverwaltung-v18-portfolio-admin-e-1' service-worker.js
           grep -q 'AppBuildingWorkspaceUi.renderBuildingSwitcher()' src/ui/app-runtime.ts
           grep -q 'createBuildingInPortfolio' src/application/portfolio-admin.ts
