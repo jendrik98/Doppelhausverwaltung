@@ -756,28 +756,29 @@ jobs:
           touch_css = B(r'''
 
           /* ===== Architecture E: mobile touch safety ===== */
-          body{padding-bottom:calc(92px + env(safe-area-inset-bottom))!important}
-          #app{padding-bottom:44px!important}
-          nav.main-tabs{position:fixed!important;left:0!important;right:0!important;bottom:0!important;margin-inline:auto!important;transform:none!important;width:min(680px,100%)!important;z-index:500!important;pointer-events:auto!important}
-          nav.main-tabs button{position:relative!important;pointer-events:auto!important}
-          .overlay{z-index:1000!important}
+          body{padding-bottom:calc(100px + env(safe-area-inset-bottom))!important}
+          #app{padding-bottom:72px!important}
+          nav.main-tabs{position:fixed!important;left:0!important;right:0!important;bottom:0!important;margin-inline:auto!important;transform:none!important;width:min(680px,100%)!important;z-index:2147483000!important;pointer-events:auto!important;isolation:isolate!important;contain:layout paint style!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;opacity:1!important;background:var(--surface,#fff)!important}
+          nav.main-tabs::before{content:"";position:absolute;inset:0;z-index:0;background:var(--surface,#fff);pointer-events:auto}
+          nav.main-tabs button{position:relative!important;z-index:1!important;pointer-events:auto!important}
+          .overlay{z-index:2147483100!important}
           #modal .sheet{position:relative;z-index:0}
           #modal .close-action{position:relative;z-index:2}
-          #buildingAdminForm{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:13px!important}
-          #buildingAdminForm>label{display:flex!important;width:100%!important;position:static!important}
-          #buildingAdminForm>.form-actions{position:static!important;bottom:auto!important;z-index:auto!important;width:100%!important;margin-top:8px;padding:0!important;background:transparent!important}
-          #buildingAdminForm>.form-actions>.primary{position:static!important;width:100%}
+          #buildingAdminForm{display:block!important;width:100%!important}
+          #buildingAdminForm>label{display:flex!important;width:100%!important;min-height:66px!important;margin:0 0 14px!important;position:relative!important;z-index:1!important;transform:none!important}
+          #buildingAdminForm>.form-actions{display:block!important;position:relative!important;bottom:auto!important;z-index:30!important;width:100%!important;min-height:64px!important;margin:24px 0 0!important;padding:10px 0 0!important;background:var(--surface,#fff)!important;transform:none!important}
+          #buildingAdminForm>.form-actions>.primary{display:block!important;position:relative!important;z-index:31!important;width:100%!important;min-height:48px!important}
           ''')
           if 'Architecture E: mobile touch safety' in style:
               raise SystemExit('style.css enthält E Touch-Safety bereits')
           write('style.css', style.rstrip() + '\n' + touch_css)
 
-          replace_once('index.html', 'style.css?v=1810p3', 'style.css?v=1810p7')
-          replace_once('service-worker.js', './style.css?v=1810p3', './style.css?v=1810p7')
+          replace_once('index.html', 'style.css?v=1810p3', 'style.css?v=1810p8')
+          replace_once('service-worker.js', './style.css?v=1810p3', './style.css?v=1810p8')
           deployment = read('tests/deployment.spec.js')
           if deployment.count('style.css?v=1810p3') != 3:
               raise SystemExit(f"tests/deployment.spec.js: erwartete 3 alte Style-Keys, gefunden {deployment.count('style.css?v=1810p3')}")
-          write('tests/deployment.spec.js', deployment.replace('style.css?v=1810p3', 'style.css?v=1810p7'))
+          write('tests/deployment.spec.js', deployment.replace('style.css?v=1810p3', 'style.css?v=1810p8'))
 
           replace_once('index.html', 'app.js?v=1804', 'app.js?v=1805')
           replace_once('service-worker.js', 'mietverwaltung-v18-presentation-d-1', 'mietverwaltung-v18-portfolio-admin-e-1')
@@ -824,7 +825,7 @@ jobs:
 
           Schritt E ändert weder App-Version (`18.0.0`) noch State-Schema (`15`), IndexedDB-Name/-Version
           (`mietverwaltung-v6`, Version `3`) oder Backupformate. Der PWA-Asset-Key steigt auf `app.js?v=1805`,
-          der Stylesheet-Key auf `style.css?v=1810p7` und der Production-Cache auf `mietverwaltung-v18-portfolio-admin-e-1`.
+          der Stylesheet-Key auf `style.css?v=1810p8` und der Production-Cache auf `mietverwaltung-v18-portfolio-admin-e-1`.
           ''')
           write('ARCHITECTURE.md', arch)
 
@@ -902,6 +903,55 @@ jobs:
           cat /tmp/e-server.log
           exit 1
 
+      - name: Mobile Touch-Hit-Test vor E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { chromium } = require('@playwright/test');
+
+          (async () => {
+          const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:4173/';
+          const browser = await chromium.launch();
+          const context = await browser.newContext({
+            viewport: { width: 390, height: 844 },
+            isMobile: true,
+            hasTouch: true,
+            locale: 'de-DE',
+            timezoneId: 'Europe/Berlin',
+            userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1'
+          });
+          const page = await context.newPage();
+          await page.goto(`${baseURL}#data/overview`, { waitUntil: 'domcontentloaded' });
+          await page.locator('#app').waitFor({ state: 'visible' });
+
+          async function assertHit(locator, label) {
+            await locator.scrollIntoViewIfNeeded();
+            const result = await locator.evaluate((el) => {
+              const rect = el.getBoundingClientRect();
+              const x = rect.left + rect.width / 2;
+              const y = rect.top + rect.height / 2;
+              const hit = document.elementFromPoint(x, y);
+              return {
+                rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+                hit: hit ? `${hit.tagName.toLowerCase()}#${hit.id || ''}.${String(hit.className || '')}` : null,
+                ok: Boolean(hit && (hit === el || el.contains(hit)))
+              };
+            });
+            console.log(`${label}:`, JSON.stringify(result));
+            if (!result.ok) throw new Error(`${label} ist am Mittelpunkt nicht direkt antippbar: ${result.hit}`);
+          }
+
+          await assertHit(page.getByRole('button', { name: 'Finanzen', exact: true }), 'Bottom-Navigation Finanzen');
+          await page.getByRole('button', { name: 'Gebäude verwalten' }).click();
+          await page.getByRole('button', { name: 'Gebäude hinzufügen' }).click();
+          await assertHit(page.getByRole('button', { name: 'Gebäude anlegen' }), 'Gebäude anlegen');
+
+          await browser.close();
+          console.log('Mobile Touch-Hit-Test bestanden.');
+          })().catch((error) => { console.error(error); process.exit(1); });
+          NODE
+
       - name: Vollständige lokale Browser-E2E-Suite
         id: e2e
         continue-on-error: true
@@ -970,11 +1020,13 @@ jobs:
           test -e scripts/test-portfolio-administration.mjs
           test -e tests/portfolio-administration.spec.js
           grep -q 'app.js?v=1805' index.html
-          grep -q 'style.css?v=1810p7' index.html
+          grep -q 'style.css?v=1810p8' index.html
           grep -q 'Architecture E: mobile touch safety' style.css
           grep -q 'transform:none!important' style.css
           grep -q 'left:0!important;right:0!important' style.css
-          grep -q 'display:flex!important;flex-direction:column!important' style.css
+          grep -q 'contain:layout paint style!important' style.css
+          grep -q '#buildingAdminForm{display:block!important' style.css
+          grep -q 'z-index:30!important' style.css
           grep -q 'full form-actions' src/ui/building-workspace-ui.ts
           grep -q 'mietverwaltung-v18-portfolio-admin-e-1' service-worker.js
           grep -q 'AppBuildingWorkspaceUi.renderBuildingSwitcher()' src/ui/app-runtime.ts
