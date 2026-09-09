@@ -5,6 +5,8 @@ on:
   push:
     branches: [ main ]
     paths:
+      - 'src/**'
+      - 'scripts/**'
       - 'index.html'
       - 'style.css'
       - 'app.js'
@@ -14,6 +16,9 @@ on:
       - 'tests/**'
       - 'playwright.config.js'
       - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - '.github/workflows/ci.yml'
       - '.github/workflows/e2e-live.yml'
 
 permissions:
@@ -29,49 +34,57 @@ jobs:
     timeout-minutes: 25
     env:
       E2E_BASE_URL: https://jendrik98.github.io/Doppelhausverwaltung/
-      EXPECTED_APP_VERSION: '18.0.0'
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v4
-
       - name: Node einrichten
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
+          cache: npm
       - name: E2E-Abhängigkeiten installieren
-        run: npm install
-
+        run: npm ci
       - name: Chromium installieren
         run: npx playwright install --with-deps chromium
-
       - name: PDF-Prüfwerkzeuge installieren
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils
           pdfinfo -v
           pdftotext -v
-
-      - name: Auf aktuelles Live-Deployment warten
+      - name: Auf exaktes Live-Deployment warten
         shell: bash
         run: |
-          set -e
-          echo "Warte auf ${E2E_BASE_URL}app.js?v=1800 …"
+          set -euo pipefail
+          EXPECTED_SHA="$(sha256sum app.js | awk '{print $1}')"
+          echo "Erwarte app.js SHA-256 ${EXPECTED_SHA} von Commit ${GITHUB_SHA}."
           for i in {1..60}; do
-            BODY="$(curl -fsSL --max-time 15 "${E2E_BASE_URL}app.js?v=1800" || true)"
-            if grep -Fq "APP_VERSION=\"${EXPECTED_APP_VERSION}\"" <<<"$BODY"; then
-              echo "Live-Version ${EXPECTED_APP_VERSION} ist verfügbar."
-              exit 0
+            TMP="$(mktemp)"
+            if curl -fsSL --max-time 15 "${E2E_BASE_URL}app.js?deploy=${GITHUB_SHA}-${i}" -o "$TMP"; then
+              LIVE_SHA="$(sha256sum "$TMP" | awk '{print $1}')"
+              rm -f "$TMP"
+              if [ "$LIVE_SHA" = "$EXPECTED_SHA" ]; then
+                echo "Exaktes Live-Deployment ist verfügbar."
+                exit 0
+              fi
+              echo "Noch nicht aktuell ($i/60): live=${LIVE_SHA}, erwartet=${EXPECTED_SHA}"
+            else
+              rm -f "$TMP"
+              echo "Live-Datei noch nicht abrufbar ($i/60)."
             fi
-            echo "Noch nicht aktuell ($i/60), neuer Versuch in 10 s …"
             sleep 10
           done
-          echo "Die erwartete Live-Version wurde innerhalb von 10 Minuten nicht gefunden."
+          echo "Das exakte app.js dieses Commits wurde innerhalb von 10 Minuten nicht gefunden."
           exit 1
-
+      - name: Preflight-Verträge prüfen
+        run: |
+          npm run typecheck
+          npm run test:validation
+          npm run test:architecture
+          npm run test:quality
+          npm run test:pwa
       - name: Echter Browser-E2E-Test
-        run: npx playwright test
-
+        run: npm run test:e2e
       - name: Playwright-Bericht sichern
         if: always()
         uses: actions/upload-artifact@v4

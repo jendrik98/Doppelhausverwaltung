@@ -1,0 +1,98 @@
+name: CI – Build & Quality
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'index.html'
+      - 'style.css'
+      - 'app.js'
+      - 'service-worker.js'
+      - 'manifest.webmanifest'
+      - 'legal-rules.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'playwright.config.js'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/e2e-live.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Reproduzierbaren Build prüfen
+        run: |
+          npm run build
+          git diff --exit-code -- app.js
+      - run: npm run typecheck
+      - run: npm run test:validation
+      - run: npm run test:architecture
+      - run: npm run test:quality
+      - run: npm run test:pwa
+      - name: JavaScript-Syntax prüfen
+        run: |
+          node --check app.js
+          node --check service-worker.js
+          node --check scripts/build-app.mjs
+          node --check scripts/test-architecture.mjs
+          node --check scripts/test-quality.mjs
+          node --check scripts/test-pwa-update.mjs
+
+  e2e-local:
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      E2E_BASE_URL: http://127.0.0.1:4173/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: PDF-Prüfwerkzeuge installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+      - name: Lokalen Server starten
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 > /tmp/mietverwaltung-http.log 2>&1 &
+          echo $! > /tmp/mietverwaltung-http.pid
+          for i in {1..30}; do curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0; sleep 1; done
+          cat /tmp/mietverwaltung-http.log
+          exit 1
+      - name: Vollständige lokale E2E-Suite
+        run: npm run test:e2e
+      - name: Playwright-Bericht sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
