@@ -1,0 +1,20 @@
+{
+  "architectureVersion": 2,
+  "files": [
+    "src/runtime/000-runtime-preamble.js",
+    "src/runtime/010-schema.js",
+    "src/runtime/020-domain.js",
+    "src/runtime/030-integrity.js",
+    "src/runtime/040-traceability.js",
+    "src/runtime/050-intelligence.js",
+    "src/runtime/060-quality.js",
+    "src/runtime/070-smart-engine.js",
+    "src/runtime/080-v18-billing-assistant-preview.js",
+    "src/runtime/090-legal-rules.js",
+    "src/runtime/100-domain-2.js",
+    "src/runtime/110-db.js",
+    "src/runtime/120-security.js",
+    "src/runtime/130-backup.js",
+    "src/runtime/900-app-entry.js"
+  ]
+}

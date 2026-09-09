@@ -13,7 +13,7 @@ Geplante Struktur:
 - `src/domain/` – Haus, Mietverhältnis, Wasser, Finanzen, Abrechnung
 - `src/ui/` – Router, Dialoge, Komponenten und Ansichten
 - `src/io/` – Backup, PDF, OCR, Import/Export
-- `src/legacy/` – nur die noch nicht migrierten Teile des bisherigen, bereits getesteten Codes
+- `src/runtime/` – schmale Laufzeitbrücken, Live-Bindungen und der äußere Browser-Entry
 - `scripts/` – Build- und Qualitätswerkzeuge
 
 ## Wichtiger Migrationsgrundsatz
@@ -176,3 +176,34 @@ Routing, Ansichten, Fachlogik, Datenbank `mietverwaltung-v6`, DB-Version `2`, St
 WebAuthn, Backup-Schemata, Rechtsstand `2026-09-05`, `DOMAIN_VERSION=1` und App-Version `18.0.0`
 bleiben unverändert. Die fehlgeschlagenen Phase-9-V1/V2-Workflows und der Phase-8-Migrationsworkflow
 werden erst mit dem erfolgreichen Phase-9-V6-Commit entfernt.
+
+
+## Phase 10: Abschlussmigration
+
+`src/legacy/` ist vollständig entfernt. Die kleinen, bewusst globalen Kompatibilitätsbindungen liegen
+nun unter `src/runtime/`; dazu gehören insbesondere `LAST_STABLE_STATE`, `ACTIVE_LEGAL_PACK`,
+`DOMAIN_VERSION`, die Service-Worker-Frühregistrierung und die bisherigen Funktionsaliasse zu den
+TypeScript-Modulen. Diese Bindungen werden nicht künstlich in Objektkopien umgewandelt, damit ihre
+bestehende Live-Semantik erhalten bleibt.
+
+Die bislang gekoppelte Restlaufzeit aus `140-tests.js`, `150-ui.js` und dem eigentlichen App-/Ansichts-
+bereich `160-app.js` liegt nun gemeinsam in `src/ui/app-runtime.ts`. Der Build injiziert diese
+TypeScript-Quelle direkt vor `src/runtime/900-app-entry.js` in den bereits bestehenden äußeren
+Browser-Runtime-Scope. Es wird bewusst keine zusätzliche `AppRuntime.start()`-Closure eingeführt.
+Damit bleiben Selbsttests, Dialogzustand, Rückkehrfokus, Routing, Ansichten, App-Start und freie
+Live-Bindungen auf exakt derselben lexikalischen Ebene wie im bestätigten Phase-9-Build. Der äußere
+Browser-Fehlerrahmen und das PWA-Hardening bleiben im kleinen Entry `src/runtime/900-app-entry.js`.
+
+Die Migration ist strukturell und semantikerhaltend. `app-runtime.ts` ist deshalb – ebenso wie die
+bereits in Phase 8 migrierten stark dynamischen Assistenzmodule – zunächst mit `@ts-nocheck`
+markiert. Das ist keine Behauptung vollständiger statischer Typisierung; die Verhaltenssicherheit
+wird weiterhin durch Build, Architektur-/Validierungstests und das strenge Browser-Gate mit exakt
+25/25 Tests abgesichert. Eine spätere Typing-Härtung kann gezielt erfolgen, ohne erneut die
+Laufzeitarchitektur zu verändern.
+
+Fachregeln, Rechtsstand, Daten und Formate bleiben unverändert: Datenbank `mietverwaltung-v6`,
+DB-Version `2`, State-Schlüssel `main`, WebAuthn-Schlüssel `mietverwaltung_webauthn`,
+Backup-Schemata `mietverwaltung-full-backup-v2` und `mietverwaltung-encrypted-v1`, Rechtsstand
+`2026-09-05`, `DOMAIN_VERSION=1` und App-Version `18.0.0`. Der Phase-9-V6-Workflow und die einmaligen
+Phase-10-V1/V2/V3/V4/V5-Workflows werden erst im vollständig getesteten Abschlusscommit entfernt; der dauerhafte
+Live-E2E-Workflow bleibt bestehen.

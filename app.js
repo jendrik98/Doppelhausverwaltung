@@ -3753,6 +3753,10 @@ async function createFullBackup(state,password){
 
 const {encodeBlobForBackup,decodeFullBackup}=AppBackupCodec;
 
+
+/* ===== TypeScript source src/ui/app-runtime.ts · outer-scope injection ===== */
+// @ts-nocheck -- Phase 10 V3: semantikerhaltende Abschlussmigration im bisherigen äußeren Browser-Runtime-Scope.
+/* Diese Datei bleibt TypeScript-Quelle, wird aber ohne zusätzliche Funktions-Closure an der bisherigen Laufzeitposition injiziert. */
 /* ===== tests.js ===== */
 
 function assert(name,cond){return{name,ok:!!cond}}
@@ -3783,7 +3787,7 @@ function runSelfTests(){
   const rentState={leases:[{id:"l1",start:"2025-01-01",end:"",rent:500,advance:150,tenantName:"Testperson"}],payments:[{date:smartMonthKey()+"-05",direction:"income",amount:650,label:"Miete Testperson"}]};results.push(assert("Mietmonitor erkennt Vollzahlung",rentMonthStatus(rentState).status==="paid"));
   results.push(assert("Smart-Klassifikation Niederschlagswasser",smartClassifyCostText("Niederschlagswasser 44,94 EUR").category==="rainwater"));results.push(assert("Navigation fünf Hauptbereiche",new Set(Object.keys(ROUTE_LABELS)).size===5));results.push(assert("Mietvertrag unter Vermietung",CHECK_INPUT_MAP["Mietvertrag fehlt"]?.route==="rental"));results.push(assert("Detailseiten besitzen Elternbereiche",visibleSub("data","positions")==="costs"&&visibleSub("owner","reconciliation")==="payments"));results.push(assert("Nur zentraler Abrechnungsweg",typeof sourceToEvents==="undefined"&&typeof allocateEvent==="undefined"&&typeof workflowView==="undefined"));
   results.push(assert("Konfidenz verständlich gestuft",confidenceBand(92).id==="high"&&confidenceBand(60).id==="medium"&&confidenceBand(30).id==="low"));results.push(assert("Datenqualität sprachlich gestuft",qualityBand(91).label==="Sehr gut"&&qualityBand(50).label==="Unvollständig"));results.push(assert("Entscheidungs-UX aktiv",DECISION_UI_VERSION===1));
-  
+
   results.push(assert("Fristberechnung nutzt ISO-Datum",periodDeadlineISO(2025)==="2027-03-31"&&periodDeadline(2025)==="31.03.2027"));
   results.push(assert("Zuordnung wird menschenlesbar",assignmentLabel("house")==="gesamtes Haus"&&agreementLabel("area")==="Wohnfläche"));
   results.push(assert("Konfidenz 0–1 wird korrekt normalisiert",confidencePercent(.82)===82));
@@ -3792,7 +3796,6 @@ function runSelfTests(){
   results.push(assert("Meter-Crop besitzt Tipp-Alternative",typeof adjustMeterCrop==="function"));
 return results
 }
-
 
 /* ===== ui.js ===== */
 /* Phase 9 runtime bridge: zustandslose UI-Helfer in src/ui/ui-core.ts. */
@@ -3833,6 +3836,7 @@ function modal(title,html,onReady){
   const candidates=focusableIn($("modal")).filter(x=>x.id!=="modalClose");
   setTimeout(()=>candidates[0]?.focus?.(),30)
 }
+
 /* ===== app.js ===== */
 
 
@@ -5414,6 +5418,8 @@ async function startApp(){
   render();try{await updateBadge()}catch(e){console.warn("Badge übersprungen:",e)}
 }
 startApp();
+
+/* ===== app-entry.js · Phase 10 V3 ===== */
 
 }catch(error){
   console.error("Mietverwaltung Startfehler:",error);

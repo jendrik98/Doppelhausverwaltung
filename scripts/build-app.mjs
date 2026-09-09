@@ -3,11 +3,11 @@ import path from "node:path";
 import { build } from "esbuild";
 
 const root = process.cwd();
-const manifestPath = path.join(root, "src", "legacy", "order.json");
+const manifestPath = path.join(root, "src", "runtime", "order.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 
 if (!Array.isArray(manifest.files) || manifest.files.length < 2) {
-  throw new Error("src/legacy/order.json enthält keine plausible Build-Reihenfolge.");
+  throw new Error("src/runtime/order.json enthält keine plausible Build-Reihenfolge.");
 }
 
 async function compileModule(relativePath, globalName) {
@@ -59,6 +59,14 @@ const typedRuntime = (
   ])
 ).join("");
 
+const appRuntimePath = path.join(root, "src", "ui", "app-runtime.ts");
+const appRuntimeSource = fs.readFileSync(appRuntimePath, "utf8");
+const appRuntimeEndMarker = "\nexport {};\n";
+if (!appRuntimeSource.endsWith(appRuntimeEndMarker)) {
+  throw new Error("src/ui/app-runtime.ts muss exakt mit export {}; enden.");
+}
+const lateAppRuntime = `\n/* ===== TypeScript source src/ui/app-runtime.ts · outer-scope injection ===== */\n${appRuntimeSource.slice(0, -appRuntimeEndMarker.length)}\n`;
+
 let output = "";
 for (let i = 0; i < manifest.files.length; i++) {
   const relativePath = manifest.files[i];
@@ -68,11 +76,12 @@ for (let i = 0; i < manifest.files.length; i++) {
     throw new Error(`Build-Quelle fehlt: ${relativePath}`);
   }
 
+  if (relativePath === "src/runtime/900-app-entry.js") output += lateAppRuntime;
   output += fs.readFileSync(absolute, "utf8");
   if (i === 0) output += typedRuntime;
 }
 
 fs.writeFileSync(path.join(root, "app.js"), output, "utf8");
 console.log(
-  `app.js aus ${manifest.files.length} Legacy-Quellbereichen + gebündelten TypeScript-Modulen erzeugt (${output.length} Zeichen).`
+  `app.js aus ${manifest.files.length} Runtime-Quellbereichen + gebündelten TypeScript-Modulen erzeugt (${output.length} Zeichen).`
 );
