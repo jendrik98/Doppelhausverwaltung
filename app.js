@@ -1154,6 +1154,28 @@ var AppApplication = (() => {
   function billingTarget(year) {
     return `${year + 1}-03-31`;
   }
+  function germanDate(value) {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return match ? `${match[3]}.${match[2]}.${match[1]}` : String(value || "");
+  }
+  function billingPeriodForWorkspace(state, workspace, year) {
+    const startOfYear = `${year}-01-01`;
+    const end = `${year}-12-31`;
+    const primaryBuildingId = String(state?.meta?.primaryBuildingId || "");
+    const buildingTakeover = String(
+      workspace.building?.billingTakeoverDate || workspace.building?.ownershipEffective || ""
+    );
+    const propertyTakeover = workspace.context.buildingId === primaryBuildingId ? String(state?.property?.billingTakeoverDate || state?.property?.ownershipEffective || "") : "";
+    const takeover = buildingTakeover || propertyTakeover;
+    if (takeover && takeover > end) return { active: false, start: startOfYear, end, label: "" };
+    const start = takeover && takeover > startOfYear ? takeover : startOfYear;
+    return {
+      active: true,
+      start,
+      end,
+      label: `${germanDate(start)} – ${germanDate(end)}`
+    };
+  }
   function normalizeTitle(value) {
     return String(value || "").trim().toLocaleLowerCase("de-DE").replace(/\s+/g, " ");
   }
@@ -1185,11 +1207,11 @@ var AppApplication = (() => {
     const year = Number(today.slice(0, 4));
     const snapshotYears = new Set(workspace.billingSnapshots.map((item) => Number(item.periodYear)).filter(Number.isFinite));
     for (let y = year - 3; y <= year; y++) {
-      const end = `${y}-12-31`;
-      if (end >= today || snapshotYears.has(y)) continue;
+      const period = billingPeriodForWorkspace(state, workspace, y);
+      if (!period.active || period.end >= today || snapshotYears.has(y)) continue;
       push({
         id: `billing-${workspace.context.buildingId}-${y}`,
-        title: `Endabrechnung ${y} fertigstellen`,
+        title: `Endabrechnung ${period.label} fertigstellen`,
         due: billingTarget(y),
         lead: 30,
         origin: "billing",
@@ -1275,6 +1297,420 @@ var AppApplication = (() => {
       }
     };
     return { executeCommand };
+  }
+  return __toCommonJS(index_exports);
+})();
+
+
+/* ===== compiled src/presentation/index.ts ===== */
+"use strict";
+var AppPresentation = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/presentation/index.ts
+  var index_exports = {};
+  __export(index_exports, {
+    ACTIVE_BUILDING_STORAGE_KEY: () => ACTIVE_BUILDING_STORAGE_KEY,
+    DEFAULT_SUB: () => DEFAULT_SUB,
+    PRESENTATION_VERSION: () => PRESENTATION_VERSION,
+    ROUTE_LABELS: () => ROUTE_LABELS,
+    SUB_PARENT: () => SUB_PARENT,
+    createPresentationWorkspace: () => createPresentationWorkspace,
+    mergeStateFromBuilding: () => mergeStateFromBuilding,
+    normalizeSub: () => normalizeSub,
+    parseRouteHash: () => parseRouteHash,
+    projectStateForBuilding: () => projectStateForBuilding,
+    resolveActiveBuildingId: () => resolveActiveBuildingId,
+    routeHash: () => routeHash,
+    visibleSub: () => visibleSub
+  });
+
+  // src/presentation/navigation.ts
+  var ROUTE_LABELS = {
+    home: "Start",
+    rental: "Vermietung",
+    data: "Haus",
+    owner: "Finanzen",
+    more: "Mehr"
+  };
+  var DEFAULT_SUB = {
+    data: "overview",
+    rental: "overview",
+    owner: "overview",
+    more: "smart"
+  };
+  var SUB_PARENT = {
+    data: { object: "overview", property: "overview", units: "overview", sources: "costs", positions: "costs", assessment: "costs" },
+    rental: { lease: "overview", calculation: "billing", workflow: "billing" },
+    owner: { tasks: "overview", cashflow: "payments", reconciliation: "payments", finance: "planning", analytics: "planning" },
+    more: { overview: "smart", legal: "app", security: "protection", backup: "protection", recovery: "protection", audit: "app", diagnostics: "app" }
+  };
+  function normalizeSub(routeName, subName) {
+    if (!subName) return DEFAULT_SUB[routeName] || "";
+    if (routeName === "more" && subName === "overview") return "smart";
+    if (routeName === "rental" && (subName === "calculation" || subName === "workflow")) return subName;
+    return subName;
+  }
+  function visibleSub(routeName, subName) {
+    return SUB_PARENT[routeName]?.[subName] || subName || DEFAULT_SUB[routeName] || "";
+  }
+  function parseRouteHash(hash) {
+    const raw = decodeURIComponent(String(hash || "").replace(/^#/, "")).trim();
+    const parts = raw.split("/").filter(Boolean);
+    const route = Object.prototype.hasOwnProperty.call(ROUTE_LABELS, parts[0]) ? parts[0] : "home";
+    const sub = route === "home" ? "" : normalizeSub(route, parts[1] || DEFAULT_SUB[route]);
+    return { route, sub };
+  }
+  function routeHash(route, sub = null) {
+    const safeRoute = Object.prototype.hasOwnProperty.call(ROUTE_LABELS, route) ? route : "home";
+    if (safeRoute === "home") return "#home";
+    return `#${safeRoute}/${encodeURIComponent(sub || DEFAULT_SUB[safeRoute])}`;
+  }
+
+  // src/application/context.ts
+  var BUILDING_SCOPED_COLLECTIONS = [
+    "units",
+    "leases",
+    "sources",
+    "costPositions",
+    "meters",
+    "waterSettlements",
+    "tasks",
+    "payments",
+    "billingWorkflows",
+    "billingSnapshots",
+    "containers",
+    "water"
+  ];
+  function records(value) {
+    return Array.isArray(value) ? value.filter((item) => !!item && typeof item === "object") : [];
+  }
+  function byId(state, collection, id) {
+    if (!id) return null;
+    const key = String(id);
+    return records(state?.[collection]).find((item) => String(item.id || "") === key) || null;
+  }
+  function recordBuildingId(state, collection, id) {
+    return String(byId(state, collection, id)?.buildingId || "");
+  }
+  function inferBuildingFromPayload(state, type, payload) {
+    if (payload.buildingId) return String(payload.buildingId);
+    const directRefs = [
+      ["unitId", "units"],
+      ["tenancyId", "leases"],
+      ["leaseId", "leases"],
+      ["sourceId", "sources"],
+      ["positionId", "costPositions"],
+      ["meterId", "meters"],
+      ["paymentId", "payments"]
+    ];
+    for (const [key, collection] of directRefs) {
+      const buildingId = recordBuildingId(state, collection, payload[key]);
+      if (buildingId) return buildingId;
+    }
+    if (payload.id) {
+      const typeCollection = type.startsWith("unit.") ? "units" : type.startsWith("tenancy.") || type.startsWith("lease.") ? "leases" : type.startsWith("source.") ? "sources" : type.startsWith("costPosition.") ? "costPositions" : type.startsWith("meter.") ? "meters" : type.startsWith("payment.") ? "payments" : "";
+      if (typeCollection) {
+        const buildingId = recordBuildingId(state, typeCollection, payload.id);
+        if (buildingId) return buildingId;
+      }
+    }
+    return "";
+  }
+  function resolveApplicationContext(state, type = "", payload = {}) {
+    const buildings = records(state?.buildings);
+    const units = records(state?.units);
+    const leases = records(state?.leases);
+    let buildingId = inferBuildingFromPayload(state, type, payload) || String(state?.meta?.primaryBuildingId || buildings[0]?.id || "");
+    let unitId = String(payload.unitId || "");
+    let tenancyId = String(payload.tenancyId || payload.leaseId || "");
+    if (!unitId && tenancyId) unitId = String(byId(state, "leases", tenancyId)?.unitId || "");
+    if (!tenancyId && payload.paymentId) {
+      const payment = byId(state, "payments", payload.paymentId);
+      tenancyId = String(payment?.tenancyId || payment?.leaseId || "");
+      unitId ||= String(payment?.unitId || "");
+    }
+    if (!unitId && payload.id && (type.startsWith("tenancy.") || type.startsWith("lease."))) {
+      unitId = String(byId(state, "leases", payload.id)?.unitId || "");
+      tenancyId ||= String(payload.id);
+    }
+    const unit = units.find((item) => String(item.id || "") === unitId) || null;
+    const tenancy = leases.find((item) => String(item.id || "") === tenancyId) || null;
+    if (!buildingId) buildingId = String(unit?.buildingId || tenancy?.buildingId || "");
+    if (!unitId && tenancy?.unitId) unitId = String(tenancy.unitId);
+    const building = buildings.find((item) => String(item.id || "") === buildingId) || null;
+    const portfolioId = String(payload.portfolioId || building?.portfolioId || state?.meta?.primaryPortfolioId || state?.portfolios?.[0]?.id || "");
+    return { portfolioId, buildingId, unitId, tenancyId };
+  }
+  function buildingScopedCollections() {
+    return BUILDING_SCOPED_COLLECTIONS;
+  }
+
+  // src/application/queries.ts
+  function records2(value) {
+    return Array.isArray(value) ? value.filter((item) => !!item && typeof item === "object") : [];
+  }
+  function scoped(items, buildingId) {
+    return buildingId ? items.filter((item) => String(item.buildingId || "") === buildingId) : items.slice();
+  }
+  function queryBuildingWorkspace(state, requested = {}) {
+    const context = resolveApplicationContext(state, "query.buildingWorkspace", requested);
+    const buildingId = context.buildingId;
+    const building = records2(state.buildings).find((item) => String(item.id || "") === buildingId) || null;
+    return {
+      context,
+      building,
+      units: scoped(records2(state.units), buildingId),
+      tenancies: scoped(records2(state.leases), buildingId),
+      sources: scoped(records2(state.sources), buildingId),
+      costPositions: scoped(records2(state.costPositions), buildingId),
+      meters: scoped(records2(state.meters), buildingId),
+      waterSettlements: scoped(records2(state.waterSettlements), buildingId),
+      tasks: scoped(records2(state.tasks), buildingId),
+      payments: scoped(records2(state.payments), buildingId),
+      billingWorkflows: scoped(records2(state.billingWorkflows), buildingId),
+      billingSnapshots: scoped(records2(state.billingSnapshots), buildingId),
+      containers: scoped(records2(state.containers), buildingId),
+      water: scoped(records2(state.water), buildingId)
+    };
+  }
+  function portfolioNavigation(state, portfolioId = "") {
+    const activePortfolioId = portfolioId || String(state?.meta?.primaryPortfolioId || state?.portfolios?.[0]?.id || "");
+    const portfolio = records2(state.portfolios).find((item) => String(item.id || "") === activePortfolioId) || null;
+    const buildings = records2(state.buildings).filter((item) => !activePortfolioId || String(item.portfolioId || "") === activePortfolioId);
+    const activeBuildingId = String(state?.meta?.primaryBuildingId || buildings[0]?.id || "");
+    return { portfolio, buildings, activeBuildingId, showBuildingSelector: buildings.length > 1 };
+  }
+  function isoToday() {
+    const d = /* @__PURE__ */ new Date();
+    const offset = d.getTimezoneOffset() * 6e4;
+    return new Date(d.getTime() - offset).toISOString().slice(0, 10);
+  }
+  function billingTarget(year) {
+    return `${year + 1}-03-31`;
+  }
+  function germanDate(value) {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return match ? `${match[3]}.${match[2]}.${match[1]}` : String(value || "");
+  }
+  function billingPeriodForWorkspace(state, workspace, year) {
+    const startOfYear = `${year}-01-01`;
+    const end = `${year}-12-31`;
+    const primaryBuildingId = String(state?.meta?.primaryBuildingId || "");
+    const buildingTakeover = String(
+      workspace.building?.billingTakeoverDate || workspace.building?.ownershipEffective || ""
+    );
+    const propertyTakeover = workspace.context.buildingId === primaryBuildingId ? String(state?.property?.billingTakeoverDate || state?.property?.ownershipEffective || "") : "";
+    const takeover = buildingTakeover || propertyTakeover;
+    if (takeover && takeover > end) return { active: false, start: startOfYear, end, label: "" };
+    const start = takeover && takeover > startOfYear ? takeover : startOfYear;
+    return {
+      active: true,
+      start,
+      end,
+      label: `${germanDate(start)} – ${germanDate(end)}`
+    };
+  }
+  function normalizeTitle(value) {
+    return String(value || "").trim().toLocaleLowerCase("de-DE").replace(/\s+/g, " ");
+  }
+  function queryTaskList(state, requested = {}, today = isoToday()) {
+    const workspace = queryBuildingWorkspace(state, requested);
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const push = (task) => {
+      if (!task?.due || !task?.title) return;
+      const key = `${task.due}|${normalizeTitle(task.title)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ ...task, buildingId: task.buildingId || workspace.context.buildingId });
+    };
+    for (const source of workspace.sources) {
+      for (const due of Array.isArray(source.dueDates) ? source.dueDates : []) {
+        push({
+          id: `source-${source.id}-${due}`,
+          title: `Fälligkeit: ${source.name || "Kostenquelle"}`,
+          due,
+          lead: 14,
+          origin: "source",
+          sourceId: source.id,
+          buildingId: workspace.context.buildingId
+        });
+      }
+    }
+    for (const task of workspace.tasks) push(task);
+    const year = Number(today.slice(0, 4));
+    const snapshotYears = new Set(workspace.billingSnapshots.map((item) => Number(item.periodYear)).filter(Number.isFinite));
+    for (let y = year - 3; y <= year; y++) {
+      const period = billingPeriodForWorkspace(state, workspace, y);
+      if (!period.active || period.end >= today || snapshotYears.has(y)) continue;
+      push({
+        id: `billing-${workspace.context.buildingId}-${y}`,
+        title: `Endabrechnung ${period.label} fertigstellen`,
+        due: billingTarget(y),
+        lead: 30,
+        origin: "billing",
+        periodYear: y,
+        buildingId: workspace.context.buildingId
+      });
+    }
+    return out.sort((a, b) => String(a.due || "").localeCompare(String(b.due || "")));
+  }
+
+  // src/presentation/building-workspace.ts
+  var PRESENTATION_VERSION = 1;
+  var ACTIVE_BUILDING_STORAGE_KEY = "mietverwaltung-active-building-v1";
+  var clone = (value) => {
+    if (typeof structuredClone === "function") return structuredClone(value);
+    return JSON.parse(JSON.stringify(value));
+  };
+  var records3 = (value) => Array.isArray(value) ? value.filter((item) => !!item && typeof item === "object") : [];
+  function recordBelongsToBuilding(item, buildingId, primaryBuildingId) {
+    const itemBuildingId = String(item?.buildingId || "");
+    return itemBuildingId ? itemBuildingId === buildingId : buildingId === primaryBuildingId;
+  }
+  function resolveActiveBuildingId(state, requestedBuildingId = "") {
+    const nav = portfolioNavigation(state);
+    const requested = String(requestedBuildingId || "");
+    if (requested && nav.buildings.some((item) => String(item.id || "") === requested)) return requested;
+    return String(nav.activeBuildingId || nav.buildings[0]?.id || "");
+  }
+  function createPresentationWorkspace(state, requestedBuildingId = "") {
+    const nav = portfolioNavigation(state);
+    const activeBuildingId = resolveActiveBuildingId(state, requestedBuildingId);
+    const workspace = queryBuildingWorkspace(state, { buildingId: activeBuildingId });
+    const active = nav.buildings.find((item) => String(item.id || "") === activeBuildingId) || workspace.building;
+    const tasks = queryTaskList(state, { buildingId: activeBuildingId });
+    return {
+      portfolioId: String(nav.portfolio?.id || ""),
+      portfolioName: String(nav.portfolio?.name || "Portfolio"),
+      activeBuildingId,
+      activeBuildingName: String(active?.name || active?.address || "Gebäude"),
+      showBuildingSelector: nav.showBuildingSelector,
+      buildings: nav.buildings.map((item) => ({
+        id: String(item.id || ""),
+        name: String(item.name || item.address || "Gebäude"),
+        address: String(item.address || ""),
+        active: String(item.id || "") === activeBuildingId
+      })),
+      counts: {
+        units: workspace.units.length,
+        tenancies: workspace.tenancies.length,
+        sources: workspace.sources.length,
+        costPositions: workspace.costPositions.length,
+        meters: workspace.meters.length,
+        tasks: tasks.length,
+        payments: workspace.payments.length
+      }
+    };
+  }
+  function projectStateForBuilding(masterState, requestedBuildingId = "") {
+    const master = clone(masterState || {});
+    const activeBuildingId = resolveActiveBuildingId(master, requestedBuildingId);
+    if (!activeBuildingId) return master;
+    const primaryBuildingId = String(master?.meta?.primaryBuildingId || activeBuildingId);
+    const activeBuilding = records3(master.buildings).find((item) => String(item.id || "") === activeBuildingId) || null;
+    const projected = clone(master);
+    for (const key of buildingScopedCollections()) {
+      projected[key] = records3(master[key]).filter((item) => recordBelongsToBuilding(item, activeBuildingId, primaryBuildingId)).map((item) => ({ ...clone(item), buildingId: String(item.buildingId || activeBuildingId) }));
+    }
+    projected.documentsCache = [];
+    projected.meta = {
+      ...projected.meta || {},
+      primaryBuildingId: activeBuildingId,
+      presentationBuildingId: activeBuildingId
+    };
+    projected.property = {
+      ...projected.property || {},
+      name: String(activeBuilding?.name || ""),
+      address: String(activeBuilding?.address || ""),
+      totalArea: Number(activeBuilding?.totalArea || 0),
+      year: activeBuilding?.year || "",
+      billingTakeoverDate: activeBuilding?.billingTakeoverDate || "",
+      predecessorBillingEnd: activeBuilding?.predecessorBillingEnd || ""
+    };
+    if (activeBuilding?.finance && typeof activeBuilding.finance === "object") {
+      projected.finance = clone(activeBuilding.finance);
+    } else if (activeBuildingId !== primaryBuildingId) {
+      projected.finance = { repayment: 0, fixed: 0 };
+    }
+    return projected;
+  }
+  function mergeStateFromBuilding(masterState, scopedState, requestedBuildingId = "") {
+    const master = clone(masterState || {});
+    const scoped2 = clone(scopedState || {});
+    const activeBuildingId = resolveActiveBuildingId(
+      master,
+      requestedBuildingId || scoped2?.meta?.presentationBuildingId || scoped2?.meta?.primaryBuildingId
+    );
+    if (!activeBuildingId) return scoped2;
+    const primaryBuildingId = String(master?.meta?.primaryBuildingId || activeBuildingId);
+    const scopedKeys = new Set(buildingScopedCollections());
+    const result = clone(master);
+    for (const key of scopedKeys) {
+      const keep = records3(master[key]).filter(
+        (item) => !recordBelongsToBuilding(item, activeBuildingId, primaryBuildingId)
+      );
+      const changed = records3(scoped2[key]).map((item) => ({
+        ...clone(item),
+        buildingId: String(item.buildingId || activeBuildingId)
+      }));
+      result[key] = [...keep, ...changed];
+    }
+    for (const [key, value] of Object.entries(scoped2)) {
+      if (scopedKeys.has(key)) continue;
+      if (["property", "finance", "portfolios", "buildings", "documentsCache"].includes(key)) continue;
+      result[key] = clone(value);
+    }
+    result.portfolios = clone(master.portfolios || []);
+    result.buildings = clone(master.buildings || []);
+    result.documentsCache = [];
+    const scopedBuilding = records3(scoped2.buildings).find((item) => String(item.id || "") === activeBuildingId) || {};
+    const index = records3(result.buildings).findIndex((item) => String(item.id || "") === activeBuildingId);
+    if (index >= 0) {
+      const prior = result.buildings[index];
+      result.buildings[index] = {
+        ...prior,
+        ...clone(scopedBuilding),
+        id: prior.id,
+        portfolioId: prior.portfolioId,
+        name: String(scoped2?.property?.name || scopedBuilding.name || prior.name || "Gebäude"),
+        address: String(scoped2?.property?.address ?? scopedBuilding.address ?? prior.address ?? ""),
+        totalArea: Number(scoped2?.property?.totalArea ?? scopedBuilding.totalArea ?? prior.totalArea ?? 0),
+        year: scoped2?.property?.year ?? scopedBuilding.year ?? prior.year ?? "",
+        billingTakeoverDate: scoped2?.property?.billingTakeoverDate ?? scopedBuilding.billingTakeoverDate ?? prior.billingTakeoverDate ?? "",
+        predecessorBillingEnd: scoped2?.property?.predecessorBillingEnd ?? scopedBuilding.predecessorBillingEnd ?? prior.predecessorBillingEnd ?? "",
+        finance: clone(scoped2.finance || prior.finance || { repayment: 0, fixed: 0 })
+      };
+    }
+    result.meta = { ...result.meta || {} };
+    result.meta.primaryBuildingId = primaryBuildingId;
+    result.meta.primaryPortfolioId = String(master?.meta?.primaryPortfolioId || result.meta.primaryPortfolioId || "");
+    delete result.meta.presentationBuildingId;
+    if (activeBuildingId === primaryBuildingId) {
+      result.property = clone(scoped2.property || master.property || {});
+      result.finance = clone(scoped2.finance || master.finance || {});
+    } else {
+      result.property = clone(master.property || {});
+      result.finance = clone(master.finance || {});
+    }
+    return result;
   }
   return __toCommonJS(index_exports);
 })();
@@ -1816,7 +2252,7 @@ var AppTraceability = (() => {
     return origin == "document" ? "aus Dokument" : origin == "migration" ? "übernommen" : origin == "photo" ? "aus Foto" : origin == "assessment" ? "aus Bescheid" : "manuell";
   }
   function createRestorePoint(label) {
-    const snapshot = cloneState(state);
+    const snapshot = cloneState(fullPortfolioState());
     delete snapshot.meta.restorePoints;
     const point = {
       id: uid(),
@@ -1833,8 +2269,8 @@ var AppTraceability = (() => {
   async function restoreFromPoint(id) {
     const point = (state.meta?.restorePoints || []).find((item) => item.id === id);
     if (!point) throw new Error("Sicherungspunkt nicht gefunden.");
-    const current = cloneState(state);
-    const currentSnapshot = cloneState(state);
+    const current = cloneState(fullPortfolioState());
+    const currentSnapshot = cloneState(current);
     delete currentSnapshot.meta.restorePoints;
     const undo = {
       id: uid(),
@@ -1847,13 +2283,11 @@ var AppTraceability = (() => {
     const restored = ensureTraceShape(repairDomainState(cloneState(point.state)));
     restored.meta.restorePoints = [undo, ...restored.meta.restorePoints || []].slice(0, 5);
     try {
-      state = restored;
-      LAST_STABLE_STATE = cloneState(state);
-      await saveState(state);
+      await saveState(restored);
+      applyRestoredPortfolioState(restored);
       return true;
     } catch (error) {
-      state = current;
-      LAST_STABLE_STATE = cloneState(current);
+      applyRestoredPortfolioState(current);
       throw error;
     }
   }
@@ -4476,8 +4910,12 @@ const APPLICATION_COMMAND_BUS=AppApplication.createCommandBus({
   createRestorePoint,
   uid:()=>uid()
 });
-const applicationExecuteCommand=(type,payload,handler,options={})=>
-  APPLICATION_COMMAND_BUS.executeCommand(type,payload,handler,options);
+const applicationExecuteCommand=(type,payload,handler,options={})=>{
+  const scopedPayload=payload&&typeof payload==="object"&&!Array.isArray(payload)
+    ? {...payload,buildingId:activeBuildingId||payload.buildingId||""}
+    : payload;
+  return APPLICATION_COMMAND_BUS.executeCommand(type,scopedPayload,handler,options)
+};
 
 /* ===== intelligence.js ===== */
 /* Phase 8 runtime bridge: Implementierung in src/domain/intelligence.ts */
@@ -4646,12 +5084,12 @@ const {
   DB_VERSION,
   STATE_ID,
   openDB,
-  addDocument,
-  getDocument,
-  listDocuments,
-  deleteDocument,
-  updateDocument,
-  replaceDocuments
+  addDocument:addDocumentRecord,
+  getDocument:getDocumentRecord,
+  listDocuments:listAllDocuments,
+  deleteDocument:deleteDocumentRecord,
+  updateDocument:updateDocumentRecord,
+  replaceDocuments:replaceAllDocuments
 }=AppPersistence;
 const {
   readStateRecord,
@@ -4679,6 +5117,34 @@ async function loadState(){
   return result.state
 }
 
+function documentBelongsToActiveBuilding(document){
+  if(!document)return false;
+  const buildingId=String(document.buildingId||"");
+  if(buildingId)return buildingId===activeBuildingId;
+  const primary=String(portfolioState?.meta?.primaryBuildingId||state?.meta?.primaryBuildingId||"");
+  return !!activeBuildingId&&activeBuildingId===primary
+}
+async function addDocument(document){
+  return addDocumentRecord({...document,buildingId:document?.buildingId||activeBuildingId||""})
+}
+async function getDocument(id){
+  const document=await getDocumentRecord(id);
+  return documentBelongsToActiveBuilding(document)?document:null
+}
+async function listDocuments(){
+  return (await listAllDocuments()).filter(documentBelongsToActiveBuilding)
+}
+async function deleteDocument(id){
+  const document=await getDocumentRecord(id);
+  if(!documentBelongsToActiveBuilding(document))throw new Error("Dokument gehört zu einem anderen Gebäude.");
+  return deleteDocumentRecord(id)
+}
+async function updateDocument(document){
+  const existing=document?.id?await getDocumentRecord(document.id):null;
+  if(existing&&!documentBelongsToActiveBuilding(existing))throw new Error("Dokument gehört zu einem anderen Gebäude.");
+  return updateDocumentRecord({...document,buildingId:document?.buildingId||activeBuildingId||""})
+}
+const replaceDocuments=replaceAllDocuments;
 /* ===== security.js ===== */
 
 const {
@@ -4692,12 +5158,11 @@ const {
 /* ===== backup.js ===== */
 
 async function createFullBackup(state,password){
-  const docs=await listDocuments();
+  const docs=await listAllDocuments();
   return AppBackupCodec.createFullBackup(state,password,docs)
 }
 
 const {encodeBlobForBackup,decodeFullBackup}=AppBackupCodec;
-
 
 /* ===== TypeScript source src/ui/app-runtime.ts · outer-scope injection ===== */
 // @ts-nocheck -- Phase 10 V3: semantikerhaltende Abschlussmigration im bisherigen äußeren Browser-Runtime-Scope.
@@ -4755,41 +5220,53 @@ function modal(title,html,onReady){
 
 
 
+const ACTIVE_BUILDING_STORAGE_KEY=AppPresentation.ACTIVE_BUILDING_STORAGE_KEY;
 let storageError=null;
+let portfolioState;
+let activeBuildingId="";
 let state;
+
+function storedBuildingId(){
+  try{return localStorage.getItem(ACTIVE_BUILDING_STORAGE_KEY)||""}catch{return""}
+}
+function rememberBuildingId(value){
+  try{if(value)localStorage.setItem(ACTIVE_BUILDING_STORAGE_KEY,value)}catch{}
+}
+function projectActiveState(master,requested=""){
+  activeBuildingId=AppPresentation.resolveActiveBuildingId(master,requested||activeBuildingId);
+  const projected=AppPresentation.projectStateForBuilding(master,activeBuildingId);
+  rememberBuildingId(activeBuildingId);
+  return projected
+}
+function fullPortfolioState(){
+  return AppPresentation.mergeStateFromBuilding(portfolioState,state,activeBuildingId)
+}
+function applyRestoredPortfolioState(value){
+  portfolioState=repairDomainState(value);
+  state=projectActiveState(portfolioState,activeBuildingId);
+  LAST_STABLE_STATE=cloneState(state)
+}
+
 try{
-  state=repairDomainState(await loadState());LAST_STABLE_STATE=cloneState(state);
+  portfolioState=repairDomainState(await loadState());
+  state=projectActiveState(portfolioState,storedBuildingId());
+  LAST_STABLE_STATE=cloneState(state);
 }catch(e){
   storageError=e;
   console.error("IndexedDB-Startfehler:",e);
-  state=createEmptyState();
+  portfolioState=repairDomainState(createEmptyState());
+  state=projectActiveState(portfolioState);
   state.meta.storageWarning=String(e?.message||e);
 }
-const ROUTE_LABELS={home:"Start",rental:"Vermietung",data:"Haus",owner:"Finanzen",more:"Mehr"};
-const DEFAULT_SUB={data:"overview",rental:"overview",owner:"overview",more:"smart"};
-const SUB_PARENT={
-  data:{object:"overview",property:"overview",units:"overview",sources:"costs",positions:"costs",assessment:"costs"},
-  rental:{lease:"overview",calculation:"billing",workflow:"billing"},
-  owner:{tasks:"overview",cashflow:"payments",reconciliation:"payments",finance:"planning",analytics:"planning"},
-  more:{overview:"smart",legal:"app",security:"protection",backup:"protection",recovery:"protection",audit:"app",diagnostics:"app"}
-};
+const {ROUTE_LABELS,DEFAULT_SUB,SUB_PARENT,normalizeSub,visibleSub,parseRouteHash,routeHash}=AppPresentation;
 let route="home";
 let sub={...DEFAULT_SUB};
 
-function normalizeSub(routeName,subName){
-  if(!subName)return DEFAULT_SUB[routeName]||"";
-  if(routeName==="more"&&subName==="overview")return "smart";
-  if(routeName==="rental"&&(subName==="calculation"||subName==="workflow"))return subName;
-  return subName
-}
-function visibleSub(routeName,subName){return SUB_PARENT[routeName]?.[subName]||subName||DEFAULT_SUB[routeName]||""}
 function syncRouteFromHash(){
-  const raw=decodeURIComponent(location.hash.replace(/^#/,"")).trim(),parts=raw.split("/").filter(Boolean);
-  const r=ROUTE_LABELS[parts[0]]?parts[0]:"home";
-  route=r;
-  if(r!=="home")sub[r]=normalizeSub(r,parts[1]||DEFAULT_SUB[r])
+  const parsed=parseRouteHash(location.hash);
+  route=parsed.route;
+  if(route!=="home")sub[route]=parsed.sub
 }
-function routeHash(r,s=null){return r==="home"?"#home":`#${r}/${encodeURIComponent(s||DEFAULT_SUB[r])}`}
 function go(r,s=null){
   if(!ROUTE_LABELS[r])r="home";
   route=r;
@@ -4810,10 +5287,15 @@ async function persist(action,detail){
   const before=LAST_STABLE_STATE?cloneState(LAST_STABLE_STATE):null;
   try{
     state=repairDomainState(state);
-    const check=validateDomainState(state);if(check.errors.length)throw new Error("Datenintegrität: "+check.errors.join(" · "));
+    const scopedCheck=validateDomainState(state);if(scopedCheck.errors.length)throw new Error("Datenintegrität: "+scopedCheck.errors.join(" · "));
     if(action)audit(action,detail);
-    state.meta.revision=Number(state.meta.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
-    await saveState(state);LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};if(action)AppFeedback.showToast(action,{kind:"success"});return true
+    state.meta.revision=Number(state.meta?.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
+    const merged=repairDomainState(fullPortfolioState()),fullCheck=validateDomainState(merged);
+    if(fullCheck.errors.length)throw new Error("Portfolio-Integrität: "+fullCheck.errors.join(" · "));
+    await saveState(merged);
+    portfolioState=merged;
+    state=projectActiveState(portfolioState,activeBuildingId);
+    LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};if(action)AppFeedback.showToast(action,{kind:"success"});return true
   }catch(e){
     recordClientError("persist",e);storageError=e;console.error("Speicher-/Integritätsfehler:",e);
     if(before){state=before;LAST_STABLE_STATE=cloneState(before)}
@@ -4822,29 +5304,34 @@ async function persist(action,detail){
   }
 }
 
+function renderBuildingSwitcher(){
+  const wrap=$("buildingSwitchWrap"),select=$("buildingSelect");if(!wrap||!select)return;
+  const model=AppPresentation.createPresentationWorkspace(portfolioState,activeBuildingId);
+  wrap.classList.toggle("hidden",!model.showBuildingSelector);
+  if(!model.showBuildingSelector){select.innerHTML="";return}
+  select.innerHTML=model.buildings.map(item=>`<option value="${esc(item.id)}" ${item.active?"selected":""}>${esc(item.name)}</option>`).join("");
+  select.onchange=()=>{
+    const next=select.value;
+    if(next===activeBuildingId)return;
+    if(!closeModal(false)){select.value=activeBuildingId;return}
+    activeBuildingId=AppPresentation.resolveActiveBuildingId(portfolioState,next);
+    state=projectActiveState(portfolioState,activeBuildingId);
+    LAST_STABLE_STATE=cloneState(state);
+    render();window.scrollTo({top:0,left:0,behavior:"auto"})
+  }
+}
 function nav(){
   document.querySelectorAll(".main-tabs button").forEach(b=>{
     const active=b.dataset.route===route;b.classList.toggle("active",active);
     if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")
   });
+  renderBuildingSwitcher();
   const ctx=$("pageContext");if(ctx)ctx.textContent=route==="home"?(state.property?.name||"Start"):ROUTE_LABELS[route];
-  document.title=`${ROUTE_LABELS[route]||"Mietverwaltung"} · Mietverwaltung`
+  const building=state.property?.name?` · ${state.property.name}`:"";
+  document.title=`${ROUTE_LABELS[route]||"Mietverwaltung"}${building} · Mietverwaltung`
 }
 function taskList(){
-  const out=[],seen=new Set(),today=smartToday(),cy=currentPeriodYear();
-  const push=t=>{if(!t?.due||!t?.title)return;const k=`${t.due}|${normalizeLabelText(t.title)}`;if(seen.has(k))return;seen.add(k);out.push(t)};
-  for(const s of state.sources||[]){
-    for(const d of Array.isArray(s.dueDates)?s.dueDates:[]){
-      push({id:`source-${s.id}-${d}`,title:`Fälligkeit: ${s.name||"Kostenquelle"}`,due:d,lead:14,origin:"source",sourceId:s.id})
-    }
-  }
-  for(let y=cy-3;y<=cy;y++){
-    const info=billingPeriodInfo(state,y);
-    if(!info.active||info.end>=today||snapshotFor(state,y))continue;
-    push({id:`billing-${y}`,title:`Endabrechnung ${billingPeriodLabel(state,y)} fertigstellen`,due:periodBillingTargetISO(y),lead:30,origin:"billing",periodYear:y})
-  }
-  for(const t of state.tasks||[])push(t);
-  return out.sort((a,b)=>(a.due||"").localeCompare(b.due||""))
+  return AppApplication.queryTaskList(state,{buildingId:activeBuildingId},smartToday())
 }
 function daysUntil(d){const x=calendarDayDiff(smartToday(),d);return Number.isFinite(x)?x:0}
 function taskHTML(t){
@@ -6233,9 +6720,9 @@ function backupView(){
   const stamp=localDateISO(),last=state.meta?.lastBackupAt?new Date(state.meta.lastBackupAt).toLocaleString("de-DE"):"noch keine";
   $("workspaceBody").innerHTML=`<div class="card"><div class="item-title-row"><div><p class="eyebrow">EMPFOHLEN</p><h3>Verschlüsselte Datensicherung</h3></div><span class="pill good">Stammdaten + Dokumente</span></div><p>Letzte erstellte Sicherung: <strong>${esc(last)}</strong></p><label>Passwort<input id="backupPw" type="password" class="big-input" placeholder="mindestens 8 Zeichen" autocomplete="new-password"></label><div class="action-row"><button id="fullExport" class="primary">Sicherung erstellen</button><label class="file-label">Sicherung auswählen<input id="fullImportFile" type="file" accept=".json,application/json"></label><button id="fullImport" class="secondary">Wiederherstellen</button></div><p class="muted">Das Passwort wird nicht gespeichert. Ohne Passwort kann eine verschlüsselte Sicherung nicht wiederhergestellt werden.</p></div>
   <details class="card secondary-detail"><summary>Technischer Klartext-Export</summary><div class="detail-content"><div class="legal-warn"><strong>Unverschlüsselt</strong><br>Enthält persönliche Verwaltungsdaten im Klartext und keine Dokumentdateien. Nur für technische Zwecke verwenden.</div><button id="exportState" class="secondary">JSON exportieren</button></div></details>`;
-  $("exportState").onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Daten_${stamp}.json`;a.click();URL.revokeObjectURL(a.href)};
-  $("fullExport").onclick=async()=>{const pw=$("backupPw").value;if(pw.length<8)return alert("Bitte mindestens 8 Zeichen für das Passwort verwenden.");const wrapper=await createFullBackup(state,pw),blob=new Blob([JSON.stringify(wrapper)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Datensicherung_${stamp}.json`;a.click();URL.revokeObjectURL(a.href);state.meta.lastBackupAt=new Date().toISOString();await persist("Datensicherung erstellt","verschlüsselt");backupView()};
-  $("fullImport").onclick=async()=>{const f=$("fullImportFile").files[0],pw=$("backupPw").value;if(!f)return alert("Bitte zuerst eine Datensicherung auswählen.");if(pw.length<1)return alert("Bitte das Passwort der Datensicherung eingeben.");const oldState=cloneState(state),oldDocs=await listDocuments();try{const wrapper=JSON.parse(await f.text()),decoded=await decodeFullBackup(wrapper,pw),next=ensureTraceShape(repairDomainState(decoded.state)),check=validateDomainState(next);if(check.errors.length)throw new Error("Die Sicherung enthält fehlerhafte Daten: "+check.errors.join(" · "));if(!confirm(`Geprüfte Sicherung wiederherstellen? ${decoded.documents.length} Dokument(e) werden übernommen.`))return;createRestorePoint("Vor Datensicherung-Import");await replaceDocuments(decoded.documents);state=next;state.meta.restorePoints=[...(oldState.meta?.restorePoints||[]),...(state.meta.restorePoints||[])].slice(0,5);await saveState(state);LAST_STABLE_STATE=cloneState(state);alert("Datensicherung erfolgreich wiederhergestellt.");more()}catch(e){try{await replaceDocuments(oldDocs);state=oldState;await saveState(oldState);LAST_STABLE_STATE=cloneState(oldState)}catch{}alert("Wiederherstellung fehlgeschlagen: "+(e.message||e))}}
+  $("exportState").onclick=()=>{const blob=new Blob([JSON.stringify(fullPortfolioState(),null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Daten_${stamp}.json`;a.click();URL.revokeObjectURL(a.href)};
+  $("fullExport").onclick=async()=>{const pw=$("backupPw").value;if(pw.length<8)return alert("Bitte mindestens 8 Zeichen für das Passwort verwenden.");const wrapper=await createFullBackup(fullPortfolioState(),pw),blob=new Blob([JSON.stringify(wrapper)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Datensicherung_${stamp}.json`;a.click();URL.revokeObjectURL(a.href);state.meta.lastBackupAt=new Date().toISOString();await persist("Datensicherung erstellt","verschlüsselt");backupView()};
+  $("fullImport").onclick=async()=>{const f=$("fullImportFile").files[0],pw=$("backupPw").value;if(!f)return alert("Bitte zuerst eine Datensicherung auswählen.");if(pw.length<1)return alert("Bitte das Passwort der Datensicherung eingeben.");const oldState=cloneState(fullPortfolioState()),oldDocs=await listAllDocuments();try{const wrapper=JSON.parse(await f.text()),decoded=await decodeFullBackup(wrapper,pw),next=ensureTraceShape(repairDomainState(decoded.state)),check=validateDomainState(next);if(check.errors.length)throw new Error("Die Sicherung enthält fehlerhafte Daten: "+check.errors.join(" · "));if(!confirm(`Geprüfte Sicherung wiederherstellen? ${decoded.documents.length} Dokument(e) werden übernommen.`))return;createRestorePoint("Vor Datensicherung-Import");const importRestorePoints=fullPortfolioState().meta?.restorePoints||[];await replaceAllDocuments(decoded.documents);next.meta.restorePoints=[...importRestorePoints,...(next.meta.restorePoints||[])].slice(0,5);await saveState(next);applyRestoredPortfolioState(next);alert("Datensicherung erfolgreich wiederhergestellt.");more()}catch(e){try{await replaceAllDocuments(oldDocs);await saveState(oldState);applyRestoredPortfolioState(oldState)}catch{}alert("Wiederherstellung fehlgeschlagen: "+(e.message||e))}}
 }
 function setupGlobal(){
   document.querySelectorAll(".main-tabs button").forEach(b=>b.onclick=()=>goTop(b.dataset.route));

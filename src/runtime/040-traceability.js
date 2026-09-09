@@ -31,6 +31,10 @@ const APPLICATION_COMMAND_BUS=AppApplication.createCommandBus({
   createRestorePoint,
   uid:()=>uid()
 });
-const applicationExecuteCommand=(type,payload,handler,options={})=>
-  APPLICATION_COMMAND_BUS.executeCommand(type,payload,handler,options);
+const applicationExecuteCommand=(type,payload,handler,options={})=>{
+  const scopedPayload=payload&&typeof payload==="object"&&!Array.isArray(payload)
+    ? {...payload,buildingId:activeBuildingId||payload.buildingId||""}
+    : payload;
+  return APPLICATION_COMMAND_BUS.executeCommand(type,scopedPayload,handler,options)
+};
 

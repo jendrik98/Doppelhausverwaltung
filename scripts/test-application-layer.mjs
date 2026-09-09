@@ -121,6 +121,15 @@ assert.equal(tasksB.some((item) => item.id === "task-a"), false);
 assert.equal(tasksB.some((item) => item.id === "source-source-a-2026-10-01"), false);
 assert.ok(tasksB.every((item) => item.buildingId === "building-b"));
 
+const takeoverState = stateFixture();
+takeoverState.property.billingTakeoverDate = "2025-07-15";
+takeoverState.buildings.find((item) => item.id === "building-a").billingTakeoverDate = "2025-07-15";
+const takeoverTasks = app.queryTaskList(takeoverState, { buildingId: "building-a" }, "2026-09-09");
+const billingTasks = takeoverTasks.filter((item) => item.origin === "billing");
+assert.deepEqual(billingTasks.map((item) => item.periodYear), [2025], "Jahre vor Übernahme dürfen keine Abrechnungsaufgabe erzeugen");
+assert.equal(billingTasks[0].title, "Endabrechnung 15.07.2025 – 31.12.2025 fertigstellen");
+assert.equal(billingTasks[0].due, "2026-03-31");
+
 let active = clone(state);
 let stable = clone(state);
 let persisted = 0;

@@ -271,3 +271,29 @@ wird vom Application-Modell erst dann vorgesehen, wenn tatsächlich mehr als ein
 Schritt C ändert weder App-Version (`18.0.0`) noch State-Schema (`15`), IndexedDB (`mietverwaltung-v6`,
 Version `3`) oder Backupformate. Nur der PWA-Asset-Key wird auf `app.js?v=1803` und einen neuen Cache
 angehoben, damit GitHub Pages die neue Application-Schicht nachweislich frisch ausliefert.
+## Schritt D: Presentation-/Building-Workspace-Schicht
+
+`src/presentation/` bildet die neue Präsentationsgrenze zwischen Application-Schicht und Browser-UI.
+Routing und Mehrgebäude-Workspace werden strikt typisiert aufgebaut. Die Browser-Runtime verwendet
+für Aufgaben die gebäudeisolierte Application-Query statt einer zweiten, ungescopten Implementierung.
+Dabei bleiben Übernahmeperioden erhalten: Jahre vor der Verwaltungsübernahme erzeugen keine falschen
+Abrechnungsaufgaben, und die erste Teilperiode wird mit ihrem tatsächlichen Zeitraum bezeichnet.
+
+Für die UI wird der vollständige Portfolio-State nicht mehr direkt als Arbeitszustand verwendet.
+Stattdessen projiziert die Presentation-Schicht genau das aktive Gebäude in den bestehenden
+Kompatibilitäts-State. Beim Speichern wird diese Projektion kontrolliert in den vollständigen
+Portfolio-State zurückgeführt. Dadurch bleiben bestehende Fachansichten weitgehend unverändert,
+während Einheiten, Mietverhältnisse, Quellen, Kosten, Zähler, Wasserperioden, Aufgaben, Zahlungen,
+Abrechnungsdaten und Dokumente zwischen Gebäuden getrennt bleiben.
+
+Der Gebäude-Selector erscheint ausschließlich bei mehr als einem Gebäude. Die Auswahl ist eine
+Präsentationspräferenz und verändert `meta.primaryBuildingId` des Domainmodells nicht. Das bestehende
+`property`-Objekt bleibt im vollständigen Persistenz-State die Kompatibilitätsprojektion des
+Primärgebäudes. Vollbackups und Restore-Points enthalten weiterhin das komplette Portfolio und alle
+Dokumente, nicht nur das gerade sichtbare Gebäude. Der flüchtige `documentsCache` wird beim
+Gebäudewechsel und Portfolio-Merge bewusst geleert; Dokument-Metadaten werden ausschließlich über den
+gebäudegefilterten IndexedDB-Dokumentpfad neu geladen.
+
+Schritt D ändert weder App-Version (`18.0.0`) noch State-Schema (`15`) oder IndexedDB-Version (`3`).
+Der PWA-Asset-Key wird auf `app.js?v=1804`, `style.css?v=1810p3` und
+`mietverwaltung-v18-presentation-d-1` angehoben.

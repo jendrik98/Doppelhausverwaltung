@@ -10,6 +10,8 @@ declare function cloneState<T>(value: T): T;
 declare function repairDomainState(value: any): any;
 declare function validateDomainState(value: any): { errors: string[]; warnings: string[] };
 declare function saveState(value: any): Promise<void>;
+declare function fullPortfolioState(): any;
+declare function applyRestoredPortfolioState(value: any): void;
 declare function persist(action?: string | null, detail?: string | null): Promise<boolean>;
 declare function recordClientError(context: string, error: any): void;
 declare function billingReadiness(currentState: any, year: number): any[];
@@ -54,7 +56,7 @@ export function provenanceLabel(position: any): string {
 }
 
 export function createRestorePoint(label: string): any {
-  const snapshot = cloneState(state);
+  const snapshot = cloneState(fullPortfolioState());
   delete snapshot.meta.restorePoints;
   const point = {
     id: uid(),
@@ -72,8 +74,8 @@ export function createRestorePoint(label: string): any {
 export async function restoreFromPoint(id: string): Promise<boolean> {
   const point = (state.meta?.restorePoints || []).find((item: any) => item.id === id);
   if (!point) throw new Error("Sicherungspunkt nicht gefunden.");
-  const current = cloneState(state);
-  const currentSnapshot = cloneState(state);
+  const current = cloneState(fullPortfolioState());
+  const currentSnapshot = cloneState(current);
   delete currentSnapshot.meta.restorePoints;
   const undo = {
     id: uid(),
@@ -86,13 +88,11 @@ export async function restoreFromPoint(id: string): Promise<boolean> {
   const restored = ensureTraceShape(repairDomainState(cloneState(point.state)));
   restored.meta.restorePoints = [undo, ...(restored.meta.restorePoints || [])].slice(0, 5);
   try {
-    state = restored;
-    LAST_STABLE_STATE = cloneState(state);
-    await saveState(state);
+    await saveState(restored);
+    applyRestoredPortfolioState(restored);
     return true;
   } catch (error) {
-    state = current;
-    LAST_STABLE_STATE = cloneState(current);
+    applyRestoredPortfolioState(current);
     throw error;
   }
 }

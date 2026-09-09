@@ -100,6 +100,37 @@ function billingTarget(year: number): string {
   return `${year + 1}-03-31`;
 }
 
+function germanDate(value: string): string {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : String(value || "");
+}
+
+function billingPeriodForWorkspace(state: AnyRecord, workspace: BuildingWorkspace, year: number): {
+  active: boolean;
+  start: string;
+  end: string;
+  label: string;
+} {
+  const startOfYear = `${year}-01-01`;
+  const end = `${year}-12-31`;
+  const primaryBuildingId = String(state?.meta?.primaryBuildingId || "");
+  const buildingTakeover = String(
+    workspace.building?.billingTakeoverDate || workspace.building?.ownershipEffective || ""
+  );
+  const propertyTakeover = workspace.context.buildingId === primaryBuildingId
+    ? String(state?.property?.billingTakeoverDate || state?.property?.ownershipEffective || "")
+    : "";
+  const takeover = buildingTakeover || propertyTakeover;
+  if (takeover && takeover > end) return { active: false, start: startOfYear, end, label: "" };
+  const start = takeover && takeover > startOfYear ? takeover : startOfYear;
+  return {
+    active: true,
+    start,
+    end,
+    label: `${germanDate(start)} – ${germanDate(end)}`
+  };
+}
+
 function normalizeTitle(value: unknown): string {
   return String(value || "").trim().toLocaleLowerCase("de-DE").replace(/\s+/g, " ");
 }
@@ -139,11 +170,11 @@ export function queryTaskList(
   const year = Number(today.slice(0, 4));
   const snapshotYears = new Set(workspace.billingSnapshots.map((item) => Number(item.periodYear)).filter(Number.isFinite));
   for (let y = year - 3; y <= year; y++) {
-    const end = `${y}-12-31`;
-    if (end >= today || snapshotYears.has(y)) continue;
+    const period = billingPeriodForWorkspace(state, workspace, y);
+    if (!period.active || period.end >= today || snapshotYears.has(y)) continue;
     push({
       id: `billing-${workspace.context.buildingId}-${y}`,
-      title: `Endabrechnung ${y} fertigstellen`,
+      title: `Endabrechnung ${period.label} fertigstellen`,
       due: billingTarget(y),
       lead: 30,
       origin: "billing",

@@ -53,41 +53,53 @@ function modal(title,html,onReady){
 
 
 
+const ACTIVE_BUILDING_STORAGE_KEY=AppPresentation.ACTIVE_BUILDING_STORAGE_KEY;
 let storageError=null;
+let portfolioState;
+let activeBuildingId="";
 let state;
+
+function storedBuildingId(){
+  try{return localStorage.getItem(ACTIVE_BUILDING_STORAGE_KEY)||""}catch{return""}
+}
+function rememberBuildingId(value){
+  try{if(value)localStorage.setItem(ACTIVE_BUILDING_STORAGE_KEY,value)}catch{}
+}
+function projectActiveState(master,requested=""){
+  activeBuildingId=AppPresentation.resolveActiveBuildingId(master,requested||activeBuildingId);
+  const projected=AppPresentation.projectStateForBuilding(master,activeBuildingId);
+  rememberBuildingId(activeBuildingId);
+  return projected
+}
+function fullPortfolioState(){
+  return AppPresentation.mergeStateFromBuilding(portfolioState,state,activeBuildingId)
+}
+function applyRestoredPortfolioState(value){
+  portfolioState=repairDomainState(value);
+  state=projectActiveState(portfolioState,activeBuildingId);
+  LAST_STABLE_STATE=cloneState(state)
+}
+
 try{
-  state=repairDomainState(await loadState());LAST_STABLE_STATE=cloneState(state);
+  portfolioState=repairDomainState(await loadState());
+  state=projectActiveState(portfolioState,storedBuildingId());
+  LAST_STABLE_STATE=cloneState(state);
 }catch(e){
   storageError=e;
   console.error("IndexedDB-Startfehler:",e);
-  state=createEmptyState();
+  portfolioState=repairDomainState(createEmptyState());
+  state=projectActiveState(portfolioState);
   state.meta.storageWarning=String(e?.message||e);
 }
-const ROUTE_LABELS={home:"Start",rental:"Vermietung",data:"Haus",owner:"Finanzen",more:"Mehr"};
-const DEFAULT_SUB={data:"overview",rental:"overview",owner:"overview",more:"smart"};
-const SUB_PARENT={
-  data:{object:"overview",property:"overview",units:"overview",sources:"costs",positions:"costs",assessment:"costs"},
-  rental:{lease:"overview",calculation:"billing",workflow:"billing"},
-  owner:{tasks:"overview",cashflow:"payments",reconciliation:"payments",finance:"planning",analytics:"planning"},
-  more:{overview:"smart",legal:"app",security:"protection",backup:"protection",recovery:"protection",audit:"app",diagnostics:"app"}
-};
+const {ROUTE_LABELS,DEFAULT_SUB,SUB_PARENT,normalizeSub,visibleSub,parseRouteHash,routeHash}=AppPresentation;
 let route="home";
 let sub={...DEFAULT_SUB};
 
-function normalizeSub(routeName,subName){
-  if(!subName)return DEFAULT_SUB[routeName]||"";
-  if(routeName==="more"&&subName==="overview")return "smart";
-  if(routeName==="rental"&&(subName==="calculation"||subName==="workflow"))return subName;
-  return subName
-}
-function visibleSub(routeName,subName){return SUB_PARENT[routeName]?.[subName]||subName||DEFAULT_SUB[routeName]||""}
 function syncRouteFromHash(){
-  const raw=decodeURIComponent(location.hash.replace(/^#/,"")).trim(),parts=raw.split("/").filter(Boolean);
-  const r=ROUTE_LABELS[parts[0]]?parts[0]:"home";
-  route=r;
-  if(r!=="home")sub[r]=normalizeSub(r,parts[1]||DEFAULT_SUB[r])
+  const parsed=parseRouteHash(location.hash);
+  route=parsed.route;
+  if(route!=="home")sub[route]=parsed.sub
 }
-function routeHash(r,s=null){return r==="home"?"#home":`#${r}/${encodeURIComponent(s||DEFAULT_SUB[r])}`}
 function go(r,s=null){
   if(!ROUTE_LABELS[r])r="home";
   route=r;
@@ -108,10 +120,15 @@ async function persist(action,detail){
   const before=LAST_STABLE_STATE?cloneState(LAST_STABLE_STATE):null;
   try{
     state=repairDomainState(state);
-    const check=validateDomainState(state);if(check.errors.length)throw new Error("Datenintegrität: "+check.errors.join(" · "));
+    const scopedCheck=validateDomainState(state);if(scopedCheck.errors.length)throw new Error("Datenintegrität: "+scopedCheck.errors.join(" · "));
     if(action)audit(action,detail);
-    state.meta.revision=Number(state.meta.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
-    await saveState(state);LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};if(action)AppFeedback.showToast(action,{kind:"success"});return true
+    state.meta.revision=Number(state.meta?.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
+    const merged=repairDomainState(fullPortfolioState()),fullCheck=validateDomainState(merged);
+    if(fullCheck.errors.length)throw new Error("Portfolio-Integrität: "+fullCheck.errors.join(" · "));
+    await saveState(merged);
+    portfolioState=merged;
+    state=projectActiveState(portfolioState,activeBuildingId);
+    LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};if(action)AppFeedback.showToast(action,{kind:"success"});return true
   }catch(e){
     recordClientError("persist",e);storageError=e;console.error("Speicher-/Integritätsfehler:",e);
     if(before){state=before;LAST_STABLE_STATE=cloneState(before)}
@@ -120,29 +137,34 @@ async function persist(action,detail){
   }
 }
 
+function renderBuildingSwitcher(){
+  const wrap=$("buildingSwitchWrap"),select=$("buildingSelect");if(!wrap||!select)return;
+  const model=AppPresentation.createPresentationWorkspace(portfolioState,activeBuildingId);
+  wrap.classList.toggle("hidden",!model.showBuildingSelector);
+  if(!model.showBuildingSelector){select.innerHTML="";return}
+  select.innerHTML=model.buildings.map(item=>`<option value="${esc(item.id)}" ${item.active?"selected":""}>${esc(item.name)}</option>`).join("");
+  select.onchange=()=>{
+    const next=select.value;
+    if(next===activeBuildingId)return;
+    if(!closeModal(false)){select.value=activeBuildingId;return}
+    activeBuildingId=AppPresentation.resolveActiveBuildingId(portfolioState,next);
+    state=projectActiveState(portfolioState,activeBuildingId);
+    LAST_STABLE_STATE=cloneState(state);
+    render();window.scrollTo({top:0,left:0,behavior:"auto"})
+  }
+}
 function nav(){
   document.querySelectorAll(".main-tabs button").forEach(b=>{
     const active=b.dataset.route===route;b.classList.toggle("active",active);
     if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")
   });
+  renderBuildingSwitcher();
   const ctx=$("pageContext");if(ctx)ctx.textContent=route==="home"?(state.property?.name||"Start"):ROUTE_LABELS[route];
-  document.title=`${ROUTE_LABELS[route]||"Mietverwaltung"} · Mietverwaltung`
+  const building=state.property?.name?` · ${state.property.name}`:"";
+  document.title=`${ROUTE_LABELS[route]||"Mietverwaltung"}${building} · Mietverwaltung`
 }
 function taskList(){
-  const out=[],seen=new Set(),today=smartToday(),cy=currentPeriodYear();
-  const push=t=>{if(!t?.due||!t?.title)return;const k=`${t.due}|${normalizeLabelText(t.title)}`;if(seen.has(k))return;seen.add(k);out.push(t)};
-  for(const s of state.sources||[]){
-    for(const d of Array.isArray(s.dueDates)?s.dueDates:[]){
-      push({id:`source-${s.id}-${d}`,title:`Fälligkeit: ${s.name||"Kostenquelle"}`,due:d,lead:14,origin:"source",sourceId:s.id})
-    }
-  }
-  for(let y=cy-3;y<=cy;y++){
-    const info=billingPeriodInfo(state,y);
-    if(!info.active||info.end>=today||snapshotFor(state,y))continue;
-    push({id:`billing-${y}`,title:`Endabrechnung ${billingPeriodLabel(state,y)} fertigstellen`,due:periodBillingTargetISO(y),lead:30,origin:"billing",periodYear:y})
-  }
-  for(const t of state.tasks||[])push(t);
-  return out.sort((a,b)=>(a.due||"").localeCompare(b.due||""))
+  return AppApplication.queryTaskList(state,{buildingId:activeBuildingId},smartToday())
 }
 function daysUntil(d){const x=calendarDayDiff(smartToday(),d);return Number.isFinite(x)?x:0}
 function taskHTML(t){
@@ -1531,9 +1553,9 @@ function backupView(){
   const stamp=localDateISO(),last=state.meta?.lastBackupAt?new Date(state.meta.lastBackupAt).toLocaleString("de-DE"):"noch keine";
   $("workspaceBody").innerHTML=`<div class="card"><div class="item-title-row"><div><p class="eyebrow">EMPFOHLEN</p><h3>Verschlüsselte Datensicherung</h3></div><span class="pill good">Stammdaten + Dokumente</span></div><p>Letzte erstellte Sicherung: <strong>${esc(last)}</strong></p><label>Passwort<input id="backupPw" type="password" class="big-input" placeholder="mindestens 8 Zeichen" autocomplete="new-password"></label><div class="action-row"><button id="fullExport" class="primary">Sicherung erstellen</button><label class="file-label">Sicherung auswählen<input id="fullImportFile" type="file" accept=".json,application/json"></label><button id="fullImport" class="secondary">Wiederherstellen</button></div><p class="muted">Das Passwort wird nicht gespeichert. Ohne Passwort kann eine verschlüsselte Sicherung nicht wiederhergestellt werden.</p></div>
   <details class="card secondary-detail"><summary>Technischer Klartext-Export</summary><div class="detail-content"><div class="legal-warn"><strong>Unverschlüsselt</strong><br>Enthält persönliche Verwaltungsdaten im Klartext und keine Dokumentdateien. Nur für technische Zwecke verwenden.</div><button id="exportState" class="secondary">JSON exportieren</button></div></details>`;
-  $("exportState").onclick=()=>{const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Daten_${stamp}.json`;a.click();URL.revokeObjectURL(a.href)};
-  $("fullExport").onclick=async()=>{const pw=$("backupPw").value;if(pw.length<8)return alert("Bitte mindestens 8 Zeichen für das Passwort verwenden.");const wrapper=await createFullBackup(state,pw),blob=new Blob([JSON.stringify(wrapper)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Datensicherung_${stamp}.json`;a.click();URL.revokeObjectURL(a.href);state.meta.lastBackupAt=new Date().toISOString();await persist("Datensicherung erstellt","verschlüsselt");backupView()};
-  $("fullImport").onclick=async()=>{const f=$("fullImportFile").files[0],pw=$("backupPw").value;if(!f)return alert("Bitte zuerst eine Datensicherung auswählen.");if(pw.length<1)return alert("Bitte das Passwort der Datensicherung eingeben.");const oldState=cloneState(state),oldDocs=await listDocuments();try{const wrapper=JSON.parse(await f.text()),decoded=await decodeFullBackup(wrapper,pw),next=ensureTraceShape(repairDomainState(decoded.state)),check=validateDomainState(next);if(check.errors.length)throw new Error("Die Sicherung enthält fehlerhafte Daten: "+check.errors.join(" · "));if(!confirm(`Geprüfte Sicherung wiederherstellen? ${decoded.documents.length} Dokument(e) werden übernommen.`))return;createRestorePoint("Vor Datensicherung-Import");await replaceDocuments(decoded.documents);state=next;state.meta.restorePoints=[...(oldState.meta?.restorePoints||[]),...(state.meta.restorePoints||[])].slice(0,5);await saveState(state);LAST_STABLE_STATE=cloneState(state);alert("Datensicherung erfolgreich wiederhergestellt.");more()}catch(e){try{await replaceDocuments(oldDocs);state=oldState;await saveState(oldState);LAST_STABLE_STATE=cloneState(oldState)}catch{}alert("Wiederherstellung fehlgeschlagen: "+(e.message||e))}}
+  $("exportState").onclick=()=>{const blob=new Blob([JSON.stringify(fullPortfolioState(),null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Daten_${stamp}.json`;a.click();URL.revokeObjectURL(a.href)};
+  $("fullExport").onclick=async()=>{const pw=$("backupPw").value;if(pw.length<8)return alert("Bitte mindestens 8 Zeichen für das Passwort verwenden.");const wrapper=await createFullBackup(fullPortfolioState(),pw),blob=new Blob([JSON.stringify(wrapper)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Mietverwaltung_Datensicherung_${stamp}.json`;a.click();URL.revokeObjectURL(a.href);state.meta.lastBackupAt=new Date().toISOString();await persist("Datensicherung erstellt","verschlüsselt");backupView()};
+  $("fullImport").onclick=async()=>{const f=$("fullImportFile").files[0],pw=$("backupPw").value;if(!f)return alert("Bitte zuerst eine Datensicherung auswählen.");if(pw.length<1)return alert("Bitte das Passwort der Datensicherung eingeben.");const oldState=cloneState(fullPortfolioState()),oldDocs=await listAllDocuments();try{const wrapper=JSON.parse(await f.text()),decoded=await decodeFullBackup(wrapper,pw),next=ensureTraceShape(repairDomainState(decoded.state)),check=validateDomainState(next);if(check.errors.length)throw new Error("Die Sicherung enthält fehlerhafte Daten: "+check.errors.join(" · "));if(!confirm(`Geprüfte Sicherung wiederherstellen? ${decoded.documents.length} Dokument(e) werden übernommen.`))return;createRestorePoint("Vor Datensicherung-Import");const importRestorePoints=fullPortfolioState().meta?.restorePoints||[];await replaceAllDocuments(decoded.documents);next.meta.restorePoints=[...importRestorePoints,...(next.meta.restorePoints||[])].slice(0,5);await saveState(next);applyRestoredPortfolioState(next);alert("Datensicherung erfolgreich wiederhergestellt.");more()}catch(e){try{await replaceAllDocuments(oldDocs);await saveState(oldState);applyRestoredPortfolioState(oldState)}catch{}alert("Wiederherstellung fehlgeschlagen: "+(e.message||e))}}
 }
 function setupGlobal(){
   document.querySelectorAll(".main-tabs button").forEach(b=>b.onclick=()=>goTop(b.dataset.route));

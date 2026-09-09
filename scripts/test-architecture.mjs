@@ -43,6 +43,8 @@ const smartEngine = read("src/domain/smart-engine.ts");
 const v18Assistant = read("src/domain/v18-assistant.ts");
 const backupCodec = read("src/io/backup-codec.ts");
 const uiCore = read("src/ui/ui-core.ts");
+const presentation = read("src/presentation/building-workspace.ts");
+const presentationNavigation = read("src/presentation/navigation.ts");
 const tsconfig = read("tsconfig.json");
 const app = read("app.js");
 
@@ -168,6 +170,19 @@ assert(backupCodec.includes('ENCRYPTED_BACKUP_SCHEMA = "mietverwaltung-encrypted
 assert(!backupCodec.includes("mietverwaltung-v81-full-backup"), "Veraltetes V81-Backupformat ist noch zugelassen.");
 assert(!backupCodec.includes("mietverwaltung-v75-full-backup"), "Veraltetes V75-Backupformat ist noch zugelassen.");
 
+assert(buildScript.includes('compileModule("src/presentation/index.ts", "AppPresentation")'), "Presentation-Bundle fehlt.");
+assert(presentation.includes("export const PRESENTATION_VERSION = 1"), "Presentation-Version fehlt.");
+assert(presentation.includes("projectStateForBuilding"), "Gebäudeprojektion fehlt in Presentation.");
+assert(presentation.includes("mergeStateFromBuilding"), "Gebäude-Merge fehlt in Presentation.");
+assert(presentation.includes("projected.documentsCache = []"), "Transienter Dokumentcache wird bei Gebäudeprojektion nicht geleert.");
+assert(presentation.includes("result.documentsCache = []"), "Transienter Dokumentcache wird beim Portfolio-Merge nicht entfernt.");
+assert(presentationNavigation.includes("parseRouteHash"), "Typisiertes Presentation-Routing fehlt.");
+assert(appRuntime.includes("AppPresentation.createPresentationWorkspace"), "Runtime verwendet den Presentation-Workspace nicht.");
+assert(appRuntime.includes("AppApplication.queryTaskList"), "Runtime verwendet noch nicht die Application-Task-Query.");
+assert(!appRuntime.includes("const out=[],seen=new Set(),today=smartToday(),cy=currentPeriodYear()"), "Doppelte ungescopte taskList liegt noch in der Runtime.");
+const applicationQueries = read("src/application/queries.ts");
+assert(applicationQueries.includes("billingPeriodForWorkspace"), "Application-Task-Query bewahrt Übernahmeperioden nicht.");
+
 assert(buildScript.includes("bundle: true"), "Build bündelt TypeScript-Importe nicht.");
 assert(buildScript.includes('"AppState"'), "AppState wird nicht gebaut.");
 assert(buildScript.includes('"AppPersistence"'), "AppPersistence wird nicht gebaut.");
@@ -220,7 +235,8 @@ assert(appRuntime.includes("function closeModal("), "closeModal fehlt in app-run
 assert(appRuntime.includes("function modal("), "modal fehlt in app-runtime.ts.");
 assert(appRuntime.includes("}=AppUiCore;"), "App-Runtime bindet AppUiCore nicht ein.");
 assert(appRuntime.includes("let storageError=null;"), "App-Startzustand fehlt in app-runtime.ts.");
-assert(appRuntime.includes("const ROUTE_LABELS="), "Routing-Konfiguration fehlt in app-runtime.ts.");
+assert(appRuntime.includes("parseRouteHash,routeHash}=AppPresentation;"), "App-Runtime bindet typisiertes Presentation-Routing nicht ein.");
+assert(!appRuntime.includes("const ROUTE_LABELS={"), "Routing-Konfiguration liegt noch doppelt in app-runtime.ts.");
 assert(appRuntime.includes("function render(){"), "Zentrale Ansichtsroutine fehlt in app-runtime.ts.");
 assert(appRuntime.includes("async function startApp(){"), "App-Startfunktion fehlt in app-runtime.ts.");
 assert(appRuntime.includes("startApp();"), "App-Start wird in app-runtime.ts nicht ausgelöst.");
