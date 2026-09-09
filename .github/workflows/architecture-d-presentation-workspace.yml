@@ -971,13 +971,8 @@ jobs:
 
           replace_once(
               "index.html",
-              '''
-              <div class="top-actions"><span id="connectionState"
-              ''',
-              '''
-              <label id="buildingSwitchWrap" class="building-switch hidden"><span>Gebäude</span><select id="buildingSelect" aria-label="Aktives Gebäude"></select></label>
-                <div class="top-actions"><span id="connectionState"
-              '''
+              '<div class="top-actions"><span id="connectionState"',
+              '<label id="buildingSwitchWrap" class="building-switch hidden"><span>Gebäude</span><select id="buildingSelect" aria-label="Aktives Gebäude"></select></label>\n  <div class="top-actions"><span id="connectionState"'
           )
           replace_once("index.html", 'href="style.css?v=1810p2"', 'href="style.css?v=1810p3"')
           replace_once("index.html", 'src="app.js?v=1803"', 'src="app.js?v=1804"')
