@@ -560,6 +560,9 @@ jobs:
           design += B(r'''
           @layer responsive {
             html,body{width:100%;max-width:100%;overflow-x:hidden}
+            body{min-width:0}
+            .topbar{width:100%;max-width:100vw;min-width:0}
+            .brand,.building-switch,.top-actions{min-width:0}
             main,#app,.workspace-content,.card,.item,.sheet{min-width:0;max-width:100%}
 
             nav.main-tabs{
@@ -567,7 +570,9 @@ jobs:
               right:0;
               bottom:0;
               transform:none;
-              width:min(680px,100vw);
+              width:100%;
+              max-width:680px;
+              box-sizing:border-box;
               margin-inline:auto;
               pointer-events:auto;
             }
@@ -652,7 +657,7 @@ jobs:
             @media(min-width:1100px){
               body{padding-bottom:0}
               main{max-width:1280px;padding:26px 28px 48px 116px}
-              .main-tabs{
+              nav.main-tabs{
                 top:88px;
                 bottom:auto;
                 left:16px;
@@ -667,14 +672,15 @@ jobs:
                 border-radius:18px;
                 box-shadow:var(--shadow);
               }
-              .main-tabs button{min-height:64px;font-size:10px}
-              .main-tabs button svg{width:22px;height:22px}
+              nav.main-tabs button{min-height:64px;font-size:10px}
+              nav.main-tabs button svg{width:22px;height:22px}
               .overlay{align-items:center;padding:24px}
               .sheet{border-radius:22px;max-height:min(88vh,900px)}
             }
           }
 
           @layer accessibility {
+            button{min-height:var(--touch)}
             :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
             .field-error{color:var(--danger)}
             @media(prefers-reduced-motion:reduce){
@@ -756,13 +762,15 @@ jobs:
           assert.equal((source.match(/:root\s*\{/g) || []).length, 2, "Es darf nur Light-Root plus Dark-Root geben.");
           assert.equal((source.match(/prefers-color-scheme:dark/g) || []).length, 1, "Dark Theme muss zentral genau einmal definiert sein.");
           assert(source.includes("@media(min-width:1100px)"), "Desktop-Arbeitsoberfläche fehlt.");
+          assert(source.includes("nav.main-tabs{\n      top:88px") || source.includes("nav.main-tabs{\n                top:88px"), "Desktop-Hauptnavigation hat nicht die nötige Selektor-Spezifität.");
+          assert(source.includes("button{min-height:var(--touch)}"), "Globaler 44px-Touch-Ratchet fehlt.");
           assert(source.includes("#buildingAdminForm>.form-actions"), "Gebäudeformular-Touchvertrag fehlt.");
           assert(source.includes("nav.main-tabs"), "Hauptnavigation fehlt im Design-System.");
           assert(source.includes(".workspace-sidebar"), "Desktop-Workspace-Navigation fehlt.");
           assert(source.includes(".next-best-action"), "Aufgabenorientierte Startseite ist nicht gestaltet.");
           assert(source.includes(".field-error"), "Zentrale Formularfehler sind nicht gestaltet.");
           assert(source.includes(".empty-state"), "Leerezustände sind nicht gestaltet.");
-          assert(source.length < 42000, `Design-System überschreitet Größenratchet: ${source.length} Zeichen.`);
+          assert(source.length < 44000, `Design-System überschreitet Größenratchet: ${source.length} Zeichen.`);
 
           console.log(`Design-System F bestanden: ${source.length} Zeichen, 1 Quelle, 0 historische Override-Schichten.`);
           '''))
@@ -772,18 +780,27 @@ jobs:
           const { openApp, top } = require('./helpers');
 
           async function geometry(page) {
-            return page.evaluate(() => ({
-              innerWidth: window.innerWidth,
-              clientWidth: document.documentElement.clientWidth,
-              scrollWidth: document.documentElement.scrollWidth,
-              bodyScrollWidth: document.body.scrollWidth
-            }));
+            return page.evaluate(() => {
+              const clientWidth = document.documentElement.clientWidth;
+              const offenders = [...document.querySelectorAll('body *')].map(el => {
+                const r = el.getBoundingClientRect();
+                return { tag: el.tagName.toLowerCase(), id: el.id || '', cls: String(el.className || '').slice(0,80), left: r.left, right: r.right, width: r.width };
+              }).filter(x => x.width > 0 && (x.left < -1 || x.right > clientWidth + 1)).sort((a,b) => Math.max(b.right-clientWidth,-b.left) - Math.max(a.right-clientWidth,-a.left)).slice(0,12);
+              return {
+                innerWidth: window.innerWidth,
+                clientWidth,
+                scrollWidth: document.documentElement.scrollWidth,
+                bodyScrollWidth: document.body.scrollWidth,
+                offenders
+              };
+            });
           }
 
           async function expectNoHorizontalOverflow(page, label) {
             const g = await geometry(page);
-            expect(g.scrollWidth, `${label}: document overflow`).toBeLessThanOrEqual(g.clientWidth + 1);
-            expect(g.bodyScrollWidth, `${label}: body overflow`).toBeLessThanOrEqual(g.clientWidth + 1);
+            const detail = `${label}: ${JSON.stringify(g.offenders)}`;
+            expect(g.scrollWidth, `${detail} · document overflow`).toBeLessThanOrEqual(g.clientWidth + 1);
+            expect(g.bodyScrollWidth, `${detail} · body overflow`).toBeLessThanOrEqual(g.clientWidth + 1);
           }
 
           async function expectHitAtCenter(locator, label) {
