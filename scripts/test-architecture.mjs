@@ -45,6 +45,9 @@ const backupCodec = read("src/io/backup-codec.ts");
 const uiCore = read("src/ui/ui-core.ts");
 const presentation = read("src/presentation/building-workspace.ts");
 const presentationNavigation = read("src/presentation/navigation.ts");
+const portfolioAdminApplication = read("src/application/portfolio-admin.ts");
+const portfolioAdminPresentation = read("src/presentation/portfolio-administration.ts");
+const buildingWorkspaceUi = read("src/ui/building-workspace-ui.ts");
 const tsconfig = read("tsconfig.json");
 const app = read("app.js");
 
@@ -177,7 +180,7 @@ assert(presentation.includes("mergeStateFromBuilding"), "Gebäude-Merge fehlt in
 assert(presentation.includes("projected.documentsCache = []"), "Transienter Dokumentcache wird bei Gebäudeprojektion nicht geleert.");
 assert(presentation.includes("result.documentsCache = []"), "Transienter Dokumentcache wird beim Portfolio-Merge nicht entfernt.");
 assert(presentationNavigation.includes("parseRouteHash"), "Typisiertes Presentation-Routing fehlt.");
-assert(appRuntime.includes("AppPresentation.createPresentationWorkspace"), "Runtime verwendet den Presentation-Workspace nicht.");
+assert(appRuntime.includes("AppPresentation.createPresentationWorkspace") || buildingWorkspaceUi.includes("AppPresentation.createPresentationWorkspace"), "Runtime/typisierte UI verwendet den Presentation-Workspace nicht.");
 assert(appRuntime.includes("AppApplication.queryTaskList"), "Runtime verwendet noch nicht die Application-Task-Query.");
 assert(!appRuntime.includes("const out=[],seen=new Set(),today=smartToday(),cy=currentPeriodYear()"), "Doppelte ungescopte taskList liegt noch in der Runtime.");
 const applicationQueries = read("src/application/queries.ts");
@@ -253,7 +256,19 @@ assert(buildScript.includes("const lateAppRuntime ="), "Build besitzt keine Oute
 assert(buildScript.includes('relativePath === "src/runtime/900-app-entry.js"'), "App-Runtime wird nicht direkt vor dem äußeren Entry injiziert.");
 assert(buildScript.includes('"src", "runtime", "order.json"'), "Build verwendet das Runtime-Manifest nicht.");
 assert(!buildScript.includes('"src", "legacy", "order.json"'), "Build verweist noch auf das Legacy-Manifest.");
+assert(tsconfig.includes('"src/application/**/*.ts"'), "TypeScript-Konfiguration prüft src/application nicht.");
+assert(tsconfig.includes('"src/presentation/**/*.ts"'), "TypeScript-Konfiguration prüft src/presentation nicht.");
 assert(tsconfig.includes('"src/ui/**/*.ts"'), "TypeScript-Konfiguration prüft src/ui nicht.");
+assert(portfolioAdminApplication.includes("PORTFOLIO_ADMIN_VERSION = 1"), "Portfolio-Administration E fehlt in der Application-Schicht.");
+assert(portfolioAdminApplication.includes("createBuildingInPortfolio"), "Gebäude-Anlegen ist nicht als Application-Use-Case gekapselt.");
+assert(portfolioAdminApplication.includes("updateBuildingInPortfolio"), "Gebäude-Bearbeiten ist nicht als Application-Use-Case gekapselt.");
+assert(portfolioAdminPresentation.includes("createPortfolioAdministrationModel"), "Portfolio-Verwaltungsmodell fehlt in der Presentation-Schicht.");
+assert(buildingWorkspaceUi.includes("export function openBuildingManager"), "Gebäudeverwaltungs-UI fehlt im typisierten UI-Modul.");
+assert(buildingWorkspaceUi.includes("export function renderBuildingSwitcher"), "Gebäudewähler wurde nicht aus dem Runtime-Monolithen extrahiert.");
+assert(!appRuntime.includes("function renderBuildingSwitcher(){"), "Gebäudewähler liegt noch doppelt im Runtime-Monolithen.");
+assert(appRuntime.includes("AppBuildingWorkspaceUi.renderBuildingSwitcher()"), "Runtime bindet den typisierten Gebäudewähler nicht ein.");
+assert(buildScript.includes('compileModule("src/ui/building-workspace-ui.ts", "AppBuildingWorkspaceUi")'), "Build bindet AppBuildingWorkspaceUi nicht ein.");
+assert(app.includes("compiled src/ui/building-workspace-ui.ts"), "Gebäude-UI-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/ui/ui-core.ts"), "UI-Core-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("TypeScript source src/ui/app-runtime.ts · outer-scope injection"), "App-Runtime-TypeScript fehlt im Browser-Bundle.");
 

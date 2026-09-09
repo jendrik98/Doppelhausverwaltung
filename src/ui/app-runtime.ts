@@ -137,28 +137,12 @@ async function persist(action,detail){
   }
 }
 
-function renderBuildingSwitcher(){
-  const wrap=$("buildingSwitchWrap"),select=$("buildingSelect");if(!wrap||!select)return;
-  const model=AppPresentation.createPresentationWorkspace(portfolioState,activeBuildingId);
-  wrap.classList.toggle("hidden",!model.showBuildingSelector);
-  if(!model.showBuildingSelector){select.innerHTML="";return}
-  select.innerHTML=model.buildings.map(item=>`<option value="${esc(item.id)}" ${item.active?"selected":""}>${esc(item.name)}</option>`).join("");
-  select.onchange=()=>{
-    const next=select.value;
-    if(next===activeBuildingId)return;
-    if(!closeModal(false)){select.value=activeBuildingId;return}
-    activeBuildingId=AppPresentation.resolveActiveBuildingId(portfolioState,next);
-    state=projectActiveState(portfolioState,activeBuildingId);
-    LAST_STABLE_STATE=cloneState(state);
-    render();window.scrollTo({top:0,left:0,behavior:"auto"})
-  }
-}
 function nav(){
   document.querySelectorAll(".main-tabs button").forEach(b=>{
     const active=b.dataset.route===route;b.classList.toggle("active",active);
     if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")
   });
-  renderBuildingSwitcher();
+  AppBuildingWorkspaceUi.renderBuildingSwitcher();
   const ctx=$("pageContext");if(ctx)ctx.textContent=route==="home"?(state.property?.name||"Start"):ROUTE_LABELS[route];
   const building=state.property?.name?` · ${state.property.name}`:"";
   document.title=`${ROUTE_LABELS[route]||"Mietverwaltung"}${building} · Mietverwaltung`
@@ -261,7 +245,7 @@ async function houseOverviewView(){
     <article class="card"><span>Dokumente offen</span><strong>${openDocs}</strong><small>${docs.length} insgesamt</small></article>
   </div>
   <section class="card embedded-overview-card">
-    <div class="card-head"><div><p class="eyebrow">STAMMDATEN</p><h3>Objekt & Einheiten</h3></div><button class="secondary compact" id="editPropertyOverview">Objektdaten bearbeiten</button></div>
+    <div class="card-head"><div><p class="eyebrow">STAMMDATEN</p><h3>Objekt & Einheiten</h3></div><div class="row"><button class="secondary compact" id="manageBuildingsOverview">Gebäude verwalten</button><button class="secondary compact" id="editPropertyOverview">Objektdaten bearbeiten</button></div></div>
     <div class="fact-row"><span>Objekt</span><strong>${esc(state.property.name||"noch nicht benannt")}</strong></div>
     <div class="fact-row"><span>Adresse</span><strong>${esc(state.property.address||"fehlt")}</strong></div>
     <div class="fact-row"><span>Gesamtwohnfläche</span><strong>${state.property.totalArea?`${state.property.totalArea} m²`:"fehlt"}</strong></div>
@@ -275,6 +259,7 @@ async function houseOverviewView(){
     ${hubAction("infrastructure","Zähler","Wasserzähler, Ablesungen und Abfallbehälter",String(state.meters.length))}
     ${hubAction("documents","Dokumente","Belege, PDFs und OCR-Analyse",openDocs?`${openDocs} offen`:"")}
   </div>`;
+  $("manageBuildingsOverview").onclick=()=>AppBuildingWorkspaceUi.openBuildingManager();
   $("editPropertyOverview").onclick=()=>goSub("data","property");
   $("editUnitsOverview").onclick=()=>goSub("data","units");
   document.querySelectorAll("[data-hub-action]").forEach(b=>b.onclick=()=>goSub("data",b.dataset.hubAction))

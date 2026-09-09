@@ -297,3 +297,32 @@ gebäudegefilterten IndexedDB-Dokumentpfad neu geladen.
 Schritt D ändert weder App-Version (`18.0.0`) noch State-Schema (`15`) oder IndexedDB-Version (`3`).
 Der PWA-Asset-Key wird auf `app.js?v=1804`, `style.css?v=1810p3` und
 `mietverwaltung-v18-presentation-d-1` angehoben.
+## Schritt E: Portfolio-/Gebäudeverwaltung
+
+Schritt E macht die in B1/B2 modellierte und in D isolierte Mehrgebäude-Struktur erstmals vollständig
+über die produktive Oberfläche administrierbar. Gebäude werden nicht mehr nur über vorhandene Test-/
+Importdaten sichtbar, sondern können innerhalb des primären Portfolios angelegt und bearbeitet werden.
+Das aktive Gebäude bleibt dabei eine reine Präsentationspräferenz; `meta.primaryBuildingId` wird durch
+Anlegen, Öffnen oder Bearbeiten eines weiteren Gebäudes nicht verändert.
+
+`src/application/portfolio-admin.ts` enthält die typisierten Use-Cases zum Anlegen und Bearbeiten von
+Gebäuden einschließlich zentraler Flächen-, Jahres-, Datums- und Geldvalidierung. Änderungen am
+Primärgebäude synchronisieren weiterhin die bestehende `property`-/`finance`-Kompatibilitätsprojektion;
+Änderungen an Nebenobjekten dürfen diese Projektion nicht verschieben.
+
+`src/presentation/portfolio-administration.ts` erzeugt das gebäudeübergreifende Verwaltungsmodell mit
+Aktiv-/Primärkennzeichnung und gebäudeisolierten Bestandszählern. Der bisher im großen
+`src/ui/app-runtime.ts` liegende Gebäudewähler wird zusammen mit der neuen Verwaltungsoberfläche nach
+`src/ui/building-workspace-ui.ts` extrahiert. Das Modul verwendet bewusst die bestehenden äußeren
+Runtime-Live-Bindungen, wächst aber selbst unter strikter TypeScript-Prüfung; der Runtime-Monolith wird
+dadurch nicht wieder vergrößert.
+
+Die TypeScript-Konfiguration prüft ab E zusätzlich `src/application/**` und `src/presentation/**`.
+Gebäude werden zunächst bewusst nicht gelöscht: Solange Dokumente und Abrechnungsartefakte separat
+referenziert werden, vermeidet E damit verwaiste fachliche Daten. Ein neu angelegtes Gebäude wird direkt
+als Arbeitsbereich aktiviert; Einheiten und Mietverhältnisse werden anschließend über die bereits
+gebäudeisolierten D-Ansichten gepflegt.
+
+Schritt E ändert weder App-Version (`18.0.0`) noch State-Schema (`15`), IndexedDB-Name/-Version
+(`mietverwaltung-v6`, Version `3`) oder Backupformate. Der PWA-Asset-Key steigt auf `app.js?v=1805`,
+der Stylesheet-Key auf `style.css?v=1810p9` und der Production-Cache auf `mietverwaltung-v18-portfolio-admin-e-1`.

@@ -945,10 +945,12 @@ var AppApplication = (() => {
   var index_exports = {};
   __export(index_exports, {
     APPLICATION_VERSION: () => APPLICATION_VERSION,
+    PORTFOLIO_ADMIN_VERSION: () => PORTFOLIO_ADMIN_VERSION,
     assertBuildingScopedMutation: () => assertBuildingScopedMutation,
     assertContextIntegrity: () => assertContextIntegrity,
     buildingScopedCollections: () => buildingScopedCollections,
     commandResult: () => commandResult,
+    createBuildingInPortfolio: () => createBuildingInPortfolio,
     createCommandBus: () => createCommandBus,
     loadApplicationState: () => loadApplicationState,
     portfolioNavigation: () => portfolioNavigation,
@@ -956,7 +958,8 @@ var AppApplication = (() => {
     queryTaskList: () => queryTaskList,
     reconciliationSummary: () => reconciliationSummary,
     resolveApplicationContext: () => resolveApplicationContext,
-    safeCommandSummary: () => safeCommandSummary
+    safeCommandSummary: () => safeCommandSummary,
+    updateBuildingInPortfolio: () => updateBuildingInPortfolio
   });
 
   // src/application/contracts.ts
@@ -1298,6 +1301,416 @@ var AppApplication = (() => {
     };
     return { executeCommand };
   }
+
+  // src/core/validation.ts
+  var valid = (value) => ({ ok: true, level: "ok", value });
+  var invalid = (message) => ({ ok: false, level: "error", message });
+  function parseGermanNumber(input) {
+    let text = String(input ?? "").trim().replace(/\s+/g, "");
+    if (!text) return null;
+    if (text.includes(",") && text.includes(".")) {
+      if (text.lastIndexOf(",") > text.lastIndexOf(".")) text = text.replace(/\./g, "").replace(",", ".");
+      else text = text.replace(/,/g, "");
+    } else if (text.includes(",")) {
+      text = text.replace(",", ".");
+    }
+    if (!/^-?\d+(?:\.\d+)?$/.test(text)) return null;
+    const value = Number(text);
+    return Number.isFinite(value) ? value : null;
+  }
+  function validateMoney(input, options = {}) {
+    const text = String(input ?? "").trim();
+    if (!text) return options.required ? invalid("Betrag fehlt.") : valid(null);
+    const value = parseGermanNumber(text);
+    if (value === null) return invalid("Der Betrag ist keine gültige Zahl.");
+    if (options.min !== void 0 && value < options.min) return invalid(`Der Betrag muss mindestens ${options.min} sein.`);
+    if (options.max !== void 0 && value > options.max) return invalid(`Der Betrag darf höchstens ${options.max} sein.`);
+    return valid(value);
+  }
+  function validatePositiveNumber(input, label, allowZero = false) {
+    const value = parseGermanNumber(input);
+    if (value === null) return invalid(`${label} ist keine gültige Zahl.`);
+    if (allowZero ? value < 0 : value <= 0) return invalid(`${label} muss ${allowZero ? "mindestens 0" : "größer als 0"} sein.`);
+    return valid(value);
+  }
+  function validateArea(input) {
+    const result = validatePositiveNumber(input, "Wohnfläche");
+    if (!result.ok) return result;
+    if ((result.value ?? 0) > 1e4) return invalid("Die Wohnfläche ist unplausibel groß.");
+    return result;
+  }
+  function validateYear(input, min = 1800, max = (/* @__PURE__ */ new Date()).getFullYear() + 5) {
+    const value = Number(input);
+    if (!Number.isInteger(value)) return invalid("Das Jahr ist ungültig.");
+    if (value < min || value > max) return invalid(`Das Jahr muss zwischen ${min} und ${max} liegen.`);
+    return valid(value);
+  }
+  function validateIsoDate(input, required = false) {
+    const value = String(input ?? "").trim();
+    if (!value) return required ? invalid("Datum fehlt.") : valid("");
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return invalid("Das Datum hat kein gültiges Format.");
+    const [, y, m, d] = match;
+    const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+    const same = date.getUTCFullYear() === Number(y) && date.getUTCMonth() + 1 === Number(m) && date.getUTCDate() === Number(d);
+    return same ? valid(value) : invalid("Das Datum existiert nicht.");
+  }
+
+  // src/domain/portfolio-model.ts
+  var PORTFOLIO_MODEL_VERSION = 2;
+  var DEFAULT_PORTFOLIO_ID = "portfolio-main";
+  var DEFAULT_BUILDING_ID = "building-main";
+  function array(value) {
+    return Array.isArray(value) ? value : [];
+  }
+  function uniqueFallbackId(prefix, index, used) {
+    let candidate = `${prefix}-${index + 1}`;
+    let suffix = index + 1;
+    while (used.has(candidate)) candidate = `${prefix}-${++suffix}`;
+    used.add(candidate);
+    return candidate;
+  }
+  function ensureIds(items, prefix) {
+    const used = new Set(items.map((item) => String(item?.id || "")).filter(Boolean));
+    items.forEach((item, index) => {
+      if (!item || typeof item !== "object") return;
+      if (!item.id) item.id = uniqueFallbackId(prefix, index, used);
+    });
+  }
+  function firstByType(units, type, buildingId) {
+    return units.find((unit) => unit?.type === type && (!buildingId || unit.buildingId === buildingId)) || null;
+  }
+  function mapById(items) {
+    return new Map(items.filter((item) => item?.id).map((item) => [String(item.id), item]));
+  }
+  function linkedBuildingId(item, refs) {
+    for (const ref of refs) {
+      for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId"]) {
+        const linked = item?.[key] ? ref.get(String(item[key])) : null;
+        if (linked?.buildingId) return String(linked.buildingId);
+      }
+    }
+    return "";
+  }
+  function ensurePortfolioModel(value) {
+    const state = value && typeof value === "object" ? value : {};
+    state.meta = state.meta && typeof state.meta === "object" ? state.meta : {};
+    state.property = state.property && typeof state.property === "object" ? state.property : {};
+    for (const key of [
+      "portfolios",
+      "buildings",
+      "units",
+      "leases",
+      "meters",
+      "sources",
+      "costPositions",
+      "tasks",
+      "payments",
+      "waterSettlements",
+      "billingWorkflows",
+      "billingSnapshots",
+      "containers",
+      "water"
+    ]) state[key] = array(state[key]);
+    ensureIds(state.portfolios, "portfolio");
+    ensureIds(state.buildings, "building");
+    ensureIds(state.units, "unit");
+    ensureIds(state.leases, "tenancy");
+    let primaryPortfolio = state.portfolios.find((item) => item.id === state.meta.primaryPortfolioId) || state.portfolios[0];
+    if (!primaryPortfolio) {
+      primaryPortfolio = {
+        id: DEFAULT_PORTFOLIO_ID,
+        name: "Privatbestand",
+        kind: "private",
+        createdAt: state.meta.createdAt || ""
+      };
+      state.portfolios.push(primaryPortfolio);
+    }
+    primaryPortfolio.name = primaryPortfolio.name || "Privatbestand";
+    primaryPortfolio.kind = primaryPortfolio.kind || "private";
+    state.meta.primaryPortfolioId = primaryPortfolio.id;
+    const portfolioIds = new Set(state.portfolios.map((item) => String(item.id)));
+    for (const building of state.buildings) {
+      if (!portfolioIds.has(String(building.portfolioId || ""))) building.portfolioId = primaryPortfolio.id;
+    }
+    let primaryBuilding = state.buildings.find((item) => item.id === state.meta.primaryBuildingId) || state.buildings[0];
+    if (!primaryBuilding) {
+      primaryBuilding = {
+        id: DEFAULT_BUILDING_ID,
+        portfolioId: primaryPortfolio.id,
+        name: state.property.name || "Doppelhaus",
+        address: state.property.address || "",
+        totalArea: Number(state.property.totalArea || 0),
+        year: state.property.year || "",
+        source: "legacy-property"
+      };
+      state.buildings.push(primaryBuilding);
+    }
+    if (!portfolioIds.has(String(primaryBuilding.portfolioId || ""))) primaryBuilding.portfolioId = primaryPortfolio.id;
+    state.meta.primaryBuildingId = primaryBuilding.id;
+    primaryBuilding.name = state.property.name || primaryBuilding.name || "Doppelhaus";
+    primaryBuilding.address = state.property.address || primaryBuilding.address || "";
+    primaryBuilding.totalArea = Number(state.property.totalArea || primaryBuilding.totalArea || 0);
+    primaryBuilding.year = state.property.year || primaryBuilding.year || "";
+    primaryBuilding.billingTakeoverDate = state.property.billingTakeoverDate || primaryBuilding.billingTakeoverDate || "";
+    primaryBuilding.predecessorBillingEnd = state.property.predecessorBillingEnd || primaryBuilding.predecessorBillingEnd || "";
+    const buildingIds = new Set(state.buildings.map((item) => String(item.id)));
+    for (const unit of state.units) {
+      if (!buildingIds.has(String(unit.buildingId || ""))) unit.buildingId = primaryBuilding.id;
+    }
+    const unitById = mapById(state.units);
+    const unitIds = new Set(unitById.keys());
+    const primaryRental = firstByType(state.units, "rental", primaryBuilding.id) || firstByType(state.units, "rental") || state.units[0] || null;
+    for (const lease of state.leases) {
+      if (!unitIds.has(String(lease.unitId || ""))) lease.unitId = primaryRental?.id || "";
+      const linkedUnit = unitById.get(String(lease.unitId || ""));
+      lease.buildingId = linkedUnit?.buildingId || primaryBuilding.id;
+    }
+    const leaseById = mapById(state.leases);
+    const ownerUnitFor = (buildingId) => firstByType(state.units, "owner", buildingId) || (buildingId === primaryBuilding.id ? firstByType(state.units, "owner") : null);
+    for (const meter of state.meters) {
+      const linkedUnit = unitById.get(String(meter.unitId || ""));
+      if (!buildingIds.has(String(meter.buildingId || ""))) meter.buildingId = linkedUnit?.buildingId || primaryBuilding.id;
+      if (meter.role === "ownerWater" && !linkedUnit) {
+        const ownerUnit = ownerUnitFor(String(meter.buildingId));
+        if (ownerUnit) meter.unitId = ownerUnit.id;
+      }
+      if (meter.unitId && !unitIds.has(String(meter.unitId))) delete meter.unitId;
+    }
+    const meterById = mapById(state.meters);
+    for (const source of state.sources) {
+      if (!buildingIds.has(String(source.buildingId || ""))) source.buildingId = primaryBuilding.id;
+    }
+    const sourceById = mapById(state.sources);
+    for (const position of state.costPositions) {
+      const linkedSource = sourceById.get(String(position.sourceId || ""));
+      if (!buildingIds.has(String(position.buildingId || ""))) position.buildingId = linkedSource?.buildingId || primaryBuilding.id;
+    }
+    const positionById = mapById(state.costPositions);
+    for (const settlement of state.waterSettlements) {
+      const mainMeter = meterById.get(String(settlement.mainMeterId || ""));
+      const ownerMeter = meterById.get(String(settlement.ownerMeterId || ""));
+      if (!buildingIds.has(String(settlement.buildingId || ""))) {
+        settlement.buildingId = mainMeter?.buildingId || ownerMeter?.buildingId || primaryBuilding.id;
+      }
+    }
+    const refs = [unitById, leaseById, positionById, sourceById, meterById];
+    for (const key of ["tasks", "payments"]) {
+      for (const item of state[key]) {
+        if (!buildingIds.has(String(item.buildingId || ""))) item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
+        const linkedLease = leaseById.get(String(item.leaseId || ""));
+        if (linkedLease && !unitIds.has(String(item.unitId || ""))) item.unitId = linkedLease.unitId || "";
+      }
+    }
+    for (const key of ["billingWorkflows", "billingSnapshots", "containers", "water"]) {
+      for (const item of state[key]) {
+        if (item && typeof item === "object" && !buildingIds.has(String(item.buildingId || ""))) {
+          item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
+        }
+      }
+    }
+    if (Number(state.meta.portfolioModelVersion || 0) < PORTFOLIO_MODEL_VERSION) {
+      state.meta.portfolioModelMigratedAt = (/* @__PURE__ */ new Date()).toISOString();
+    }
+    state.meta.portfolioModelVersion = PORTFOLIO_MODEL_VERSION;
+    return state;
+  }
+  function validatePortfolioModel(value) {
+    const errors = [];
+    const warnings = [];
+    if (!value || typeof value !== "object") return { errors: ["Portfolio-Modell fehlt"], warnings };
+    const portfolios = array(value.portfolios);
+    const buildings = array(value.buildings);
+    const units = array(value.units);
+    const leases = array(value.leases);
+    if (!portfolios.length) errors.push("Portfolio-Modell: kein Portfolio vorhanden");
+    if (!buildings.length) errors.push("Portfolio-Modell: kein Gebäude vorhanden");
+    const unique = (items, label) => {
+      const ids = /* @__PURE__ */ new Set();
+      for (const item of items) {
+        if (!item?.id) {
+          errors.push(`${label}: Datensatz ohne ID`);
+          continue;
+        }
+        const id = String(item.id);
+        if (ids.has(id)) errors.push(`${label}: doppelte ID ${id}`);
+        ids.add(id);
+      }
+      return ids;
+    };
+    const portfolioIds = unique(portfolios, "Portfolios");
+    const buildingIds = unique(buildings, "Gebäude");
+    const unitIds = unique(units, "Einheiten");
+    unique(leases, "Mietverhältnisse");
+    const unitById = mapById(units);
+    const leaseById = mapById(leases);
+    const sourceById = mapById(array(value.sources));
+    const positionById = mapById(array(value.costPositions));
+    const meterById = mapById(array(value.meters));
+    for (const building of buildings) {
+      if (!portfolioIds.has(String(building.portfolioId || ""))) errors.push(`Gebäude ${building.id}: Portfolio-Referenz fehlt`);
+    }
+    for (const unit of units) {
+      if (!buildingIds.has(String(unit.buildingId || ""))) errors.push(`Einheit ${unit.id}: Gebäude-Referenz fehlt`);
+    }
+    for (const lease of leases) {
+      const linkedUnit = unitById.get(String(lease.unitId || ""));
+      if (units.length && !linkedUnit) errors.push(`Mietverhältnis ${lease.id}: Einheit-Referenz fehlt`);
+      if (!units.length && !lease.unitId) warnings.push(`Mietverhältnis ${lease.id}: noch keiner Einheit zugeordnet`);
+      if (!buildingIds.has(String(lease.buildingId || ""))) errors.push(`Mietverhältnis ${lease.id}: Gebäude-Referenz fehlt`);
+      if (linkedUnit && lease.buildingId !== linkedUnit.buildingId) errors.push(`Mietverhältnis ${lease.id}: Gebäude und Einheit widersprechen sich`);
+    }
+    for (const meter of array(value.meters)) {
+      if (!buildingIds.has(String(meter.buildingId || ""))) errors.push(`Zähler ${meter.id || "?"}: Gebäude-Referenz fehlt`);
+      const linkedUnit = meter.unitId ? unitById.get(String(meter.unitId)) : null;
+      if (meter.unitId && !linkedUnit) errors.push(`Zähler ${meter.id || "?"}: Einheit-Referenz fehlt`);
+      if (linkedUnit && meter.buildingId !== linkedUnit.buildingId) errors.push(`Zähler ${meter.id || "?"}: Gebäude und Einheit widersprechen sich`);
+    }
+    for (const source of array(value.sources)) {
+      if (!buildingIds.has(String(source.buildingId || ""))) errors.push(`Quelle ${source.id || "?"}: Gebäude-Referenz fehlt`);
+    }
+    for (const position of array(value.costPositions)) {
+      if (!buildingIds.has(String(position.buildingId || ""))) errors.push(`Kostenposition ${position.id || "?"}: Gebäude-Referenz fehlt`);
+      const source = position.sourceId ? sourceById.get(String(position.sourceId)) : null;
+      if (source && source.buildingId !== position.buildingId) errors.push(`Kostenposition ${position.id || "?"}: Quelle gehört zu anderem Gebäude`);
+    }
+    for (const payment of array(value.payments)) {
+      if (!buildingIds.has(String(payment.buildingId || ""))) errors.push(`Zahlung ${payment.id || "?"}: Gebäude-Referenz fehlt`);
+      const linked = payment.positionId ? positionById.get(String(payment.positionId)) : payment.sourceId ? sourceById.get(String(payment.sourceId)) : payment.leaseId ? leaseById.get(String(payment.leaseId)) : payment.unitId ? unitById.get(String(payment.unitId)) : null;
+      if (linked?.buildingId && linked.buildingId !== payment.buildingId) errors.push(`Zahlung ${payment.id || "?"}: Referenz gehört zu anderem Gebäude`);
+    }
+    for (const settlement of array(value.waterSettlements)) {
+      if (!buildingIds.has(String(settlement.buildingId || ""))) errors.push(`Wasserperiode ${settlement.id || settlement.periodYear || "?"}: Gebäude-Referenz fehlt`);
+      for (const key of ["mainMeterId", "ownerMeterId"]) {
+        const meter = settlement[key] ? meterById.get(String(settlement[key])) : null;
+        if (meter?.buildingId && meter.buildingId !== settlement.buildingId) errors.push(`Wasserperiode ${settlement.id || settlement.periodYear || "?"}: Zähler gehört zu anderem Gebäude`);
+      }
+    }
+    for (const [key, label] of [
+      ["tasks", "Aufgaben"],
+      ["billingWorkflows", "Abrechnungsworkflows"],
+      ["billingSnapshots", "Snapshots"],
+      ["containers", "Behälter"],
+      ["water", "Wasserdaten"]
+    ]) {
+      for (const item of array(value[key])) {
+        if (!buildingIds.has(String(item?.buildingId || ""))) errors.push(`${label} ${item?.id || "?"}: Gebäude-Referenz fehlt`);
+      }
+    }
+    if (value.meta?.primaryPortfolioId && !portfolioIds.has(String(value.meta.primaryPortfolioId))) {
+      errors.push("Portfolio-Modell: primäres Portfolio ist ungültig");
+    }
+    if (value.meta?.primaryBuildingId && !buildingIds.has(String(value.meta.primaryBuildingId))) {
+      errors.push("Portfolio-Modell: primäres Gebäude ist ungültig");
+    }
+    return { errors, warnings };
+  }
+
+  // src/application/portfolio-admin.ts
+  var PORTFOLIO_ADMIN_VERSION = 1;
+  var clone = (value) => {
+    if (typeof structuredClone === "function") return structuredClone(value);
+    return JSON.parse(JSON.stringify(value));
+  };
+  function normalizeBuildingInput(input) {
+    const name = String(input?.name || "").trim();
+    if (!name) throw new Error("Gebäudename fehlt.");
+    const area = validateArea(input?.totalArea);
+    if (!area.ok || area.value == null) throw new Error(area.message || "Gesamtwohnfläche ist ungültig.");
+    const yearText = String(input?.year ?? "").trim();
+    let year = "";
+    if (yearText) {
+      const checkedYear = validateYear(yearText);
+      if (!checkedYear.ok || checkedYear.value == null) throw new Error(checkedYear.message || "Baujahr ist ungültig.");
+      year = checkedYear.value;
+    }
+    const billingTakeoverDate = String(input?.billingTakeoverDate || "").trim();
+    const predecessorBillingEnd = String(input?.predecessorBillingEnd || "").trim();
+    for (const [label, value] of [["Übernahmedatum", billingTakeoverDate], ["Voreigentümer-Ende", predecessorBillingEnd]]) {
+      const checked = validateIsoDate(value);
+      if (!checked.ok) throw new Error(`${label}: ${checked.message || "Datum ist ungültig."}`);
+    }
+    if (billingTakeoverDate && predecessorBillingEnd && predecessorBillingEnd >= billingTakeoverDate) {
+      throw new Error("Der Abrechnungszeitraum des Voreigentümers muss vor der eigenen Übernahme enden.");
+    }
+    const repaymentCheck = validateMoney(input?.repayment ?? 0, { min: 0 });
+    const fixedCheck = validateMoney(input?.fixed ?? 0, { min: 0 });
+    if (!repaymentCheck.ok) throw new Error(repaymentCheck.message || "Hausrate ist ungültig.");
+    if (!fixedCheck.ok) throw new Error(fixedCheck.message || "Feste Hauskosten sind ungültig.");
+    return {
+      name,
+      address: String(input?.address || "").trim(),
+      totalArea: area.value,
+      year,
+      billingTakeoverDate,
+      predecessorBillingEnd,
+      repayment: Number(repaymentCheck.value || 0),
+      fixed: Number(fixedCheck.value || 0)
+    };
+  }
+  function checkedState(value) {
+    const state = ensurePortfolioModel(value);
+    const check = validatePortfolioModel(state);
+    if (check.errors.length) throw new Error(check.errors.join(" · "));
+    return state;
+  }
+  function createBuildingInPortfolio(value, id, input) {
+    const state = ensurePortfolioModel(clone(value || {}));
+    const buildingId = String(id || "").trim();
+    if (!buildingId) throw new Error("Gebäude-ID fehlt.");
+    if (state.buildings.some((item) => String(item?.id || "") === buildingId)) {
+      throw new Error("Diese Gebäude-ID existiert bereits.");
+    }
+    const data = normalizeBuildingInput(input);
+    const portfolioId = String(state?.meta?.primaryPortfolioId || state.portfolios?.[0]?.id || "");
+    if (!portfolioId) throw new Error("Primäres Portfolio fehlt.");
+    state.buildings.push({
+      id: buildingId,
+      portfolioId,
+      name: data.name,
+      address: data.address,
+      totalArea: data.totalArea,
+      year: data.year,
+      billingTakeoverDate: data.billingTakeoverDate,
+      predecessorBillingEnd: data.predecessorBillingEnd,
+      finance: { repayment: data.repayment, fixed: data.fixed },
+      source: "portfolio-admin"
+    });
+    return checkedState(state);
+  }
+  function updateBuildingInPortfolio(value, buildingId, input) {
+    const state = ensurePortfolioModel(clone(value || {}));
+    const id = String(buildingId || "").trim();
+    const index = state.buildings.findIndex((item) => String(item?.id || "") === id);
+    if (index < 0) throw new Error("Gebäude wurde nicht gefunden.");
+    const data = normalizeBuildingInput(input);
+    const prior = state.buildings[index];
+    state.buildings[index] = {
+      ...prior,
+      id: prior.id,
+      portfolioId: prior.portfolioId,
+      name: data.name,
+      address: data.address,
+      totalArea: data.totalArea,
+      year: data.year,
+      billingTakeoverDate: data.billingTakeoverDate,
+      predecessorBillingEnd: data.predecessorBillingEnd,
+      finance: { ...prior.finance || {}, repayment: data.repayment, fixed: data.fixed }
+    };
+    if (id === String(state?.meta?.primaryBuildingId || "")) {
+      state.property = {
+        ...state.property || {},
+        name: data.name,
+        address: data.address,
+        totalArea: data.totalArea,
+        year: data.year,
+        billingTakeoverDate: data.billingTakeoverDate,
+        predecessorBillingEnd: data.predecessorBillingEnd
+      };
+      state.finance = { ...state.finance || {}, repayment: data.repayment, fixed: data.fixed };
+    }
+    return checkedState(state);
+  }
   return __toCommonJS(index_exports);
 })();
 
@@ -1328,9 +1741,11 @@ var AppPresentation = (() => {
   __export(index_exports, {
     ACTIVE_BUILDING_STORAGE_KEY: () => ACTIVE_BUILDING_STORAGE_KEY,
     DEFAULT_SUB: () => DEFAULT_SUB,
+    PORTFOLIO_ADMIN_PRESENTATION_VERSION: () => PORTFOLIO_ADMIN_PRESENTATION_VERSION,
     PRESENTATION_VERSION: () => PRESENTATION_VERSION,
     ROUTE_LABELS: () => ROUTE_LABELS,
     SUB_PARENT: () => SUB_PARENT,
+    createPortfolioAdministrationModel: () => createPortfolioAdministrationModel,
     createPresentationWorkspace: () => createPresentationWorkspace,
     mergeStateFromBuilding: () => mergeStateFromBuilding,
     normalizeSub: () => normalizeSub,
@@ -1711,6 +2126,41 @@ var AppPresentation = (() => {
       result.finance = clone(master.finance || {});
     }
     return result;
+  }
+
+  // src/presentation/portfolio-administration.ts
+  var PORTFOLIO_ADMIN_PRESENTATION_VERSION = 1;
+  function createPortfolioAdministrationModel(state, activeBuildingId = "") {
+    const nav = portfolioNavigation(state);
+    const primaryBuildingId = String(state?.meta?.primaryBuildingId || nav.buildings[0]?.id || "");
+    const active = String(activeBuildingId || nav.activeBuildingId || primaryBuildingId);
+    return {
+      portfolioId: String(nav.portfolio?.id || ""),
+      portfolioName: String(nav.portfolio?.name || "Privatbestand"),
+      activeBuildingId: active,
+      primaryBuildingId,
+      buildings: nav.buildings.map((building) => {
+        const id = String(building.id || "");
+        const workspace = queryBuildingWorkspace(state, { buildingId: id });
+        return {
+          id,
+          name: String(building.name || building.address || "Gebäude"),
+          address: String(building.address || ""),
+          totalArea: Number(building.totalArea || 0),
+          year: String(building.year || ""),
+          primary: id === primaryBuildingId,
+          active: id === active,
+          counts: {
+            units: workspace.units.length,
+            tenancies: workspace.tenancies.length,
+            meters: workspace.meters.length,
+            sources: workspace.sources.length,
+            costPositions: workspace.costPositions.length,
+            payments: workspace.payments.length
+          }
+        };
+      })
+    };
   }
   return __toCommonJS(index_exports);
 })();
@@ -4797,6 +5247,156 @@ Trotzdem speichern?`)) {
   return __toCommonJS(ui_core_exports);
 })();
 
+
+/* ===== compiled src/ui/building-workspace-ui.ts ===== */
+"use strict";
+var AppBuildingWorkspaceUi = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/ui/building-workspace-ui.ts
+  var building_workspace_ui_exports = {};
+  __export(building_workspace_ui_exports, {
+    openBuildingManager: () => openBuildingManager,
+    renderBuildingSwitcher: () => renderBuildingSwitcher
+  });
+  var element = (id) => $(id);
+  function activateBuilding(next) {
+    activeBuildingId = AppPresentation.resolveActiveBuildingId(portfolioState, next);
+    state = projectActiveState(portfolioState, activeBuildingId);
+    LAST_STABLE_STATE = cloneState(state);
+    render();
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }
+  async function persistPortfolioMutation(next, action, detail, targetBuildingId) {
+    const previousPortfolio = cloneState(portfolioState);
+    const previousState = cloneState(state);
+    const previousActive = activeBuildingId;
+    const previousStable = LAST_STABLE_STATE ? cloneState(LAST_STABLE_STATE) : null;
+    portfolioState = repairDomainState(next);
+    activeBuildingId = AppPresentation.resolveActiveBuildingId(portfolioState, targetBuildingId || previousActive);
+    state = projectActiveState(portfolioState, activeBuildingId);
+    const ok = await persist(action, detail);
+    if (!ok) {
+      portfolioState = previousPortfolio;
+      state = previousState;
+      activeBuildingId = previousActive;
+      LAST_STABLE_STATE = previousStable;
+      render();
+    }
+    return ok;
+  }
+  function renderBuildingSwitcher() {
+    const wrap = element("buildingSwitchWrap");
+    const select = element("buildingSelect");
+    if (!wrap || !select) return;
+    const model = AppPresentation.createPresentationWorkspace(portfolioState, activeBuildingId);
+    wrap.classList.toggle("hidden", !model.showBuildingSelector);
+    if (!model.showBuildingSelector) {
+      select.innerHTML = "";
+      return;
+    }
+    select.innerHTML = model.buildings.map((item) => `<option value="${esc(item.id)}" ${item.active ? "selected" : ""}>${esc(item.name)}</option>`).join("");
+    select.onchange = () => {
+      const next = select.value;
+      if (next === activeBuildingId) return;
+      if (!closeModal(false)) {
+        select.value = activeBuildingId;
+        return;
+      }
+      activateBuilding(next);
+    };
+  }
+  function buildingInput(form) {
+    const values = Object.fromEntries(new FormData(form));
+    return {
+      name: String(values.name || "").trim(),
+      address: String(values.address || "").trim(),
+      totalArea: String(values.totalArea || "").trim(),
+      year: String(values.year || "").trim(),
+      billingTakeoverDate: String(values.billingTakeoverDate || "").trim(),
+      predecessorBillingEnd: String(values.predecessorBillingEnd || "").trim(),
+      repayment: String(values.repayment || "0").trim(),
+      fixed: String(values.fixed || "0").trim()
+    };
+  }
+  function openBuildingEditor(buildingId = "") {
+    const master = portfolioState;
+    const existing = (master.buildings || []).find((item) => String(item.id || "") === buildingId) || null;
+    const finance = existing?.finance || {};
+    modal(existing ? "Gebäude bearbeiten" : "Gebäude hinzufügen", `<form id="buildingAdminForm" class="form-grid">
+    ${formField({ name: "name", label: "Gebäudename", value: existing?.name || "", placeholder: "z. B. Haus B" })}
+    ${formField({ name: "address", label: "Adresse", value: existing?.address || "", placeholder: "Straße, Hausnummer, Ort", full: true })}
+    ${formField({ name: "totalArea", label: "Gesamtwohnfläche m²", type: "number", step: "0.01", min: 0, value: existing?.totalArea || "" })}
+    ${formField({ name: "year", label: "Baujahr", type: "number", min: 1800, value: existing?.year || "" })}
+    ${formField({ name: "billingTakeoverDate", label: "Abrechnung übernommen am", type: "date", value: existing?.billingTakeoverDate || "" })}
+    ${formField({ name: "predecessorBillingEnd", label: "Voreigentümer rechnet bis", type: "date", value: existing?.predecessorBillingEnd || "" })}
+    ${formField({ name: "repayment", label: "Hausrate € / Monat", type: "number", step: "0.01", min: 0, value: finance.repayment ?? 0 })}
+    ${formField({ name: "fixed", label: "Feste Hauskosten € / Monat", type: "number", step: "0.01", min: 0, value: finance.fixed ?? 0 })}
+    <div class="full form-actions"><button class="primary">${existing ? "Gebäude speichern" : "Gebäude anlegen"}</button></div>
+  </form>`, () => {
+      const form = element("buildingAdminForm");
+      if (!form) return;
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        const input = buildingInput(form);
+        try {
+          const targetId = existing ? String(existing.id) : uid();
+          const next = existing ? AppApplication.updateBuildingInPortfolio(portfolioState, targetId, input) : AppApplication.createBuildingInPortfolio(portfolioState, targetId, input);
+          const targetBuildingId = existing ? activeBuildingId : targetId;
+          const ok = await persistPortfolioMutation(
+            next,
+            existing ? "Gebäude geändert" : "Gebäude angelegt",
+            input.name,
+            targetBuildingId
+          );
+          if (!ok) return;
+          closeModal(true);
+          render();
+        } catch (error) {
+          alert(String(error?.message || error));
+        }
+      };
+    });
+  }
+  function openBuildingManager() {
+    const model = AppPresentation.createPortfolioAdministrationModel(portfolioState, activeBuildingId);
+    modal("Gebäude verwalten", `<div class="card">
+    <div class="row between"><div><p class="eyebrow">${esc(model.portfolioName)}</p><h3>Gebäude im Portfolio</h3><p class="muted">Das Primärgebäude bleibt fachlich unverändert. „Öffnen“ wechselt nur den aktuellen Arbeitsbereich.</p></div><button id="addBuildingAdmin" class="primary">Gebäude hinzufügen</button></div>
+  </div>
+  ${model.buildings.map((item) => `<div class="item"><div class="row between"><div><div class="item-title-row"><h3>${esc(item.name)}</h3>${item.primary ? '<span class="pill good">Primär</span>' : ""}${item.active ? '<span class="pill">Aktiv</span>' : ""}</div><p>${esc(item.address || "Adresse fehlt")}</p><small>${Number(item.totalArea || 0).toLocaleString("de-DE")} m²${item.year ? ` · Baujahr ${esc(item.year)}` : ""} · ${item.counts.units} Einheiten · ${item.counts.tenancies} Mietverhältnisse</small></div><div class="item-actions"><button class="secondary" data-building-open="${esc(item.id)}">Öffnen</button><button class="secondary" data-building-edit="${esc(item.id)}">Bearbeiten</button></div></div></div>`).join("")}`, () => {
+      const add = element("addBuildingAdmin");
+      if (add) add.onclick = () => openBuildingEditor();
+      document.querySelectorAll("[data-building-open]").forEach((button) => {
+        button.onclick = () => {
+          const id = button.dataset.buildingOpen || "";
+          closeModal(true);
+          activateBuilding(id);
+        };
+      });
+      document.querySelectorAll("[data-building-edit]").forEach((button) => {
+        button.onclick = () => openBuildingEditor(button.dataset.buildingEdit || "");
+      });
+    });
+  }
+  return __toCommonJS(building_workspace_ui_exports);
+})();
+
 /* ===== schema.js ===== */
 const {
   SCHEMA_VERSION,
@@ -5304,28 +5904,12 @@ async function persist(action,detail){
   }
 }
 
-function renderBuildingSwitcher(){
-  const wrap=$("buildingSwitchWrap"),select=$("buildingSelect");if(!wrap||!select)return;
-  const model=AppPresentation.createPresentationWorkspace(portfolioState,activeBuildingId);
-  wrap.classList.toggle("hidden",!model.showBuildingSelector);
-  if(!model.showBuildingSelector){select.innerHTML="";return}
-  select.innerHTML=model.buildings.map(item=>`<option value="${esc(item.id)}" ${item.active?"selected":""}>${esc(item.name)}</option>`).join("");
-  select.onchange=()=>{
-    const next=select.value;
-    if(next===activeBuildingId)return;
-    if(!closeModal(false)){select.value=activeBuildingId;return}
-    activeBuildingId=AppPresentation.resolveActiveBuildingId(portfolioState,next);
-    state=projectActiveState(portfolioState,activeBuildingId);
-    LAST_STABLE_STATE=cloneState(state);
-    render();window.scrollTo({top:0,left:0,behavior:"auto"})
-  }
-}
 function nav(){
   document.querySelectorAll(".main-tabs button").forEach(b=>{
     const active=b.dataset.route===route;b.classList.toggle("active",active);
     if(active)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")
   });
-  renderBuildingSwitcher();
+  AppBuildingWorkspaceUi.renderBuildingSwitcher();
   const ctx=$("pageContext");if(ctx)ctx.textContent=route==="home"?(state.property?.name||"Start"):ROUTE_LABELS[route];
   const building=state.property?.name?` · ${state.property.name}`:"";
   document.title=`${ROUTE_LABELS[route]||"Mietverwaltung"}${building} · Mietverwaltung`
@@ -5428,7 +6012,7 @@ async function houseOverviewView(){
     <article class="card"><span>Dokumente offen</span><strong>${openDocs}</strong><small>${docs.length} insgesamt</small></article>
   </div>
   <section class="card embedded-overview-card">
-    <div class="card-head"><div><p class="eyebrow">STAMMDATEN</p><h3>Objekt & Einheiten</h3></div><button class="secondary compact" id="editPropertyOverview">Objektdaten bearbeiten</button></div>
+    <div class="card-head"><div><p class="eyebrow">STAMMDATEN</p><h3>Objekt & Einheiten</h3></div><div class="row"><button class="secondary compact" id="manageBuildingsOverview">Gebäude verwalten</button><button class="secondary compact" id="editPropertyOverview">Objektdaten bearbeiten</button></div></div>
     <div class="fact-row"><span>Objekt</span><strong>${esc(state.property.name||"noch nicht benannt")}</strong></div>
     <div class="fact-row"><span>Adresse</span><strong>${esc(state.property.address||"fehlt")}</strong></div>
     <div class="fact-row"><span>Gesamtwohnfläche</span><strong>${state.property.totalArea?`${state.property.totalArea} m²`:"fehlt"}</strong></div>
@@ -5442,6 +6026,7 @@ async function houseOverviewView(){
     ${hubAction("infrastructure","Zähler","Wasserzähler, Ablesungen und Abfallbehälter",String(state.meters.length))}
     ${hubAction("documents","Dokumente","Belege, PDFs und OCR-Analyse",openDocs?`${openDocs} offen`:"")}
   </div>`;
+  $("manageBuildingsOverview").onclick=()=>AppBuildingWorkspaceUi.openBuildingManager();
   $("editPropertyOverview").onclick=()=>goSub("data","property");
   $("editUnitsOverview").onclick=()=>goSub("data","units");
   document.querySelectorAll("[data-hub-action]").forEach(b=>b.onclick=()=>goSub("data",b.dataset.hubAction))

@@ -1,9 +1,9 @@
-const CACHE="mietverwaltung-v18-presentation-d-1";
+const CACHE="mietverwaltung-v18-portfolio-admin-e-1";
 const CORE=[
   "./",
   "./index.html",
-  "./style.css?v=1810p3",
-  "./app.js?v=1804",
+  "./style.css?v=1810p9",
+  "./app.js?v=1805",
   "./manifest.webmanifest?v=1810p2",
   "./legal-rules.json",
   "./icon-192.png",
