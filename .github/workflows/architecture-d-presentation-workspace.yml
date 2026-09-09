@@ -76,12 +76,20 @@ jobs:
               p.write_text(content, encoding="utf-8")
 
           def replace_once(path, old, new):
-              old, new = B(old), B(new)
               text = read(path)
-              count = text.count(old)
+              # Exakte Strings (inkl. beabsichtigter Einrückung) zuerst verwenden.
+              if text.count(old) == 1:
+                  write(path, text.replace(old, new, 1))
+                  return
+              # Mehrzeilige eingebettete Literale sind im Workflow selbst eingerückt;
+              # dafür kontrolliert dedenten und erneut exakt prüfen.
+              dedented_old, dedented_new = B(old), B(new)
+              count = text.count(dedented_old)
               if count != 1:
-                  raise SystemExit(f"{path}: erwartete genau 1 Fundstelle, gefunden {count}: {old[:100]!r}")
-              write(path, text.replace(old, new, 1))
+                  raise SystemExit(
+                      f"{path}: erwartete genau 1 Fundstelle, gefunden {count}: {dedented_old[:100]!r}"
+                  )
+              write(path, text.replace(dedented_old, dedented_new, 1))
 
           write("src/presentation/navigation.ts", B(r'''
           export const ROUTE_LABELS = {
