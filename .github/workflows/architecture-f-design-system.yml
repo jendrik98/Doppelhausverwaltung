@@ -684,6 +684,7 @@ jobs:
 
           @layer accessibility {
             button{min-height:var(--touch)}
+            .quality-orb{overflow:hidden}
             .quality-orb small{display:block;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
             #modal .sheet-head{position:relative;z-index:6}
             #modal .close-action{position:relative;z-index:7;pointer-events:auto}
@@ -770,6 +771,7 @@ jobs:
           assert(source.includes("@media(min-width:1100px)"), "Desktop-Arbeitsoberfläche fehlt.");
           assert(source.includes("nav.main-tabs{\n      top:88px") || source.includes("nav.main-tabs{\n                top:88px"), "Desktop-Hauptnavigation hat nicht die nötige Selektor-Spezifität.");
           assert(source.includes("button{min-height:var(--touch)}"), "Globaler 44px-Touch-Ratchet fehlt.");
+          assert(source.includes(".quality-orb{overflow:hidden}"), "Qualitätsindikator clippt seinen Inhalt nicht sicher innerhalb der Karte.");
           assert(source.includes(".quality-orb small{display:block;max-width:100%;min-width:0;overflow:hidden"), "Datenstatus-Label ist auf iPhone nicht im Qualitätsindikator begrenzt.");
           assert(source.includes(".experience-hero{display:grid;grid-template-columns:minmax(0,1fr) 68px"), "Mobile Hero-Geometrie ist nicht hart auf die Viewportbreite begrenzt.");
           assert(source.includes("#modal .close-action{position:relative;z-index:7;pointer-events:auto}"), "Modal-Schließen liegt nicht sicher über Sticky-Formularaktionen.");
@@ -793,7 +795,7 @@ jobs:
               const clientWidth = document.documentElement.clientWidth;
               const offenders = [...document.querySelectorAll('body *')].map(el => {
                 const r = el.getBoundingClientRect();
-                return { tag: el.tagName.toLowerCase(), id: el.id || '', cls: String(el.className || '').slice(0,80), left: r.left, right: r.right, width: r.width };
+                return { tag: el.tagName.toLowerCase(), id: el.id || '', cls: String(el.className || '').slice(0,80), text: String(el.textContent || '').trim().replace(/\s+/g,' ').slice(0,80), parent: el.parentElement ? `${el.parentElement.tagName.toLowerCase()}#${el.parentElement.id || ''}.${String(el.parentElement.className || '').slice(0,60)}` : '', left: r.left, right: r.right, width: r.width };
               }).filter(x => x.width > 0 && (x.left < -1 || x.right > clientWidth + 1)).sort((a,b) => Math.max(b.right-clientWidth,-b.left) - Math.max(a.right-clientWidth,-a.left)).slice(0,12);
               return {
                 innerWidth: window.innerWidth,
@@ -1066,10 +1068,15 @@ jobs:
         continue-on-error: true
         run: npx playwright test tests/design-system.spec.js
 
+      - name: Gebäude-Workspace Stabilitätsprobe
+        id: workspace_stress
+        continue-on-error: true
+        run: npx playwright test tests/presentation-workspace.spec.js --repeat-each=3 --retries=0
+
       - name: Vollständige lokale Browser-E2E-Suite
         id: e2e
         continue-on-error: true
-        run: npm run test:e2e
+        run: npx playwright test --retries=1
 
       - name: F-Prüfmatrix auswerten
         if: always()
@@ -1093,6 +1100,7 @@ jobs:
           check "PWA" "${{ steps.pwa.outcome }}"
           check "Reproducible build" "${{ steps.reproducible.outcome }}"
           check "Design-System E2E" "${{ steps.design_e2e.outcome }}"
+          check "Building workspace stress" "${{ steps.workspace_stress.outcome }}"
           check "Full E2E" "${{ steps.e2e.outcome }}"
           test "$failed" -eq 0
 
