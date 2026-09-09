@@ -8,7 +8,9 @@
     "test:validation": "node scripts/test-validation.mjs",
     "test:architecture": "node scripts/test-architecture.mjs",
     "test:e2e": "playwright test",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "test:quality": "node scripts/test-quality.mjs",
+    "test:pwa": "node scripts/test-pwa-update.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

@@ -207,3 +207,27 @@ Backup-Schemata `mietverwaltung-full-backup-v2` und `mietverwaltung-encrypted-v1
 `2026-09-05`, `DOMAIN_VERSION=1` und App-Version `18.0.0`. Der Phase-9-V6-Workflow und die einmaligen
 Phase-10-V1/V2/V3/V4/V5-Workflows werden erst im vollständig getesteten Abschlusscommit entfernt; der dauerhafte
 Live-E2E-Workflow bleibt bestehen.
+
+## Production Hardening A: PWA-Updates und dauerhafte CI
+
+Nach der Abschlussmigration wird die Produktionssicherheit unabhängig von der Fachlogik gehärtet.
+Kritische veränderliche PWA-Ressourcen (`index.html`, `app.js`, `style.css`, Manifest und Rechtsregeln)
+verwenden eine Network-first-Strategie mit Cache-Fallback. Zusätzlich wurden die Asset-URLs bewusst
+versioniert, sodass auch ein noch aktiver älterer Cache-first-Service-Worker beim ersten Laden den neuen
+Build anfordern muss. Der Cache besitzt eine neue Production-ID und entfernt veraltete Caches bei der
+Aktivierung.
+
+Der Live-E2E-Workflow wartet nicht mehr nur auf `APP_VERSION=18.0.0`, sondern vergleicht den SHA-256-Hash
+der auf GitHub Pages ausgelieferten `app.js` mit exakt dem `app.js` des getesteten Commits. Dadurch kann
+ein unveränderter Versionsstring kein veraltetes Deployment mehr als aktuell erscheinen lassen.
+
+Die ungenutzten historischen Browser-Selbsttests wurden aus `src/ui/app-runtime.ts` entfernt; fachliche
+Regressionen werden ausschließlich durch die reproduzierbaren Validierungs-, Architektur- und
+Playwright-Tests abgesichert. `scripts/test-quality.mjs` bildet ab jetzt ein Architektur-Ratchet: neue
+`@ts-nocheck`-Dateien sind verboten und der große App-Runtime-Bereich darf nicht wieder wachsen.
+`scripts/test-pwa-update.mjs` prüft die Synchronität zwischen HTML, Service Worker und Live-Workflow.
+
+Die dauerhafte Workflow-Datei `.github/workflows/ci.yml` prüft auf `main` und in Pull Requests den
+reproduzierbaren Build, TypeScript, Validierung, Architektur, Quality-/PWA-Verträge sowie anschließend
+die vollständige lokale Browser-E2E-Suite. Änderungen in `src/**`, `scripts/**`, TypeScript-Konfiguration
+und den Build-/Testdateien lösen diese Qualitätssicherung nun explizit aus.

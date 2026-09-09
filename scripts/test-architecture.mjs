@@ -212,7 +212,7 @@ assert(!runtimeOrder.includes('160-app.js'), "App-/Ansichtsbereich wurde nicht i
 assert(appRuntime.includes("// @ts-nocheck -- Phase 10 V3:"), "Semantikerhaltende Typing-Grenze der dynamischen App-Runtime ist nicht dokumentiert.");
 assert(!appRuntime.includes("export async function start(){"), "App-Runtime darf keine zusätzliche Start-Closure einführen.");
 assert(appRuntime.trimEnd().endsWith("export {};"), "app-runtime.ts ist nicht als TypeScript-Modul markiert.");
-assert(appRuntime.includes("function runSelfTests(){"), "Laufzeit-Selbsttests fehlen in app-runtime.ts.");
+assert(!appRuntime.includes("function runSelfTests(){"), "Historische Laufzeit-Selbsttests dürfen nicht in app-runtime.ts zurückkehren.");
 assert(appRuntime.includes('let MODAL_RETURN_FOCUS=null,MODAL_INITIAL_FORM="",MODAL_RETURN_FOCUS_OVERRIDE=null;'), "Gekoppelter Dialogzustand fehlt in app-runtime.ts.");
 assert(appRuntime.includes("function formSnapshot("), "Dialog-Snapshot fehlt in app-runtime.ts.");
 assert(appRuntime.includes("function closeModal("), "closeModal fehlt in app-runtime.ts.");

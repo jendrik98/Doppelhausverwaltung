@@ -3,7 +3,7 @@ const { runtimeGuard, openApp } = require('./helpers');
 
 test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, request }) => {
   const guard = runtimeGuard(page);
-  const core = await request.get('./app.js?v=1800');
+  const core = await request.get('./app.js?v=1801');
   expect(core.ok()).toBeTruthy();
   const coreText = await core.text();
   expect(coreText).toContain('APP_VERSION="18.0.0"');
@@ -12,14 +12,14 @@ test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, r
   const index = await request.get('./index.html');
   expect(index.ok()).toBeTruthy();
   const indexText = await index.text();
-  expect(indexText).toContain('app.js?v=1800');
-  expect(indexText).toContain('style.css?v=1810p1');
-  expect(indexText).toContain('manifest.webmanifest?v=1810p1');
+  expect(indexText).toContain('app.js?v=1801');
+  expect(indexText).toContain('style.css?v=1810p2');
+  expect(indexText).toContain('manifest.webmanifest?v=1810p2');
   expect(indexText).not.toContain('<meta name="theme-color" content="#0f172a">');
   expect(indexText).not.toContain('v17-upgrade.js');
   expect(indexText).not.toContain('v17-hotfix.js');
   expect(indexText).not.toContain('v17-water.js');
-  const manifestResponse=await request.get('./manifest.webmanifest?v=1810p1');
+  const manifestResponse=await request.get('./manifest.webmanifest?v=1810p2');
   expect(manifestResponse.ok()).toBeTruthy();
   const manifest=await manifestResponse.json();
   expect(manifest.theme_color).toBe('#6f7d37');
@@ -27,9 +27,9 @@ test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, r
   expect(manifest.shortcuts.map(x=>x.url)).toEqual(['./#rental/billing','./#more/smart']);
   const swResponse=await request.get('./service-worker.js');
   const swText=await swResponse.text();
-  expect(swText).toContain('mietverwaltung-v18-phase2-calendar-validation-4');
-  expect(swText).toContain('./style.css?v=1810p1');
-  for (const path of ['./style.css?v=1810p1','./manifest.webmanifest?v=1810p1','./legal-rules.json','./service-worker.js','./icon-192.png','./icon-512.png']) {
+  expect(swText).toContain('mietverwaltung-v18-prod-hardening-a-1');
+  expect(swText).toContain('./style.css?v=1810p2');
+  for (const path of ['./style.css?v=1810p2','./manifest.webmanifest?v=1810p2','./legal-rules.json','./service-worker.js','./icon-192.png','./icon-512.png']) {
     const r=await request.get(path); expect(r.ok(),`${path} muss erreichbar sein`).toBeTruthy();
   }
   await openApp(page);
