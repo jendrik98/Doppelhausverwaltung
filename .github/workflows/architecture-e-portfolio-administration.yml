@@ -858,7 +858,26 @@ jobs:
         run: npm run test:pwa
 
       - name: Chromium installieren
-        run: npx playwright install --with-deps chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Der Ubuntu-GitHub-Runner bringt teils eine zusätzliche Google-Chrome-APT-Quelle mit.
+          # Playwright benötigt sie nicht; bei inkonsistenten Mirror-Metadaten kann sie aber
+          # `playwright install --with-deps` mit "Hash Sum mismatch" abbrechen lassen.
+          # Deshalb wird nur diese runnerseitige Fremdquelle für den ephemeren Job deaktiviert.
+          if [ -d /etc/apt/sources.list.d ]; then
+            mapfile -t google_sources < <(sudo grep -RIl 'dl.google.com/linux/chrome-stable/deb' /etc/apt/sources.list.d 2>/dev/null || true)
+            for source in "${google_sources[@]:-}"; do
+              [ -n "$source" ] || continue
+              echo "Deaktiviere instabile Runner-APT-Quelle: $source"
+              sudo mv "$source" "$source.disabled-architecture-e"
+            done
+          fi
+          if [ -f /etc/apt/sources.list ] && sudo grep -q 'dl.google.com/linux/chrome-stable/deb' /etc/apt/sources.list; then
+            sudo sed -i '\|dl.google.com/linux/chrome-stable/deb| s|^[[:space:]]*deb |# disabled by Architecture E: deb |' /etc/apt/sources.list
+          fi
+          sudo rm -rf /var/lib/apt/lists/*
+          npx playwright install --with-deps chromium
 
       - name: PDF-Prüfwerkzeuge installieren
         run: |
