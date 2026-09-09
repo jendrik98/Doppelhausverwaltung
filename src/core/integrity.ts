@@ -10,6 +10,10 @@ declare function migrateDomainState(value: any): any;
 declare function ensureDefaultMeters(value: any): void;
 declare function ensureTraceShape(value: any): any;
 declare function uid(): string;
+declare const AppPortfolioModel: {
+  ensurePortfolioModel: (value: any) => any;
+  validatePortfolioModel: (value: any) => { errors: string[]; warnings: string[] };
+};
 
 export function cloneState<T>(value: T): T {
   return typeof structuredClone === "function"
@@ -34,6 +38,10 @@ export function validateDomainState(value: any): { errors: string[]; warnings: s
   const base = validateState(value);
   issues.errors.push(...base.errors);
   if (!value || typeof value !== "object") return issues;
+
+  const portfolioIssues = AppPortfolioModel.validatePortfolioModel(value);
+  issues.errors.push(...portfolioIssues.errors);
+  issues.warnings.push(...portfolioIssues.warnings);
 
   for (const [key, label] of [
     ["units", "Einheiten"],
@@ -101,6 +109,7 @@ export function repairDomainState(value: any): any {
   let repaired = normalizeState(value);
   repaired = migrateDomainState(repaired);
   ensureDefaultMeters(repaired);
+  repaired = AppPortfolioModel.ensurePortfolioModel(repaired);
   for (const meter of repaired.meters || []) {
     meter.readings = Array.isArray(meter.readings) ? meter.readings : [];
     const seen = new Set<string>();

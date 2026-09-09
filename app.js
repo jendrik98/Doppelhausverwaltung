@@ -255,8 +255,10 @@ var AppState = (() => {
   }
 
   // src/core/state.ts
-  var SCHEMA_VERSION = 13;
+  var SCHEMA_VERSION = 14;
   var ARRAY_KEYS = [
+    "portfolios",
+    "buildings",
     "units",
     "leases",
     "sources",
@@ -304,6 +306,8 @@ var AppState = (() => {
         paymentReference: "",
         contact: ""
       },
+      portfolios: [],
+      buildings: [],
       units: [],
       leases: [],
       sources: [],
@@ -372,6 +376,220 @@ var AppState = (() => {
     return out;
   }
   return __toCommonJS(state_exports);
+})();
+
+
+/* ===== compiled src/domain/portfolio-model.ts ===== */
+"use strict";
+var AppPortfolioModel = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/portfolio-model.ts
+  var portfolio_model_exports = {};
+  __export(portfolio_model_exports, {
+    DEFAULT_BUILDING_ID: () => DEFAULT_BUILDING_ID,
+    DEFAULT_PORTFOLIO_ID: () => DEFAULT_PORTFOLIO_ID,
+    PORTFOLIO_MODEL_VERSION: () => PORTFOLIO_MODEL_VERSION,
+    ensurePortfolioModel: () => ensurePortfolioModel,
+    portfolioSummary: () => portfolioSummary,
+    validatePortfolioModel: () => validatePortfolioModel
+  });
+  var PORTFOLIO_MODEL_VERSION = 1;
+  var DEFAULT_PORTFOLIO_ID = "portfolio-main";
+  var DEFAULT_BUILDING_ID = "building-main";
+  function array(value) {
+    return Array.isArray(value) ? value : [];
+  }
+  function uniqueFallbackId(prefix, index, used) {
+    let candidate = `${prefix}-${index + 1}`;
+    let suffix = index + 1;
+    while (used.has(candidate)) candidate = `${prefix}-${++suffix}`;
+    used.add(candidate);
+    return candidate;
+  }
+  function ensureIds(items, prefix) {
+    const used = new Set(items.map((item) => String(item?.id || "")).filter(Boolean));
+    items.forEach((item, index) => {
+      if (!item || typeof item !== "object") return;
+      if (!item.id) item.id = uniqueFallbackId(prefix, index, used);
+    });
+  }
+  function firstByType(units, type, buildingId) {
+    return units.find((unit) => unit?.type === type && (!buildingId || unit.buildingId === buildingId)) || null;
+  }
+  function ensurePortfolioModel(value) {
+    const state = value && typeof value === "object" ? value : {};
+    state.meta = state.meta && typeof state.meta === "object" ? state.meta : {};
+    state.property = state.property && typeof state.property === "object" ? state.property : {};
+    state.portfolios = array(state.portfolios);
+    state.buildings = array(state.buildings);
+    state.units = array(state.units);
+    state.leases = array(state.leases);
+    ensureIds(state.portfolios, "portfolio");
+    ensureIds(state.buildings, "building");
+    ensureIds(state.units, "unit");
+    ensureIds(state.leases, "tenancy");
+    let primaryPortfolio = state.portfolios.find((item) => item.id === state.meta.primaryPortfolioId) || state.portfolios[0];
+    if (!primaryPortfolio) {
+      primaryPortfolio = {
+        id: DEFAULT_PORTFOLIO_ID,
+        name: "Privatbestand",
+        kind: "private",
+        createdAt: state.meta.createdAt || ""
+      };
+      state.portfolios.push(primaryPortfolio);
+    }
+    primaryPortfolio.name = primaryPortfolio.name || "Privatbestand";
+    primaryPortfolio.kind = primaryPortfolio.kind || "private";
+    state.meta.primaryPortfolioId = primaryPortfolio.id;
+    const portfolioIds = new Set(state.portfolios.map((item) => item.id));
+    for (const building of state.buildings) {
+      if (!portfolioIds.has(building.portfolioId)) building.portfolioId = primaryPortfolio.id;
+    }
+    let primaryBuilding = state.buildings.find((item) => item.id === state.meta.primaryBuildingId) || state.buildings[0];
+    if (!primaryBuilding) {
+      primaryBuilding = {
+        id: DEFAULT_BUILDING_ID,
+        portfolioId: primaryPortfolio.id,
+        name: state.property.name || "Doppelhaus",
+        address: state.property.address || "",
+        totalArea: Number(state.property.totalArea || 0),
+        year: state.property.year || "",
+        source: "legacy-property"
+      };
+      state.buildings.push(primaryBuilding);
+    }
+    if (!portfolioIds.has(primaryBuilding.portfolioId)) primaryBuilding.portfolioId = primaryPortfolio.id;
+    state.meta.primaryBuildingId = primaryBuilding.id;
+    primaryBuilding.name = state.property.name || primaryBuilding.name || "Doppelhaus";
+    primaryBuilding.address = state.property.address || primaryBuilding.address || "";
+    primaryBuilding.totalArea = Number(state.property.totalArea || primaryBuilding.totalArea || 0);
+    primaryBuilding.year = state.property.year || primaryBuilding.year || "";
+    primaryBuilding.billingTakeoverDate = state.property.billingTakeoverDate || primaryBuilding.billingTakeoverDate || "";
+    primaryBuilding.predecessorBillingEnd = state.property.predecessorBillingEnd || primaryBuilding.predecessorBillingEnd || "";
+    const buildingIds = new Set(state.buildings.map((item) => item.id));
+    for (const unit of state.units) {
+      if (!buildingIds.has(unit.buildingId)) unit.buildingId = primaryBuilding.id;
+    }
+    const unitIds = new Set(state.units.map((item) => item.id));
+    const primaryRental = firstByType(state.units, "rental", primaryBuilding.id) || firstByType(state.units, "rental") || state.units[0] || null;
+    for (const lease of state.leases) {
+      if (!unitIds.has(lease.unitId)) lease.unitId = primaryRental?.id || "";
+      const linkedUnit = state.units.find((unit) => unit.id === lease.unitId);
+      lease.buildingId = linkedUnit?.buildingId || primaryBuilding.id;
+    }
+    const ownerUnit = firstByType(state.units, "owner", primaryBuilding.id) || firstByType(state.units, "owner");
+    const attachBuilding = (items) => {
+      for (const item of array(items)) {
+        if (item && typeof item === "object" && !buildingIds.has(item.buildingId)) item.buildingId = primaryBuilding.id;
+      }
+    };
+    for (const meter of array(state.meters)) {
+      if (!buildingIds.has(meter.buildingId)) meter.buildingId = primaryBuilding.id;
+      if (meter.role === "ownerWater" && ownerUnit && !unitIds.has(meter.unitId)) meter.unitId = ownerUnit.id;
+      if (meter.unitId && !unitIds.has(meter.unitId)) delete meter.unitId;
+    }
+    attachBuilding(state.sources);
+    attachBuilding(state.costPositions);
+    attachBuilding(state.tasks);
+    attachBuilding(state.payments);
+    attachBuilding(state.waterSettlements);
+    attachBuilding(state.billingWorkflows);
+    attachBuilding(state.billingSnapshots);
+    attachBuilding(state.containers);
+    if (Number(state.meta.portfolioModelVersion || 0) < PORTFOLIO_MODEL_VERSION) {
+      state.meta.portfolioModelMigratedAt = (/* @__PURE__ */ new Date()).toISOString();
+    }
+    state.meta.portfolioModelVersion = PORTFOLIO_MODEL_VERSION;
+    return state;
+  }
+  function validatePortfolioModel(value) {
+    const errors = [];
+    const warnings = [];
+    if (!value || typeof value !== "object") return { errors: ["Portfolio-Modell fehlt"], warnings };
+    const portfolios = array(value.portfolios);
+    const buildings = array(value.buildings);
+    const units = array(value.units);
+    const leases = array(value.leases);
+    if (!portfolios.length) errors.push("Portfolio-Modell: kein Portfolio vorhanden");
+    if (!buildings.length) errors.push("Portfolio-Modell: kein Gebäude vorhanden");
+    const unique = (items, label) => {
+      const ids = /* @__PURE__ */ new Set();
+      for (const item of items) {
+        if (!item?.id) {
+          errors.push(`${label}: Datensatz ohne ID`);
+          continue;
+        }
+        if (ids.has(item.id)) errors.push(`${label}: doppelte ID ${item.id}`);
+        ids.add(item.id);
+      }
+      return ids;
+    };
+    const portfolioIds = unique(portfolios, "Portfolios");
+    const buildingIds = unique(buildings, "Gebäude");
+    const unitIds = unique(units, "Einheiten");
+    unique(leases, "Mietverhältnisse");
+    for (const building of buildings) {
+      if (!portfolioIds.has(building.portfolioId)) errors.push(`Gebäude ${building.id}: Portfolio-Referenz fehlt`);
+    }
+    for (const unit of units) {
+      if (!buildingIds.has(unit.buildingId)) errors.push(`Einheit ${unit.id}: Gebäude-Referenz fehlt`);
+    }
+    for (const lease of leases) {
+      if (units.length && !unitIds.has(lease.unitId)) errors.push(`Mietverhältnis ${lease.id}: Einheit-Referenz fehlt`);
+      if (!units.length && !lease.unitId) warnings.push(`Mietverhältnis ${lease.id}: noch keiner Einheit zugeordnet`);
+      if (lease.buildingId && !buildingIds.has(lease.buildingId)) errors.push(`Mietverhältnis ${lease.id}: Gebäude-Referenz fehlt`);
+    }
+    for (const [key, label] of [
+      ["meters", "Zähler"],
+      ["sources", "Quellen"],
+      ["costPositions", "Kostenpositionen"],
+      ["tasks", "Aufgaben"],
+      ["payments", "Zahlungen"],
+      ["waterSettlements", "Wasserperioden"],
+      ["billingWorkflows", "Abrechnungsworkflows"],
+      ["billingSnapshots", "Snapshots"],
+      ["containers", "Behälter"]
+    ]) {
+      for (const item of array(value[key])) {
+        if (item?.buildingId && !buildingIds.has(item.buildingId)) errors.push(`${label} ${item.id || "?"}: Gebäude-Referenz fehlt`);
+      }
+    }
+    if (value.meta?.primaryPortfolioId && !portfolioIds.has(value.meta.primaryPortfolioId)) {
+      errors.push("Portfolio-Modell: primäres Portfolio ist ungültig");
+    }
+    if (value.meta?.primaryBuildingId && !buildingIds.has(value.meta.primaryBuildingId)) {
+      errors.push("Portfolio-Modell: primäres Gebäude ist ungültig");
+    }
+    return { errors, warnings };
+  }
+  function portfolioSummary(value) {
+    return {
+      portfolios: array(value?.portfolios).length,
+      buildings: array(value?.buildings).length,
+      units: array(value?.units).length,
+      tenancies: array(value?.leases).length,
+      primaryPortfolioId: String(value?.meta?.primaryPortfolioId || ""),
+      primaryBuildingId: String(value?.meta?.primaryBuildingId || "")
+    };
+  }
+  return __toCommonJS(portfolio_model_exports);
 })();
 
 
@@ -668,6 +886,9 @@ var AppIntegrity = (() => {
     const base = validateState(value);
     issues.errors.push(...base.errors);
     if (!value || typeof value !== "object") return issues;
+    const portfolioIssues = AppPortfolioModel.validatePortfolioModel(value);
+    issues.errors.push(...portfolioIssues.errors);
+    issues.warnings.push(...portfolioIssues.warnings);
     for (const [key, label] of [
       ["units", "Einheiten"],
       ["leases", "Mietverträge"],
@@ -724,6 +945,7 @@ var AppIntegrity = (() => {
     let repaired = normalizeState(value);
     repaired = migrateDomainState(repaired);
     ensureDefaultMeters(repaired);
+    repaired = AppPortfolioModel.ensurePortfolioModel(repaired);
     for (const meter of repaired.meters || []) {
       meter.readings = Array.isArray(meter.readings) ? meter.readings : [];
       const seen = /* @__PURE__ */ new Set();

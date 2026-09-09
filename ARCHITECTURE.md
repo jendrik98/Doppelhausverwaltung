@@ -231,3 +231,11 @@ Die dauerhafte Workflow-Datei `.github/workflows/ci.yml` prüft auf `main` und i
 reproduzierbaren Build, TypeScript, Validierung, Architektur, Quality-/PWA-Verträge sowie anschließend
 die vollständige lokale Browser-E2E-Suite. Änderungen in `src/**`, `scripts/**`, TypeScript-Konfiguration
 und den Build-/Testdateien lösen diese Qualitätssicherung nun explizit aus.
+
+## B1 – Portfolio- und Gebäudemodell
+
+State-Schema 14 ergänzt die bisherige Einzelobjektstruktur additiv um `portfolios` und `buildings`. Das bestehende `property`-Objekt bleibt in B1 als Kompatibilitätsansicht und Quelle für das primäre Gebäude erhalten, damit die bestehende Oberfläche und alle Abrechnungswege unverändert weiterarbeiten.
+
+`src/domain/portfolio-model.ts` stellt eine idempotente Migration bereit. Bestehende Einheiten werden dem primären Gebäude zugeordnet; bestehende Mietverhältnisse erhalten eine stabile `unitId` (bevorzugt die vorhandene Mietwohnung) sowie die abgeleitete `buildingId`. Zähler, Quellen, Kostenpositionen, Aufgaben, Zahlungen und Abrechnungsdatensätze erhalten eine Gebäudezuordnung, sofern noch keine gültige Zuordnung existiert. Gültige Mehrgebäude-Referenzen werden nicht überschrieben.
+
+Die Referenzintegrität wird im zentralen `repairDomainState`/`validateDomainState`-Pfad erzwungen. B1 ändert weder IndexedDB-Name/-Version noch Backupformat oder App-Version; die Persistenzschicht bleibt dadurch rückwärtskompatibel. Die eigentliche Mehrgebäude-Bedienung und Dokument-Persistenz vNext folgen in B2.

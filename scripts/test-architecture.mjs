@@ -241,3 +241,17 @@ assert(app.includes("compiled src/ui/ui-core.ts"), "UI-Core-TypeScript fehlt im 
 assert(app.includes("TypeScript source src/ui/app-runtime.ts · outer-scope injection"), "App-Runtime-TypeScript fehlt im Browser-Bundle.");
 
 console.log("Architekturprüfung bestanden: Phase 10 V3 migriert Laufzeit-Selbsttests, Dialogzustand, Routing und Ansichten nach TypeScript, injiziert sie semantikerhaltend im bisherigen äußeren Runtime-Scope und entfernt src/legacy vollständig. Bewusste Runtime-Kompatibilitätsbindungen, IndexedDB v2 und App-Version 18.0.0 bleiben unverändert.");
+
+// Architecture B1 – Portfolio -> Gebäude -> Einheit -> Mietverhältnis.
+const portfolioModelB1 = read("src/domain/portfolio-model.ts");
+assert(state.includes("SCHEMA_VERSION = 14"), "B1 erwartet State-Schema 14.");
+assert(state.includes('"portfolios"') && state.includes('"buildings"'), "B1-State enthält Portfolio-/Gebäude-Arrays nicht.");
+assert(portfolioModelB1.includes("export const PORTFOLIO_MODEL_VERSION = 1"), "Portfolio-Modellversion fehlt.");
+assert(portfolioModelB1.includes("export function ensurePortfolioModel"), "Portfolio-Migration fehlt.");
+assert(portfolioModelB1.includes("export function validatePortfolioModel"), "Portfolio-Referenzvalidierung fehlt.");
+assert(portfolioModelB1.includes('DEFAULT_PORTFOLIO_ID = "portfolio-main"'), "Stabile primäre Portfolio-ID fehlt.");
+assert(portfolioModelB1.includes('DEFAULT_BUILDING_ID = "building-main"'), "Stabile primäre Gebäude-ID fehlt.");
+assert(buildScript.includes('compileModule("src/domain/portfolio-model.ts", "AppPortfolioModel")'), "Build bindet AppPortfolioModel nicht ein.");
+assert(integrity.includes("AppPortfolioModel.ensurePortfolioModel(repaired)"), "repairDomainState migriert Portfolio-Modell nicht.");
+assert(integrity.includes("AppPortfolioModel.validatePortfolioModel(value)"), "validateDomainState prüft Portfolio-Modell nicht.");
+assert(app.includes("compiled src/domain/portfolio-model.ts"), "app.js enthält das gebündelte Portfolio-Modell nicht.");

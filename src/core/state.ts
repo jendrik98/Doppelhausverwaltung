@@ -1,11 +1,13 @@
 import { dateOnlyAddDays } from "./date";
 export { localDateISO, dateOnlyAddDays, localMonthEndISO } from "./date";
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 type Dict = Record<string, any>;
 
 const ARRAY_KEYS = [
+  "portfolios",
+  "buildings",
   "units",
   "leases",
   "sources",
@@ -26,6 +28,8 @@ export interface AppState {
   meta: Dict;
   property: Dict;
   correspondence: Dict;
+  portfolios: any[];
+  buildings: any[];
   units: any[];
   leases: any[];
   sources: any[];
@@ -81,6 +85,8 @@ export function createEmptyState(): AppState {
       paymentReference: "",
       contact: ""
     },
+    portfolios: [],
+    buildings: [],
     units: [],
     leases: [],
     sources: [],
