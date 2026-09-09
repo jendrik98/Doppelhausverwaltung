@@ -255,7 +255,7 @@ var AppState = (() => {
   }
 
   // src/core/state.ts
-  var SCHEMA_VERSION = 14;
+  var SCHEMA_VERSION = 15;
   var ARRAY_KEYS = [
     "portfolios",
     "buildings",
@@ -410,7 +410,7 @@ var AppPortfolioModel = (() => {
     portfolioSummary: () => portfolioSummary,
     validatePortfolioModel: () => validatePortfolioModel
   });
-  var PORTFOLIO_MODEL_VERSION = 1;
+  var PORTFOLIO_MODEL_VERSION = 2;
   var DEFAULT_PORTFOLIO_ID = "portfolio-main";
   var DEFAULT_BUILDING_ID = "building-main";
   function array(value) {
@@ -433,14 +433,38 @@ var AppPortfolioModel = (() => {
   function firstByType(units, type, buildingId) {
     return units.find((unit) => unit?.type === type && (!buildingId || unit.buildingId === buildingId)) || null;
   }
+  function mapById(items) {
+    return new Map(items.filter((item) => item?.id).map((item) => [String(item.id), item]));
+  }
+  function linkedBuildingId(item, refs) {
+    for (const ref of refs) {
+      for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId"]) {
+        const linked = item?.[key] ? ref.get(String(item[key])) : null;
+        if (linked?.buildingId) return String(linked.buildingId);
+      }
+    }
+    return "";
+  }
   function ensurePortfolioModel(value) {
     const state = value && typeof value === "object" ? value : {};
     state.meta = state.meta && typeof state.meta === "object" ? state.meta : {};
     state.property = state.property && typeof state.property === "object" ? state.property : {};
-    state.portfolios = array(state.portfolios);
-    state.buildings = array(state.buildings);
-    state.units = array(state.units);
-    state.leases = array(state.leases);
+    for (const key of [
+      "portfolios",
+      "buildings",
+      "units",
+      "leases",
+      "meters",
+      "sources",
+      "costPositions",
+      "tasks",
+      "payments",
+      "waterSettlements",
+      "billingWorkflows",
+      "billingSnapshots",
+      "containers",
+      "water"
+    ]) state[key] = array(state[key]);
     ensureIds(state.portfolios, "portfolio");
     ensureIds(state.buildings, "building");
     ensureIds(state.units, "unit");
@@ -458,9 +482,9 @@ var AppPortfolioModel = (() => {
     primaryPortfolio.name = primaryPortfolio.name || "Privatbestand";
     primaryPortfolio.kind = primaryPortfolio.kind || "private";
     state.meta.primaryPortfolioId = primaryPortfolio.id;
-    const portfolioIds = new Set(state.portfolios.map((item) => item.id));
+    const portfolioIds = new Set(state.portfolios.map((item) => String(item.id)));
     for (const building of state.buildings) {
-      if (!portfolioIds.has(building.portfolioId)) building.portfolioId = primaryPortfolio.id;
+      if (!portfolioIds.has(String(building.portfolioId || ""))) building.portfolioId = primaryPortfolio.id;
     }
     let primaryBuilding = state.buildings.find((item) => item.id === state.meta.primaryBuildingId) || state.buildings[0];
     if (!primaryBuilding) {
@@ -475,7 +499,7 @@ var AppPortfolioModel = (() => {
       };
       state.buildings.push(primaryBuilding);
     }
-    if (!portfolioIds.has(primaryBuilding.portfolioId)) primaryBuilding.portfolioId = primaryPortfolio.id;
+    if (!portfolioIds.has(String(primaryBuilding.portfolioId || ""))) primaryBuilding.portfolioId = primaryPortfolio.id;
     state.meta.primaryBuildingId = primaryBuilding.id;
     primaryBuilding.name = state.property.name || primaryBuilding.name || "Doppelhaus";
     primaryBuilding.address = state.property.address || primaryBuilding.address || "";
@@ -483,36 +507,61 @@ var AppPortfolioModel = (() => {
     primaryBuilding.year = state.property.year || primaryBuilding.year || "";
     primaryBuilding.billingTakeoverDate = state.property.billingTakeoverDate || primaryBuilding.billingTakeoverDate || "";
     primaryBuilding.predecessorBillingEnd = state.property.predecessorBillingEnd || primaryBuilding.predecessorBillingEnd || "";
-    const buildingIds = new Set(state.buildings.map((item) => item.id));
+    const buildingIds = new Set(state.buildings.map((item) => String(item.id)));
     for (const unit of state.units) {
-      if (!buildingIds.has(unit.buildingId)) unit.buildingId = primaryBuilding.id;
+      if (!buildingIds.has(String(unit.buildingId || ""))) unit.buildingId = primaryBuilding.id;
     }
-    const unitIds = new Set(state.units.map((item) => item.id));
+    const unitById = mapById(state.units);
+    const unitIds = new Set(unitById.keys());
     const primaryRental = firstByType(state.units, "rental", primaryBuilding.id) || firstByType(state.units, "rental") || state.units[0] || null;
     for (const lease of state.leases) {
-      if (!unitIds.has(lease.unitId)) lease.unitId = primaryRental?.id || "";
-      const linkedUnit = state.units.find((unit) => unit.id === lease.unitId);
+      if (!unitIds.has(String(lease.unitId || ""))) lease.unitId = primaryRental?.id || "";
+      const linkedUnit = unitById.get(String(lease.unitId || ""));
       lease.buildingId = linkedUnit?.buildingId || primaryBuilding.id;
     }
-    const ownerUnit = firstByType(state.units, "owner", primaryBuilding.id) || firstByType(state.units, "owner");
-    const attachBuilding = (items) => {
-      for (const item of array(items)) {
-        if (item && typeof item === "object" && !buildingIds.has(item.buildingId)) item.buildingId = primaryBuilding.id;
+    const leaseById = mapById(state.leases);
+    const ownerUnitFor = (buildingId) => firstByType(state.units, "owner", buildingId) || (buildingId === primaryBuilding.id ? firstByType(state.units, "owner") : null);
+    for (const meter of state.meters) {
+      const linkedUnit = unitById.get(String(meter.unitId || ""));
+      if (!buildingIds.has(String(meter.buildingId || ""))) meter.buildingId = linkedUnit?.buildingId || primaryBuilding.id;
+      if (meter.role === "ownerWater" && !linkedUnit) {
+        const ownerUnit = ownerUnitFor(String(meter.buildingId));
+        if (ownerUnit) meter.unitId = ownerUnit.id;
       }
-    };
-    for (const meter of array(state.meters)) {
-      if (!buildingIds.has(meter.buildingId)) meter.buildingId = primaryBuilding.id;
-      if (meter.role === "ownerWater" && ownerUnit && !unitIds.has(meter.unitId)) meter.unitId = ownerUnit.id;
-      if (meter.unitId && !unitIds.has(meter.unitId)) delete meter.unitId;
+      if (meter.unitId && !unitIds.has(String(meter.unitId))) delete meter.unitId;
     }
-    attachBuilding(state.sources);
-    attachBuilding(state.costPositions);
-    attachBuilding(state.tasks);
-    attachBuilding(state.payments);
-    attachBuilding(state.waterSettlements);
-    attachBuilding(state.billingWorkflows);
-    attachBuilding(state.billingSnapshots);
-    attachBuilding(state.containers);
+    const meterById = mapById(state.meters);
+    for (const source of state.sources) {
+      if (!buildingIds.has(String(source.buildingId || ""))) source.buildingId = primaryBuilding.id;
+    }
+    const sourceById = mapById(state.sources);
+    for (const position of state.costPositions) {
+      const linkedSource = sourceById.get(String(position.sourceId || ""));
+      if (!buildingIds.has(String(position.buildingId || ""))) position.buildingId = linkedSource?.buildingId || primaryBuilding.id;
+    }
+    const positionById = mapById(state.costPositions);
+    for (const settlement of state.waterSettlements) {
+      const mainMeter = meterById.get(String(settlement.mainMeterId || ""));
+      const ownerMeter = meterById.get(String(settlement.ownerMeterId || ""));
+      if (!buildingIds.has(String(settlement.buildingId || ""))) {
+        settlement.buildingId = mainMeter?.buildingId || ownerMeter?.buildingId || primaryBuilding.id;
+      }
+    }
+    const refs = [unitById, leaseById, positionById, sourceById, meterById];
+    for (const key of ["tasks", "payments"]) {
+      for (const item of state[key]) {
+        if (!buildingIds.has(String(item.buildingId || ""))) item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
+        const linkedLease = leaseById.get(String(item.leaseId || ""));
+        if (linkedLease && !unitIds.has(String(item.unitId || ""))) item.unitId = linkedLease.unitId || "";
+      }
+    }
+    for (const key of ["billingWorkflows", "billingSnapshots", "containers", "water"]) {
+      for (const item of state[key]) {
+        if (item && typeof item === "object" && !buildingIds.has(String(item.buildingId || ""))) {
+          item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
+        }
+      }
+    }
     if (Number(state.meta.portfolioModelVersion || 0) < PORTFOLIO_MODEL_VERSION) {
       state.meta.portfolioModelMigratedAt = (/* @__PURE__ */ new Date()).toISOString();
     }
@@ -536,8 +585,9 @@ var AppPortfolioModel = (() => {
           errors.push(`${label}: Datensatz ohne ID`);
           continue;
         }
-        if (ids.has(item.id)) errors.push(`${label}: doppelte ID ${item.id}`);
-        ids.add(item.id);
+        const id = String(item.id);
+        if (ids.has(id)) errors.push(`${label}: doppelte ID ${id}`);
+        ids.add(id);
       }
       return ids;
     };
@@ -545,36 +595,65 @@ var AppPortfolioModel = (() => {
     const buildingIds = unique(buildings, "Gebäude");
     const unitIds = unique(units, "Einheiten");
     unique(leases, "Mietverhältnisse");
+    const unitById = mapById(units);
+    const leaseById = mapById(leases);
+    const sourceById = mapById(array(value.sources));
+    const positionById = mapById(array(value.costPositions));
+    const meterById = mapById(array(value.meters));
     for (const building of buildings) {
-      if (!portfolioIds.has(building.portfolioId)) errors.push(`Gebäude ${building.id}: Portfolio-Referenz fehlt`);
+      if (!portfolioIds.has(String(building.portfolioId || ""))) errors.push(`Gebäude ${building.id}: Portfolio-Referenz fehlt`);
     }
     for (const unit of units) {
-      if (!buildingIds.has(unit.buildingId)) errors.push(`Einheit ${unit.id}: Gebäude-Referenz fehlt`);
+      if (!buildingIds.has(String(unit.buildingId || ""))) errors.push(`Einheit ${unit.id}: Gebäude-Referenz fehlt`);
     }
     for (const lease of leases) {
-      if (units.length && !unitIds.has(lease.unitId)) errors.push(`Mietverhältnis ${lease.id}: Einheit-Referenz fehlt`);
+      const linkedUnit = unitById.get(String(lease.unitId || ""));
+      if (units.length && !linkedUnit) errors.push(`Mietverhältnis ${lease.id}: Einheit-Referenz fehlt`);
       if (!units.length && !lease.unitId) warnings.push(`Mietverhältnis ${lease.id}: noch keiner Einheit zugeordnet`);
-      if (lease.buildingId && !buildingIds.has(lease.buildingId)) errors.push(`Mietverhältnis ${lease.id}: Gebäude-Referenz fehlt`);
+      if (!buildingIds.has(String(lease.buildingId || ""))) errors.push(`Mietverhältnis ${lease.id}: Gebäude-Referenz fehlt`);
+      if (linkedUnit && lease.buildingId !== linkedUnit.buildingId) errors.push(`Mietverhältnis ${lease.id}: Gebäude und Einheit widersprechen sich`);
     }
-    for (const [key, label] of [
-      ["meters", "Zähler"],
-      ["sources", "Quellen"],
-      ["costPositions", "Kostenpositionen"],
-      ["tasks", "Aufgaben"],
-      ["payments", "Zahlungen"],
-      ["waterSettlements", "Wasserperioden"],
-      ["billingWorkflows", "Abrechnungsworkflows"],
-      ["billingSnapshots", "Snapshots"],
-      ["containers", "Behälter"]
-    ]) {
-      for (const item of array(value[key])) {
-        if (item?.buildingId && !buildingIds.has(item.buildingId)) errors.push(`${label} ${item.id || "?"}: Gebäude-Referenz fehlt`);
+    for (const meter of array(value.meters)) {
+      if (!buildingIds.has(String(meter.buildingId || ""))) errors.push(`Zähler ${meter.id || "?"}: Gebäude-Referenz fehlt`);
+      const linkedUnit = meter.unitId ? unitById.get(String(meter.unitId)) : null;
+      if (meter.unitId && !linkedUnit) errors.push(`Zähler ${meter.id || "?"}: Einheit-Referenz fehlt`);
+      if (linkedUnit && meter.buildingId !== linkedUnit.buildingId) errors.push(`Zähler ${meter.id || "?"}: Gebäude und Einheit widersprechen sich`);
+    }
+    for (const source of array(value.sources)) {
+      if (!buildingIds.has(String(source.buildingId || ""))) errors.push(`Quelle ${source.id || "?"}: Gebäude-Referenz fehlt`);
+    }
+    for (const position of array(value.costPositions)) {
+      if (!buildingIds.has(String(position.buildingId || ""))) errors.push(`Kostenposition ${position.id || "?"}: Gebäude-Referenz fehlt`);
+      const source = position.sourceId ? sourceById.get(String(position.sourceId)) : null;
+      if (source && source.buildingId !== position.buildingId) errors.push(`Kostenposition ${position.id || "?"}: Quelle gehört zu anderem Gebäude`);
+    }
+    for (const payment of array(value.payments)) {
+      if (!buildingIds.has(String(payment.buildingId || ""))) errors.push(`Zahlung ${payment.id || "?"}: Gebäude-Referenz fehlt`);
+      const linked = payment.positionId ? positionById.get(String(payment.positionId)) : payment.sourceId ? sourceById.get(String(payment.sourceId)) : payment.leaseId ? leaseById.get(String(payment.leaseId)) : payment.unitId ? unitById.get(String(payment.unitId)) : null;
+      if (linked?.buildingId && linked.buildingId !== payment.buildingId) errors.push(`Zahlung ${payment.id || "?"}: Referenz gehört zu anderem Gebäude`);
+    }
+    for (const settlement of array(value.waterSettlements)) {
+      if (!buildingIds.has(String(settlement.buildingId || ""))) errors.push(`Wasserperiode ${settlement.id || settlement.periodYear || "?"}: Gebäude-Referenz fehlt`);
+      for (const key of ["mainMeterId", "ownerMeterId"]) {
+        const meter = settlement[key] ? meterById.get(String(settlement[key])) : null;
+        if (meter?.buildingId && meter.buildingId !== settlement.buildingId) errors.push(`Wasserperiode ${settlement.id || settlement.periodYear || "?"}: Zähler gehört zu anderem Gebäude`);
       }
     }
-    if (value.meta?.primaryPortfolioId && !portfolioIds.has(value.meta.primaryPortfolioId)) {
+    for (const [key, label] of [
+      ["tasks", "Aufgaben"],
+      ["billingWorkflows", "Abrechnungsworkflows"],
+      ["billingSnapshots", "Snapshots"],
+      ["containers", "Behälter"],
+      ["water", "Wasserdaten"]
+    ]) {
+      for (const item of array(value[key])) {
+        if (!buildingIds.has(String(item?.buildingId || ""))) errors.push(`${label} ${item?.id || "?"}: Gebäude-Referenz fehlt`);
+      }
+    }
+    if (value.meta?.primaryPortfolioId && !portfolioIds.has(String(value.meta.primaryPortfolioId))) {
       errors.push("Portfolio-Modell: primäres Portfolio ist ungültig");
     }
-    if (value.meta?.primaryBuildingId && !buildingIds.has(value.meta.primaryBuildingId)) {
+    if (value.meta?.primaryBuildingId && !buildingIds.has(String(value.meta.primaryBuildingId))) {
       errors.push("Portfolio-Modell: primäres Gebäude ist ungültig");
     }
     return { errors, warnings };
@@ -590,6 +669,254 @@ var AppPortfolioModel = (() => {
     };
   }
   return __toCommonJS(portfolio_model_exports);
+})();
+
+
+/* ===== compiled src/infrastructure/portfolio-repository.ts ===== */
+"use strict";
+var AppPortfolioRepository = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/infrastructure/portfolio-repository.ts
+  var portfolio_repository_exports = {};
+  __export(portfolio_repository_exports, {
+    PORTFOLIO_PROJECTION_ID: () => PORTFOLIO_PROJECTION_ID,
+    PORTFOLIO_REPOSITORY_VERSION: () => PORTFOLIO_REPOSITORY_VERSION,
+    getBuildingGraph: () => getBuildingGraph,
+    getProjectionMeta: () => getProjectionMeta,
+    listBuildings: () => listBuildings,
+    listPortfolios: () => listPortfolios,
+    listTenanciesByBuilding: () => listTenanciesByBuilding,
+    listTenanciesByUnit: () => listTenanciesByUnit,
+    listUnitsByBuilding: () => listUnitsByBuilding,
+    projectPortfolioState: () => projectPortfolioState,
+    readStateRecord: () => readStateRecord2,
+    saveState: () => saveState,
+    validatePortfolioProjection: () => validatePortfolioProjection
+  });
+
+  // src/core/persistence.ts
+  var DB_NAME = "mietverwaltung-v6";
+  var DB_VERSION = 3;
+  var STATE_ID = "main";
+  var STATE_STORE = "state";
+  var DOCS_STORE = "docs";
+  var PORTFOLIO_STORE = "portfolios";
+  var BUILDING_STORE = "buildings";
+  var UNIT_STORE = "units";
+  var TENANCY_STORE = "tenancies";
+  var REPOSITORY_META_STORE = "repositoryMeta";
+  function requestValue(request) {
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+  function transactionDone(transaction) {
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB-Transaktion abgebrochen"));
+    });
+  }
+  function ensureStore(db, transaction, name, indexes = []) {
+    const store = db.objectStoreNames.contains(name) ? transaction.objectStore(name) : db.createObjectStore(name, { keyPath: "id" });
+    for (const index of indexes) {
+      if (!store.indexNames.contains(index.name)) store.createIndex(index.name, index.keyPath, { unique: false });
+    }
+    return store;
+  }
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        const transaction = request.transaction;
+        if (!transaction) throw new Error("IndexedDB-Upgrade ohne Transaktion");
+        ensureStore(db, transaction, STATE_STORE);
+        ensureStore(db, transaction, DOCS_STORE);
+        ensureStore(db, transaction, PORTFOLIO_STORE);
+        ensureStore(db, transaction, BUILDING_STORE, [{ name: "portfolioId", keyPath: "portfolioId" }]);
+        ensureStore(db, transaction, UNIT_STORE, [{ name: "buildingId", keyPath: "buildingId" }]);
+        ensureStore(db, transaction, TENANCY_STORE, [
+          { name: "buildingId", keyPath: "buildingId" },
+          { name: "unitId", keyPath: "unitId" }
+        ]);
+        ensureStore(db, transaction, REPOSITORY_META_STORE);
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => db.close();
+        resolve(db);
+      };
+      request.onblocked = () => reject(new Error("IndexedDB-Upgrade wird durch einen älteren geöffneten App-Tab blockiert"));
+      request.onerror = () => reject(request.error);
+    });
+  }
+  async function readStateRecord() {
+    const db = await openDB();
+    const transaction = db.transaction(STATE_STORE, "readonly");
+    const request = transaction.objectStore(STATE_STORE).get(STATE_ID);
+    const record = await requestValue(request);
+    return record ?? null;
+  }
+
+  // src/infrastructure/portfolio-repository.ts
+  var PORTFOLIO_REPOSITORY_VERSION = 1;
+  var PORTFOLIO_PROJECTION_ID = "portfolio-projection";
+  function records(value) {
+    return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : [];
+  }
+  function projectPortfolioState(state) {
+    return {
+      portfolios: records(state?.portfolios),
+      buildings: records(state?.buildings),
+      units: records(state?.units),
+      tenancies: records(state?.leases)
+    };
+  }
+  function validatePortfolioProjection(projection) {
+    const errors = [];
+    const unique = (items, label) => {
+      const ids = /* @__PURE__ */ new Set();
+      for (const item of items) {
+        const id = String(item?.id || "");
+        if (!id) {
+          errors.push(`${label}: ID fehlt`);
+          continue;
+        }
+        if (ids.has(id)) errors.push(`${label}: doppelte ID ${id}`);
+        ids.add(id);
+      }
+      return ids;
+    };
+    const portfolioIds = unique(projection.portfolios, "Portfolio");
+    const buildingIds = unique(projection.buildings, "Gebäude");
+    const unitIds = unique(projection.units, "Einheit");
+    unique(projection.tenancies, "Mietverhältnis");
+    const unitById = new Map(projection.units.map((unit) => [String(unit.id), unit]));
+    for (const building of projection.buildings) {
+      if (!portfolioIds.has(String(building.portfolioId || ""))) errors.push(`Gebäude ${building.id}: Portfolio fehlt`);
+    }
+    for (const unit of projection.units) {
+      if (!buildingIds.has(String(unit.buildingId || ""))) errors.push(`Einheit ${unit.id}: Gebäude fehlt`);
+    }
+    for (const tenancy of projection.tenancies) {
+      const unitId = String(tenancy.unitId || "");
+      const unit = unitById.get(unitId);
+      if (!unitIds.has(unitId) || !unit) errors.push(`Mietverhältnis ${tenancy.id}: Einheit fehlt`);
+      if (!buildingIds.has(String(tenancy.buildingId || ""))) errors.push(`Mietverhältnis ${tenancy.id}: Gebäude fehlt`);
+      if (unit && unit.buildingId !== tenancy.buildingId) errors.push(`Mietverhältnis ${tenancy.id}: Gebäude/Einheit inkonsistent`);
+    }
+    return errors;
+  }
+  function projectionMeta(state, projection) {
+    return {
+      id: PORTFOLIO_PROJECTION_ID,
+      repositoryVersion: PORTFOLIO_REPOSITORY_VERSION,
+      revision: Number(state?.meta?.revision || 0),
+      schemaVersion: Number(state?.schemaVersion || 0),
+      portfolioModelVersion: Number(state?.meta?.portfolioModelVersion || 0),
+      counts: {
+        portfolios: projection.portfolios.length,
+        buildings: projection.buildings.length,
+        units: projection.units.length,
+        tenancies: projection.tenancies.length
+      },
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  }
+  async function readStateRecord2() {
+    return readStateRecord();
+  }
+  async function saveState(state) {
+    const projection = projectPortfolioState(state);
+    const errors = validatePortfolioProjection(projection);
+    if (errors.length) throw new Error(`Portfolio-Persistenz: ${errors.join(" · ")}`);
+    const db = await openDB();
+    const transaction = db.transaction(
+      [STATE_STORE, PORTFOLIO_STORE, BUILDING_STORE, UNIT_STORE, TENANCY_STORE, REPOSITORY_META_STORE],
+      "readwrite"
+    );
+    transaction.objectStore(STATE_STORE).put({ id: STATE_ID, data: state });
+    const portfolioStore = transaction.objectStore(PORTFOLIO_STORE);
+    const buildingStore = transaction.objectStore(BUILDING_STORE);
+    const unitStore = transaction.objectStore(UNIT_STORE);
+    const tenancyStore = transaction.objectStore(TENANCY_STORE);
+    portfolioStore.clear();
+    buildingStore.clear();
+    unitStore.clear();
+    tenancyStore.clear();
+    for (const item of projection.portfolios) portfolioStore.put(item);
+    for (const item of projection.buildings) buildingStore.put(item);
+    for (const item of projection.units) unitStore.put(item);
+    for (const item of projection.tenancies) tenancyStore.put(item);
+    transaction.objectStore(REPOSITORY_META_STORE).put(projectionMeta(state, projection));
+    await transactionDone(transaction);
+  }
+  async function getAll(storeName) {
+    const db = await openDB();
+    const transaction = db.transaction(storeName, "readonly");
+    return await requestValue(transaction.objectStore(storeName).getAll()) || [];
+  }
+  async function getAllByIndex(storeName, indexName, value) {
+    const db = await openDB();
+    const transaction = db.transaction(storeName, "readonly");
+    return await requestValue(transaction.objectStore(storeName).index(indexName).getAll(value)) || [];
+  }
+  async function listPortfolios() {
+    return getAll(PORTFOLIO_STORE);
+  }
+  async function listBuildings(portfolioId) {
+    return portfolioId ? getAllByIndex(BUILDING_STORE, "portfolioId", portfolioId) : getAll(BUILDING_STORE);
+  }
+  async function listUnitsByBuilding(buildingId) {
+    return getAllByIndex(UNIT_STORE, "buildingId", buildingId);
+  }
+  async function listTenanciesByBuilding(buildingId) {
+    return getAllByIndex(TENANCY_STORE, "buildingId", buildingId);
+  }
+  async function listTenanciesByUnit(unitId) {
+    return getAllByIndex(TENANCY_STORE, "unitId", unitId);
+  }
+  async function getProjectionMeta() {
+    const db = await openDB();
+    const transaction = db.transaction(REPOSITORY_META_STORE, "readonly");
+    const result = await requestValue(
+      transaction.objectStore(REPOSITORY_META_STORE).get(PORTFOLIO_PROJECTION_ID)
+    );
+    return result ?? null;
+  }
+  async function getBuildingGraph(buildingId) {
+    const db = await openDB();
+    const transaction = db.transaction([BUILDING_STORE, UNIT_STORE, TENANCY_STORE], "readonly");
+    const buildingRequest = transaction.objectStore(BUILDING_STORE).get(buildingId);
+    const unitsRequest = transaction.objectStore(UNIT_STORE).index("buildingId").getAll(buildingId);
+    const tenanciesRequest = transaction.objectStore(TENANCY_STORE).index("buildingId").getAll(buildingId);
+    const [building, units, tenancies] = await Promise.all([
+      requestValue(buildingRequest),
+      requestValue(unitsRequest),
+      requestValue(tenanciesRequest)
+    ]);
+    return { building: building ?? null, units: units || [], tenancies: tenancies || [] };
+  }
+  return __toCommonJS(portfolio_repository_exports);
 })();
 
 
@@ -617,9 +944,16 @@ var AppPersistence = (() => {
   // src/core/persistence.ts
   var persistence_exports = {};
   __export(persistence_exports, {
+    BUILDING_STORE: () => BUILDING_STORE,
     DB_NAME: () => DB_NAME,
     DB_VERSION: () => DB_VERSION,
+    DOCS_STORE: () => DOCS_STORE,
+    PORTFOLIO_STORE: () => PORTFOLIO_STORE,
+    REPOSITORY_META_STORE: () => REPOSITORY_META_STORE,
     STATE_ID: () => STATE_ID,
+    STATE_STORE: () => STATE_STORE,
+    TENANCY_STORE: () => TENANCY_STORE,
+    UNIT_STORE: () => UNIT_STORE,
     addDocument: () => addDocument,
     deleteDocument: () => deleteDocument,
     getDocument: () => getDocument,
@@ -627,14 +961,21 @@ var AppPersistence = (() => {
     openDB: () => openDB,
     readStateRecord: () => readStateRecord,
     replaceDocuments: () => replaceDocuments,
+    requestValue: () => requestValue,
     saveState: () => saveState,
+    transactionDone: () => transactionDone,
     updateDocument: () => updateDocument
   });
   var DB_NAME = "mietverwaltung-v6";
-  var DB_VERSION = 2;
+  var DB_VERSION = 3;
   var STATE_ID = "main";
   var STATE_STORE = "state";
   var DOCS_STORE = "docs";
+  var PORTFOLIO_STORE = "portfolios";
+  var BUILDING_STORE = "buildings";
+  var UNIT_STORE = "units";
+  var TENANCY_STORE = "tenancies";
+  var REPOSITORY_META_STORE = "repositoryMeta";
   function requestValue(request) {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
@@ -648,19 +989,37 @@ var AppPersistence = (() => {
       transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB-Transaktion abgebrochen"));
     });
   }
+  function ensureStore(db, transaction, name, indexes = []) {
+    const store = db.objectStoreNames.contains(name) ? transaction.objectStore(name) : db.createObjectStore(name, { keyPath: "id" });
+    for (const index of indexes) {
+      if (!store.indexNames.contains(index.name)) store.createIndex(index.name, index.keyPath, { unique: false });
+    }
+    return store;
+  }
   function openDB() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
-        if (!db.objectStoreNames.contains(STATE_STORE)) {
-          db.createObjectStore(STATE_STORE, { keyPath: "id" });
-        }
-        if (!db.objectStoreNames.contains(DOCS_STORE)) {
-          db.createObjectStore(DOCS_STORE, { keyPath: "id" });
-        }
+        const transaction = request.transaction;
+        if (!transaction) throw new Error("IndexedDB-Upgrade ohne Transaktion");
+        ensureStore(db, transaction, STATE_STORE);
+        ensureStore(db, transaction, DOCS_STORE);
+        ensureStore(db, transaction, PORTFOLIO_STORE);
+        ensureStore(db, transaction, BUILDING_STORE, [{ name: "portfolioId", keyPath: "portfolioId" }]);
+        ensureStore(db, transaction, UNIT_STORE, [{ name: "buildingId", keyPath: "buildingId" }]);
+        ensureStore(db, transaction, TENANCY_STORE, [
+          { name: "buildingId", keyPath: "buildingId" },
+          { name: "unitId", keyPath: "unitId" }
+        ]);
+        ensureStore(db, transaction, REPOSITORY_META_STORE);
       };
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => db.close();
+        resolve(db);
+      };
+      request.onblocked = () => reject(new Error("IndexedDB-Upgrade wird durch einen älteren geöffneten App-Tab blockiert"));
       request.onerror = () => reject(request.error);
     });
   }
@@ -3935,8 +4294,6 @@ const {
   DB_VERSION,
   STATE_ID,
   openDB,
-  readStateRecord,
-  saveState,
   addDocument,
   getDocument,
   listDocuments,
@@ -3944,16 +4301,30 @@ const {
   updateDocument,
   replaceDocuments
 }=AppPersistence;
+const {
+  readStateRecord,
+  saveState,
+  listPortfolios,
+  listBuildings,
+  listUnitsByBuilding,
+  listTenanciesByBuilding,
+  listTenanciesByUnit,
+  getProjectionMeta,
+  getBuildingGraph
+}=AppPortfolioRepository;
 
 async function loadState(){
   const rec=await readStateRecord();
-  if(rec?.data)return migrateDomainState(normalizeState(rec.data));
+  if(rec?.data){
+    const migrated=repairDomainState(rec.data);
+    await saveState(migrated);
+    return migrated
+  }
 
   const fresh=repairDomainState(createEmptyState());
   LAST_STABLE_STATE=cloneState(fresh);
-  const migrated=migrateDomainState(normalizeState(fresh));
-  await saveState(migrated);
-  return migrated
+  await saveState(fresh);
+  return fresh
 }
 
 /* ===== security.js ===== */

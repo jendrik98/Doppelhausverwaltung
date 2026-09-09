@@ -3,7 +3,7 @@ const { runtimeGuard, openApp } = require('./helpers');
 
 test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, request }) => {
   const guard = runtimeGuard(page);
-  const core = await request.get('./app.js?v=1801');
+  const core = await request.get('./app.js?v=1802');
   expect(core.ok()).toBeTruthy();
   const coreText = await core.text();
   expect(coreText).toContain('APP_VERSION="18.0.0"');
@@ -12,7 +12,7 @@ test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, r
   const index = await request.get('./index.html');
   expect(index.ok()).toBeTruthy();
   const indexText = await index.text();
-  expect(indexText).toContain('app.js?v=1801');
+  expect(indexText).toContain('app.js?v=1802');
   expect(indexText).toContain('style.css?v=1810p2');
   expect(indexText).toContain('manifest.webmanifest?v=1810p2');
   expect(indexText).not.toContain('<meta name="theme-color" content="#0f172a">');

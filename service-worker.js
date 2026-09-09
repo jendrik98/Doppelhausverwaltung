@@ -3,7 +3,7 @@ const CORE=[
   "./",
   "./index.html",
   "./style.css?v=1810p2",
-  "./app.js?v=1801",
+  "./app.js?v=1802",
   "./manifest.webmanifest?v=1810p2",
   "./legal-rules.json",
   "./icon-192.png",

@@ -1,6 +1,6 @@
 type AnyRecord = Record<string, any>;
 
-export const PORTFOLIO_MODEL_VERSION = 1;
+export const PORTFOLIO_MODEL_VERSION = 2;
 export const DEFAULT_PORTFOLIO_ID = "portfolio-main";
 export const DEFAULT_BUILDING_ID = "building-main";
 
@@ -48,14 +48,28 @@ function firstByType(units: any[], type: string, buildingId?: string): any | nul
   return units.find((unit) => unit?.type === type && (!buildingId || unit.buildingId === buildingId)) || null;
 }
 
+function mapById(items: any[]): Map<string, any> {
+  return new Map(items.filter((item) => item?.id).map((item) => [String(item.id), item]));
+}
+
+function linkedBuildingId(item: any, refs: Array<Map<string, any>>): string {
+  for (const ref of refs) {
+    for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId"]) {
+      const linked = item?.[key] ? ref.get(String(item[key])) : null;
+      if (linked?.buildingId) return String(linked.buildingId);
+    }
+  }
+  return "";
+}
+
 export function ensurePortfolioModel<T extends AnyRecord>(value: T): T {
   const state: AnyRecord = value && typeof value === "object" ? value : {};
   state.meta = state.meta && typeof state.meta === "object" ? state.meta : {};
   state.property = state.property && typeof state.property === "object" ? state.property : {};
-  state.portfolios = array(state.portfolios);
-  state.buildings = array(state.buildings);
-  state.units = array(state.units);
-  state.leases = array(state.leases);
+  for (const key of [
+    "portfolios", "buildings", "units", "leases", "meters", "sources", "costPositions", "tasks",
+    "payments", "waterSettlements", "billingWorkflows", "billingSnapshots", "containers", "water"
+  ]) state[key] = array(state[key]);
 
   ensureIds(state.portfolios, "portfolio");
   ensureIds(state.buildings, "building");
@@ -76,9 +90,9 @@ export function ensurePortfolioModel<T extends AnyRecord>(value: T): T {
   primaryPortfolio.kind = primaryPortfolio.kind || "private";
   state.meta.primaryPortfolioId = primaryPortfolio.id;
 
-  const portfolioIds = new Set(state.portfolios.map((item: any) => item.id));
+  const portfolioIds = new Set(state.portfolios.map((item: any) => String(item.id)));
   for (const building of state.buildings) {
-    if (!portfolioIds.has(building.portfolioId)) building.portfolioId = primaryPortfolio.id;
+    if (!portfolioIds.has(String(building.portfolioId || ""))) building.portfolioId = primaryPortfolio.id;
   }
 
   let primaryBuilding = state.buildings.find((item: any) => item.id === state.meta.primaryBuildingId) || state.buildings[0];
@@ -94,11 +108,11 @@ export function ensurePortfolioModel<T extends AnyRecord>(value: T): T {
     };
     state.buildings.push(primaryBuilding);
   }
-  if (!portfolioIds.has(primaryBuilding.portfolioId)) primaryBuilding.portfolioId = primaryPortfolio.id;
+  if (!portfolioIds.has(String(primaryBuilding.portfolioId || ""))) primaryBuilding.portfolioId = primaryPortfolio.id;
   state.meta.primaryBuildingId = primaryBuilding.id;
 
-  // B1 compatibility rule: the existing property form remains the source of truth
-  // for the primary building until the multi-building UI is introduced.
+  // Bis die Mehrgebäude-UI eingeführt ist, bleibt das bisherige property-Formular
+  // die editierbare Projektion des primären Gebäudes.
   primaryBuilding.name = state.property.name || primaryBuilding.name || "Doppelhaus";
   primaryBuilding.address = state.property.address || primaryBuilding.address || "";
   primaryBuilding.totalArea = Number(state.property.totalArea || primaryBuilding.totalArea || 0);
@@ -106,40 +120,69 @@ export function ensurePortfolioModel<T extends AnyRecord>(value: T): T {
   primaryBuilding.billingTakeoverDate = state.property.billingTakeoverDate || primaryBuilding.billingTakeoverDate || "";
   primaryBuilding.predecessorBillingEnd = state.property.predecessorBillingEnd || primaryBuilding.predecessorBillingEnd || "";
 
-  const buildingIds = new Set(state.buildings.map((item: any) => item.id));
+  const buildingIds = new Set(state.buildings.map((item: any) => String(item.id)));
   for (const unit of state.units) {
-    if (!buildingIds.has(unit.buildingId)) unit.buildingId = primaryBuilding.id;
+    if (!buildingIds.has(String(unit.buildingId || ""))) unit.buildingId = primaryBuilding.id;
   }
-
-  const unitIds = new Set(state.units.map((item: any) => item.id));
+  const unitById = mapById(state.units);
+  const unitIds = new Set(unitById.keys());
   const primaryRental = firstByType(state.units, "rental", primaryBuilding.id) || firstByType(state.units, "rental") || state.units[0] || null;
   for (const lease of state.leases) {
-    if (!unitIds.has(lease.unitId)) lease.unitId = primaryRental?.id || "";
-    const linkedUnit = state.units.find((unit: any) => unit.id === lease.unitId);
+    if (!unitIds.has(String(lease.unitId || ""))) lease.unitId = primaryRental?.id || "";
+    const linkedUnit = unitById.get(String(lease.unitId || ""));
     lease.buildingId = linkedUnit?.buildingId || primaryBuilding.id;
   }
+  const leaseById = mapById(state.leases);
 
-  const ownerUnit = firstByType(state.units, "owner", primaryBuilding.id) || firstByType(state.units, "owner");
-  const attachBuilding = (items: any[]): void => {
-    for (const item of array(items)) {
-      if (item && typeof item === "object" && !buildingIds.has(item.buildingId)) item.buildingId = primaryBuilding.id;
+  const ownerUnitFor = (buildingId: string): any | null =>
+    firstByType(state.units, "owner", buildingId) || (buildingId === primaryBuilding.id ? firstByType(state.units, "owner") : null);
+
+  for (const meter of state.meters) {
+    const linkedUnit = unitById.get(String(meter.unitId || ""));
+    if (!buildingIds.has(String(meter.buildingId || ""))) meter.buildingId = linkedUnit?.buildingId || primaryBuilding.id;
+    if (meter.role === "ownerWater" && !linkedUnit) {
+      const ownerUnit = ownerUnitFor(String(meter.buildingId));
+      if (ownerUnit) meter.unitId = ownerUnit.id;
     }
-  };
+    if (meter.unitId && !unitIds.has(String(meter.unitId))) delete meter.unitId;
+  }
+  const meterById = mapById(state.meters);
 
-  for (const meter of array(state.meters)) {
-    if (!buildingIds.has(meter.buildingId)) meter.buildingId = primaryBuilding.id;
-    if (meter.role === "ownerWater" && ownerUnit && !unitIds.has(meter.unitId)) meter.unitId = ownerUnit.id;
-    if (meter.unitId && !unitIds.has(meter.unitId)) delete meter.unitId;
+  for (const source of state.sources) {
+    if (!buildingIds.has(String(source.buildingId || ""))) source.buildingId = primaryBuilding.id;
+  }
+  const sourceById = mapById(state.sources);
+
+  for (const position of state.costPositions) {
+    const linkedSource = sourceById.get(String(position.sourceId || ""));
+    if (!buildingIds.has(String(position.buildingId || ""))) position.buildingId = linkedSource?.buildingId || primaryBuilding.id;
+  }
+  const positionById = mapById(state.costPositions);
+
+  for (const settlement of state.waterSettlements) {
+    const mainMeter = meterById.get(String(settlement.mainMeterId || ""));
+    const ownerMeter = meterById.get(String(settlement.ownerMeterId || ""));
+    if (!buildingIds.has(String(settlement.buildingId || ""))) {
+      settlement.buildingId = mainMeter?.buildingId || ownerMeter?.buildingId || primaryBuilding.id;
+    }
   }
 
-  attachBuilding(state.sources);
-  attachBuilding(state.costPositions);
-  attachBuilding(state.tasks);
-  attachBuilding(state.payments);
-  attachBuilding(state.waterSettlements);
-  attachBuilding(state.billingWorkflows);
-  attachBuilding(state.billingSnapshots);
-  attachBuilding(state.containers);
+  const refs = [unitById, leaseById, positionById, sourceById, meterById];
+  for (const key of ["tasks", "payments"]) {
+    for (const item of state[key]) {
+      if (!buildingIds.has(String(item.buildingId || ""))) item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
+      const linkedLease = leaseById.get(String(item.leaseId || ""));
+      if (linkedLease && !unitIds.has(String(item.unitId || ""))) item.unitId = linkedLease.unitId || "";
+    }
+  }
+
+  for (const key of ["billingWorkflows", "billingSnapshots", "containers", "water"]) {
+    for (const item of state[key]) {
+      if (item && typeof item === "object" && !buildingIds.has(String(item.buildingId || ""))) {
+        item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
+      }
+    }
+  }
 
   if (Number(state.meta.portfolioModelVersion || 0) < PORTFOLIO_MODEL_VERSION) {
     state.meta.portfolioModelMigratedAt = new Date().toISOString();
@@ -168,8 +211,9 @@ export function validatePortfolioModel(value: any): PortfolioModelValidation {
         errors.push(`${label}: Datensatz ohne ID`);
         continue;
       }
-      if (ids.has(item.id)) errors.push(`${label}: doppelte ID ${item.id}`);
-      ids.add(item.id);
+      const id = String(item.id);
+      if (ids.has(id)) errors.push(`${label}: doppelte ID ${id}`);
+      ids.add(id);
     }
     return ids;
   };
@@ -178,39 +222,75 @@ export function validatePortfolioModel(value: any): PortfolioModelValidation {
   const buildingIds = unique(buildings, "Gebäude");
   const unitIds = unique(units, "Einheiten");
   unique(leases, "Mietverhältnisse");
+  const unitById = mapById(units);
+  const leaseById = mapById(leases);
+  const sourceById = mapById(array(value.sources));
+  const positionById = mapById(array(value.costPositions));
+  const meterById = mapById(array(value.meters));
 
   for (const building of buildings) {
-    if (!portfolioIds.has(building.portfolioId)) errors.push(`Gebäude ${building.id}: Portfolio-Referenz fehlt`);
+    if (!portfolioIds.has(String(building.portfolioId || ""))) errors.push(`Gebäude ${building.id}: Portfolio-Referenz fehlt`);
   }
   for (const unit of units) {
-    if (!buildingIds.has(unit.buildingId)) errors.push(`Einheit ${unit.id}: Gebäude-Referenz fehlt`);
+    if (!buildingIds.has(String(unit.buildingId || ""))) errors.push(`Einheit ${unit.id}: Gebäude-Referenz fehlt`);
   }
   for (const lease of leases) {
-    if (units.length && !unitIds.has(lease.unitId)) errors.push(`Mietverhältnis ${lease.id}: Einheit-Referenz fehlt`);
+    const linkedUnit = unitById.get(String(lease.unitId || ""));
+    if (units.length && !linkedUnit) errors.push(`Mietverhältnis ${lease.id}: Einheit-Referenz fehlt`);
     if (!units.length && !lease.unitId) warnings.push(`Mietverhältnis ${lease.id}: noch keiner Einheit zugeordnet`);
-    if (lease.buildingId && !buildingIds.has(lease.buildingId)) errors.push(`Mietverhältnis ${lease.id}: Gebäude-Referenz fehlt`);
+    if (!buildingIds.has(String(lease.buildingId || ""))) errors.push(`Mietverhältnis ${lease.id}: Gebäude-Referenz fehlt`);
+    if (linkedUnit && lease.buildingId !== linkedUnit.buildingId) errors.push(`Mietverhältnis ${lease.id}: Gebäude und Einheit widersprechen sich`);
   }
 
-  for (const [key, label] of [
-    ["meters", "Zähler"],
-    ["sources", "Quellen"],
-    ["costPositions", "Kostenpositionen"],
-    ["tasks", "Aufgaben"],
-    ["payments", "Zahlungen"],
-    ["waterSettlements", "Wasserperioden"],
-    ["billingWorkflows", "Abrechnungsworkflows"],
-    ["billingSnapshots", "Snapshots"],
-    ["containers", "Behälter"]
-  ] as const) {
-    for (const item of array(value[key])) {
-      if (item?.buildingId && !buildingIds.has(item.buildingId)) errors.push(`${label} ${item.id || "?"}: Gebäude-Referenz fehlt`);
+  for (const meter of array(value.meters)) {
+    if (!buildingIds.has(String(meter.buildingId || ""))) errors.push(`Zähler ${meter.id || "?"}: Gebäude-Referenz fehlt`);
+    const linkedUnit = meter.unitId ? unitById.get(String(meter.unitId)) : null;
+    if (meter.unitId && !linkedUnit) errors.push(`Zähler ${meter.id || "?"}: Einheit-Referenz fehlt`);
+    if (linkedUnit && meter.buildingId !== linkedUnit.buildingId) errors.push(`Zähler ${meter.id || "?"}: Gebäude und Einheit widersprechen sich`);
+  }
+
+  for (const source of array(value.sources)) {
+    if (!buildingIds.has(String(source.buildingId || ""))) errors.push(`Quelle ${source.id || "?"}: Gebäude-Referenz fehlt`);
+  }
+  for (const position of array(value.costPositions)) {
+    if (!buildingIds.has(String(position.buildingId || ""))) errors.push(`Kostenposition ${position.id || "?"}: Gebäude-Referenz fehlt`);
+    const source = position.sourceId ? sourceById.get(String(position.sourceId)) : null;
+    if (source && source.buildingId !== position.buildingId) errors.push(`Kostenposition ${position.id || "?"}: Quelle gehört zu anderem Gebäude`);
+  }
+
+  for (const payment of array(value.payments)) {
+    if (!buildingIds.has(String(payment.buildingId || ""))) errors.push(`Zahlung ${payment.id || "?"}: Gebäude-Referenz fehlt`);
+    const linked = payment.positionId ? positionById.get(String(payment.positionId))
+      : payment.sourceId ? sourceById.get(String(payment.sourceId))
+      : payment.leaseId ? leaseById.get(String(payment.leaseId))
+      : payment.unitId ? unitById.get(String(payment.unitId)) : null;
+    if (linked?.buildingId && linked.buildingId !== payment.buildingId) errors.push(`Zahlung ${payment.id || "?"}: Referenz gehört zu anderem Gebäude`);
+  }
+
+  for (const settlement of array(value.waterSettlements)) {
+    if (!buildingIds.has(String(settlement.buildingId || ""))) errors.push(`Wasserperiode ${settlement.id || settlement.periodYear || "?"}: Gebäude-Referenz fehlt`);
+    for (const key of ["mainMeterId", "ownerMeterId"]) {
+      const meter = settlement[key] ? meterById.get(String(settlement[key])) : null;
+      if (meter?.buildingId && meter.buildingId !== settlement.buildingId) errors.push(`Wasserperiode ${settlement.id || settlement.periodYear || "?"}: Zähler gehört zu anderem Gebäude`);
     }
   }
 
-  if (value.meta?.primaryPortfolioId && !portfolioIds.has(value.meta.primaryPortfolioId)) {
+  for (const [key, label] of [
+    ["tasks", "Aufgaben"],
+    ["billingWorkflows", "Abrechnungsworkflows"],
+    ["billingSnapshots", "Snapshots"],
+    ["containers", "Behälter"],
+    ["water", "Wasserdaten"]
+  ] as const) {
+    for (const item of array(value[key])) {
+      if (!buildingIds.has(String(item?.buildingId || ""))) errors.push(`${label} ${item?.id || "?"}: Gebäude-Referenz fehlt`);
+    }
+  }
+
+  if (value.meta?.primaryPortfolioId && !portfolioIds.has(String(value.meta.primaryPortfolioId))) {
     errors.push("Portfolio-Modell: primäres Portfolio ist ungültig");
   }
-  if (value.meta?.primaryBuildingId && !buildingIds.has(value.meta.primaryBuildingId)) {
+  if (value.meta?.primaryBuildingId && !buildingIds.has(String(value.meta.primaryBuildingId))) {
     errors.push("Portfolio-Modell: primäres Gebäude ist ungültig");
   }
   return { errors, warnings };

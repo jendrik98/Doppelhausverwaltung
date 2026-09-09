@@ -43,6 +43,7 @@ const typedRuntime = (
     compileModule("src/core/feedback.ts", "AppFeedback"),
     compileModule("src/core/state.ts", "AppState"),
     compileModule("src/domain/portfolio-model.ts", "AppPortfolioModel"),
+    compileModule("src/infrastructure/portfolio-repository.ts", "AppPortfolioRepository"),
     compileModule("src/core/persistence.ts", "AppPersistence"),
     compileModule("src/core/auth.ts", "AppAuth"),
     compileModule("src/core/integrity.ts", "AppIntegrity"),

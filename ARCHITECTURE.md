@@ -239,3 +239,16 @@ State-Schema 14 ergänzt die bisherige Einzelobjektstruktur additiv um `portfoli
 `src/domain/portfolio-model.ts` stellt eine idempotente Migration bereit. Bestehende Einheiten werden dem primären Gebäude zugeordnet; bestehende Mietverhältnisse erhalten eine stabile `unitId` (bevorzugt die vorhandene Mietwohnung) sowie die abgeleitete `buildingId`. Zähler, Quellen, Kostenpositionen, Aufgaben, Zahlungen und Abrechnungsdatensätze erhalten eine Gebäudezuordnung, sofern noch keine gültige Zuordnung existiert. Gültige Mehrgebäude-Referenzen werden nicht überschrieben.
 
 Die Referenzintegrität wird im zentralen `repairDomainState`/`validateDomainState`-Pfad erzwungen. B1 ändert weder IndexedDB-Name/-Version noch Backupformat oder App-Version; die Persistenzschicht bleibt dadurch rückwärtskompatibel. Die eigentliche Mehrgebäude-Bedienung und Dokument-Persistenz vNext folgen in B2.
+
+
+## B2 – Indexed Portfolio Persistence
+
+B2 führt eine Repository-Schicht zwischen Browser-Runtime und IndexedDB ein. Der vollständige State bleibt als kompatibler Snapshot unter `state/main` erhalten, wird aber bei jedem produktiven Speichern in derselben IndexedDB-Transaktion zusätzlich in normalisierte Stores für `portfolios`, `buildings`, `units` und `tenancies` projiziert. Dadurch bleiben bestehende Backups und die aktuelle Ein-Gebäude-UI kompatibel, während spätere Mehrgebäude-Abfragen indexiert und ohne Vermischung der Objekte möglich werden.
+
+- State-Schema: 15; Portfolio-Modell: 2; IndexedDB: 3.
+- `src/infrastructure/portfolio-repository.ts` ist die produktive Schreibgrenze für State + Projektion.
+- Gebäude besitzen `portfolioId`, Einheiten `buildingId`, Mietverhältnisse `unitId` + konsistentes `buildingId`.
+- Indizes: Gebäude nach `portfolioId`, Einheiten nach `buildingId`, Mietverhältnisse nach `buildingId` und `unitId`.
+- Beim Laden eines bestehenden Snapshots repariert/migriert die Runtime zuerst das Domainmodell und schreibt anschließend die atomare Projektion neu.
+- Die bisherige `property`-Oberfläche bleibt vorerst die editierbare Projektion des primären Gebäudes; bei nur einem Gebäude entsteht kein zusätzlicher Gebäudewähler.
+- Browser-E2E prüft den Upgradepfad, die Projektions-Metadaten und die Isolation zweier Gebäude.

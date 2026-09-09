@@ -9,7 +9,7 @@ const BASE_URL = process.env.E2E_BASE_URL || 'https://jendrik98.github.io/Doppel
 async function readState(page) {
   return page.evaluate(async ({ DB, STATE }) => {
     const db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB, 2);
+      const req = indexedDB.open(DB, 3);
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -25,7 +25,7 @@ async function readState(page) {
 async function writeState(page, state) {
   await page.evaluate(async ({ DB, STATE, state }) => {
     const db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB, 2);
+      const req = indexedDB.open(DB, 3);
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });

@@ -148,7 +148,7 @@ assert(!db.includes("indexedDB."), "IndexedDB-Zugriffe liegen noch im Legacy-DB-
 assert(!db.includes("migrateLegacyStorage"), "Alte LocalStorage-Migration liegt noch im DB-Pfad.");
 assert(db.includes("}=AppPersistence;"), "Legacy-Brücke zu AppPersistence fehlt.");
 assert(persistence.includes('DB_NAME = "mietverwaltung-v6"'), "IndexedDB-Name wurde verändert.");
-assert(persistence.includes("DB_VERSION = 2"), "IndexedDB-Version wurde verändert.");
+assert(persistence.includes("DB_VERSION = 3"), "B2 erwartet IndexedDB-Version 3.");
 assert(persistence.includes('STATE_ID = "main"'), "State-Schlüssel wurde verändert.");
 assert(persistence.includes('createObjectStore(STATE_STORE, { keyPath: "id" })'), "State-Store-Schema wurde verändert.");
 assert(persistence.includes('createObjectStore(DOCS_STORE, { keyPath: "id" })'), "Docs-Store-Schema wurde verändert.");
@@ -184,6 +184,7 @@ assert(buildScript.includes('"AppSmartEngine"'), "AppSmartEngine wird nicht geba
 assert(buildScript.includes('"AppV18Assistant"'), "AppV18Assistant wird nicht gebaut.");
 assert(buildScript.includes('"AppBackupCodec"'), "AppBackupCodec wird nicht gebaut.");
 assert(tsconfig.includes('"src/io/**/*.ts"'), "TypeScript-Prüfung umfasst src/io nicht.");
+assert(tsconfig.includes('"src/infrastructure/**/*.ts"'), "TypeScript-Prüfung umfasst src/infrastructure nicht.");
 
 assert(app.includes("compiled src/core/state.ts"), "State-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("compiled src/core/persistence.ts"), "Persistenz-TypeScript fehlt im Browser-Bundle.");
@@ -240,13 +241,13 @@ assert(tsconfig.includes('"src/ui/**/*.ts"'), "TypeScript-Konfiguration prüft s
 assert(app.includes("compiled src/ui/ui-core.ts"), "UI-Core-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("TypeScript source src/ui/app-runtime.ts · outer-scope injection"), "App-Runtime-TypeScript fehlt im Browser-Bundle.");
 
-console.log("Architekturprüfung bestanden: Phase 10 V3 migriert Laufzeit-Selbsttests, Dialogzustand, Routing und Ansichten nach TypeScript, injiziert sie semantikerhaltend im bisherigen äußeren Runtime-Scope und entfernt src/legacy vollständig. Bewusste Runtime-Kompatibilitätsbindungen, IndexedDB v2 und App-Version 18.0.0 bleiben unverändert.");
+console.log("Architekturprüfung bestanden: Phase 10 V3 migriert Laufzeit-Selbsttests, Dialogzustand, Routing und Ansichten nach TypeScript, injiziert sie semantikerhaltend im bisherigen äußeren Runtime-Scope und entfernt src/legacy vollständig. Bewusste Runtime-Kompatibilitätsbindungen, IndexedDB v3 und App-Version 18.0.0 sind der aktuelle Architekturvertrag.");
 
 // Architecture B1 – Portfolio -> Gebäude -> Einheit -> Mietverhältnis.
 const portfolioModelB1 = read("src/domain/portfolio-model.ts");
-assert(state.includes("SCHEMA_VERSION = 14"), "B1 erwartet State-Schema 14.");
+assert(state.includes("SCHEMA_VERSION = 15"), "B2 erwartet State-Schema 15.");
 assert(state.includes('"portfolios"') && state.includes('"buildings"'), "B1-State enthält Portfolio-/Gebäude-Arrays nicht.");
-assert(portfolioModelB1.includes("export const PORTFOLIO_MODEL_VERSION = 1"), "Portfolio-Modellversion fehlt.");
+assert(portfolioModelB1.includes("export const PORTFOLIO_MODEL_VERSION = 2"), "B2-Portfolio-Modellversion fehlt.");
 assert(portfolioModelB1.includes("export function ensurePortfolioModel"), "Portfolio-Migration fehlt.");
 assert(portfolioModelB1.includes("export function validatePortfolioModel"), "Portfolio-Referenzvalidierung fehlt.");
 assert(portfolioModelB1.includes('DEFAULT_PORTFOLIO_ID = "portfolio-main"'), "Stabile primäre Portfolio-ID fehlt.");
@@ -255,3 +256,20 @@ assert(buildScript.includes('compileModule("src/domain/portfolio-model.ts", "App
 assert(integrity.includes("AppPortfolioModel.ensurePortfolioModel(repaired)"), "repairDomainState migriert Portfolio-Modell nicht.");
 assert(integrity.includes("AppPortfolioModel.validatePortfolioModel(value)"), "validateDomainState prüft Portfolio-Modell nicht.");
 assert(app.includes("compiled src/domain/portfolio-model.ts"), "app.js enthält das gebündelte Portfolio-Modell nicht.");
+
+
+// Architecture B2 – atomare Snapshot-/Portfolio-Projektion in IndexedDB.
+const portfolioRepositoryB2 = read("src/infrastructure/portfolio-repository.ts");
+assert(persistence.includes('PORTFOLIO_STORE = "portfolios"'), "B2 Portfolio-Store fehlt.");
+assert(persistence.includes('BUILDING_STORE = "buildings"'), "B2 Gebäude-Store fehlt.");
+assert(persistence.includes('UNIT_STORE = "units"'), "B2 Einheiten-Store fehlt.");
+assert(persistence.includes('TENANCY_STORE = "tenancies"'), "B2 Mietverhältnis-Store fehlt.");
+assert(persistence.includes('createIndex(index.name, index.keyPath'), "B2 IndexedDB-Indizes fehlen.");
+assert(buildScript.includes('compileModule("src/infrastructure/portfolio-repository.ts", "AppPortfolioRepository")'), "Build bindet AppPortfolioRepository nicht ein.");
+assert(db.includes("}=AppPortfolioRepository;"), "Runtime nutzt das Portfolio-Repository nicht.");
+assert(db.includes("await saveState(migrated);"), "B2 baut die Projektion beim Laden vorhandener Daten nicht auf.");
+assert(portfolioRepositoryB2.includes("export async function saveState"), "Atomarer Repository-Save fehlt.");
+assert(portfolioRepositoryB2.includes("listUnitsByBuilding"), "Gebäudeisolierte Einheitenabfrage fehlt.");
+assert(portfolioRepositoryB2.includes("listTenanciesByBuilding"), "Gebäudeisolierte Mietverhältnisabfrage fehlt.");
+assert(portfolioRepositoryB2.includes("REPOSITORY_META_STORE"), "Projektions-Metadaten fehlen.");
+assert(app.includes("compiled src/infrastructure/portfolio-repository.ts"), "Portfolio-Repository fehlt im Browser-Bundle.");

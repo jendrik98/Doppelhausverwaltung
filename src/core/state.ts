@@ -1,7 +1,7 @@
 import { dateOnlyAddDays } from "./date";
 export { localDateISO, dateOnlyAddDays, localMonthEndISO } from "./date";
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 type Dict = Record<string, any>;
 

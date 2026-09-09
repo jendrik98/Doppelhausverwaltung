@@ -17,6 +17,7 @@
     "src/core/**/*.ts",
     "src/domain/**/*.ts",
     "src/io/**/*.ts",
+    "src/infrastructure/**/*.ts",
     "src/ui/**/*.ts"
   ]
 }
