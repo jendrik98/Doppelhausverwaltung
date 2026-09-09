@@ -845,7 +845,7 @@ jobs:
               state=repairDomainState(state);
               const check=validateDomainState(state);if(check.errors.length)throw new Error("Datenintegrität: "+check.errors.join(" · "));
               if(action)audit(action,detail);
-              state.meta.revision=Number(state.meta?.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
+              state.meta.revision=Number(state.meta.revision||0)+1;state.meta.lastSavedAt=new Date().toISOString();state.meta.lastIntegrityCheckAt=new Date().toISOString();
               await saveState(state);LAST_STABLE_STATE=cloneState(state);storageError=null;try{await updateBadge()}catch{};if(action)AppFeedback.showToast(action,{kind:"success"});return true
             }catch(e){
               recordClientError("persist",e);storageError=e;console.error("Speicher-/Integritätsfehler:",e);
