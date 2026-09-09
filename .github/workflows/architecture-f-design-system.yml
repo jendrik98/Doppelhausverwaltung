@@ -1,0 +1,1156 @@
+name: Architecture F – Design system & UX consolidation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: architecture-f-design-system
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      E2E_BASE_URL: http://127.0.0.1:4173/
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Exakten F-Ausgangsstand schützen
+        shell: bash
+        run: |
+          set -euo pipefail
+          E_PRODUCT_SHA="f96a9611e7a5379d2ade706108400a5a105ce32d"
+          test "$(git merge-base HEAD "$E_PRODUCT_SHA")" = "$E_PRODUCT_SHA"
+          test "$(git diff --name-only "$E_PRODUCT_SHA" HEAD)" = ".github/workflows/architecture-f-design-system.yml"
+
+          test -e .github/workflows/architecture-e-portfolio-administration.yml
+          test ! -e .github/workflows/architecture-d-presentation-workspace.yml
+          test -e .github/workflows/ci.yml
+          test -e .github/workflows/e2e-live.yml
+
+          test ! -e src/ui/design-system.css
+          test ! -e scripts/build-styles.mjs
+          test ! -e scripts/test-design-system.mjs
+          test ! -e tests/design-system.spec.js
+
+          grep -q 'style.css?v=1810p9' index.html
+          grep -q 'mietverwaltung-v18-portfolio-admin-e-1' service-worker.js
+          grep -q 'V14 Navigation & UX' style.css
+          grep -q 'V16 Premium Final' style.css
+          grep -q 'V18 consolidated olive theme' style.css
+          grep -q 'Architecture E: mobile touch safety' style.css
+
+      - name: Architecture-E Workflow aufräumen
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/architecture-e-portfolio-administration.yml
+          git commit -m "Remove temporary Architecture E workflow"
+          # Noch nicht pushen. Falls F fehlschlägt, bleibt main vollständig auf dem bewiesenen E-Stand.
+          echo "E_HYGIENE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Design-System-F Patch anwenden
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+          import textwrap
+
+          root = Path(".")
+
+          def B(value):
+              return textwrap.dedent(value).lstrip("\n")
+
+          def read(path):
+              return (root / path).read_text(encoding="utf-8")
+
+          def write(path, content):
+              p = root / path
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_text(content, encoding="utf-8")
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: erwartete genau 1 Fundstelle, gefunden {count}: {old!r}")
+              write(path, text.replace(old, new, 1))
+
+          def between(text, start_marker, end_marker):
+              if text.count(start_marker) != 1:
+                  raise SystemExit(f"style.css: Marker nicht eindeutig: {start_marker}")
+              if text.count(end_marker) != 1:
+                  raise SystemExit(f"style.css: Endmarker nicht eindeutig: {end_marker}")
+              start = text.index(start_marker) + len(start_marker)
+              end = text.index(end_marker, start)
+              return text[start:end]
+
+          def remove_balanced(text, token):
+              while token in text:
+                  start = text.index(token)
+                  opening = text.find("{", start)
+                  if opening < 0:
+                      raise SystemExit(f"CSS-Block ohne öffnende Klammer: {token}")
+                  depth = 0
+                  closing = None
+                  for i in range(opening, len(text)):
+                      ch = text[i]
+                      if ch == "{":
+                          depth += 1
+                      elif ch == "}":
+                          depth -= 1
+                          if depth == 0:
+                              closing = i
+                              break
+                  if closing is None:
+                      raise SystemExit(f"CSS-Block nicht geschlossen: {token}")
+                  text = text[:start] + text[closing + 1:]
+              return text
+
+          COLOR_MAP = {
+              "#ffffff": "var(--surface)",
+              "#f8fafc": "var(--surface-2)",
+              "#f5f8fb": "var(--surface-2)",
+              "#f4f7fa": "var(--surface-2)",
+              "#f2f4f7": "var(--surface-2)",
+              "#eef2f7": "var(--surface-2)",
+              "#edf2f7": "var(--line)",
+              "#e2e8f0": "var(--line)",
+              "#e1e7ed": "var(--line)",
+              "#dce4eb": "var(--line)",
+              "#dbe2ea": "var(--line)",
+              "#d9e1e8": "var(--line)",
+              "#cbd5e1": "var(--line-strong)",
+              "#667085": "var(--muted)",
+              "#64748b": "var(--muted)",
+              "#475467": "var(--text-secondary)",
+              "#334155": "var(--text)",
+              "#0f172a": "var(--primary)",
+              "#101828": "var(--text)",
+              "#dcfce7": "var(--success-soft)",
+              "#166534": "var(--success)",
+              "#fef3c7": "var(--warning-soft)",
+              "#92400e": "var(--warning)",
+              "#9a3412": "var(--warning)",
+              "#fee2e2": "var(--danger-soft)",
+              "#991b1b": "var(--danger)",
+              "#b42318": "var(--danger)",
+              "#b54708": "var(--warning)",
+              "#175cd3": "var(--accent)",
+              "#93c5fd": "var(--focus)",
+              "#84adff": "var(--focus)",
+              "#1849a9": "var(--accent-strong)",
+              "#d1e0ff": "var(--line)",
+              "#abefc6": "var(--success)",
+              "#fedf89": "var(--warning)",
+              "#fed7aa": "var(--warning)",
+              "#fff7ed": "var(--warning-soft)",
+              "#fecdca": "var(--danger)",
+              "#98a2b3": "var(--muted)",
+              "#f0f9ff": "var(--accent-soft)",
+              "#b9e6fe": "var(--line)",
+              "#026aa2": "var(--accent-strong)",
+              "#fbfcfd": "var(--surface-2)",
+              "#b7c0ce": "var(--muted)",
+              "#fff": "var(--surface)"
+          }
+
+          def tokenise(fragment):
+              fragment = fragment.replace("!important", "")
+              fragment = re.sub(
+                  r"#[0-9a-fA-F]{3,8}\b",
+                  lambda match: COLOR_MAP.get(match.group(0).lower(), match.group(0)),
+                  fragment
+              )
+              fragment = re.sub(r"/\*\s*=====.*?=====\s*\*/", "", fragment, flags=re.S)
+              while fragment.count("}") > fragment.count("{"):
+                  idx = fragment.rfind("}")
+                  fragment = fragment[:idx] + fragment[idx + 1:]
+              if fragment.count("{") != fragment.count("}"):
+                  raise SystemExit("CSS-Fragment ist nach Bereinigung nicht ausgeglichen.")
+              return fragment.strip()
+
+          old_style = read("style.css")
+          markers = {
+              "v14": "/* ===== V14 Navigation & UX ===== */",
+              "v15": "/* ===== V15 Meter Vision ===== */",
+              "v16": "/* ===== V16 Premium Final ===== */",
+              "v18": "/* ===== V18 consolidated olive theme ===== */",
+              "simple": "/* ===== V18 simplified navigation preview ===== */",
+              "validation": "/* ===== Phase 2 validation feedback ===== */",
+              "building": "/* ===== D Presentation / Building context ===== */",
+              "touch": "/* ===== Architecture E: mobile touch safety ===== */",
+          }
+          for marker in markers.values():
+              if old_style.count(marker) != 1:
+                  raise SystemExit(f"style.css: erwartete genau einen Marker {marker!r}")
+
+          tail_start = ".storage-meter{"
+          if old_style.count(tail_start) != 1:
+              raise SystemExit("style.css: Feature-Tail konnte nicht eindeutig gefunden werden.")
+
+          legacy_features = old_style[old_style.index(tail_start):old_style.index(markers["v14"])]
+          components = between(old_style, markers["v14"], markers["v15"])
+          meter_features = between(old_style, markers["v15"], markers["v16"])
+          premium_patterns = between(old_style, markers["v16"], markers["v18"])
+          simplified = between(old_style, markers["simple"], markers["validation"])
+          validation = between(old_style, markers["validation"], markers["building"])
+          building = between(old_style, markers["building"], markers["touch"])
+
+          components = remove_balanced(components, ":root{")
+          premium_patterns = remove_balanced(premium_patterns, ":root{")
+          premium_patterns = remove_balanced(premium_patterns, "@media(prefers-color-scheme:dark){")
+
+          legacy_features = tokenise(legacy_features)
+          components = tokenise(components)
+          meter_features = tokenise(meter_features)
+          premium_patterns = tokenise(premium_patterns)
+          simplified = tokenise(simplified)
+          validation = tokenise(validation)
+          building = tokenise(building)
+
+          design = B(r'''
+          /*
+           * Mietverwaltung Design System F
+           * Source of truth: src/ui/design-system.css
+           * style.css is generated and must be byte-identical.
+           */
+          @layer reset, base, components, patterns, features, responsive, accessibility;
+
+          @layer reset {
+            *,*::before,*::after{box-sizing:border-box}
+            html,body{margin:0;width:100%;max-width:100%}
+            button,input,select,textarea{font:inherit}
+            button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+            img,svg,canvas{max-width:100%}
+          }
+
+          @layer base {
+            :root{
+              color-scheme:light dark;
+              --color-bg:#f4f6ef;
+              --color-surface:#ffffff;
+              --color-surface-muted:#edf2e3;
+              --color-surface-subtle:#f1f4e9;
+              --color-text:#202817;
+              --color-text-secondary:#46513a;
+              --color-text-muted:#5d684f;
+              --color-border:#cbd4bc;
+              --color-border-strong:#adb99b;
+              --color-primary:#647335;
+              --color-primary-soft:#e3ead2;
+              --color-accent:#6f7d37;
+              --color-accent-strong:#556326;
+              --color-accent-soft:#e6edd6;
+              --color-on-primary:#ffffff;
+              --color-success:#3b7044;
+              --color-success-soft:#e7f2e5;
+              --color-warning:#8c6818;
+              --color-warning-soft:#faf1d8;
+              --color-danger:#914848;
+              --color-danger-soft:#f7e5e5;
+              --color-focus:#6f7d37;
+              --space-1:4px;
+              --space-2:8px;
+              --space-3:12px;
+              --space-4:16px;
+              --space-5:20px;
+              --space-6:24px;
+              --radius-sm:11px;
+              --radius:16px;
+              --radius-lg:22px;
+              --shadow:0 10px 26px rgba(62,76,35,.09);
+              --shadow-strong:0 16px 34px rgba(62,76,35,.14);
+              --content-max:1180px;
+              --touch:44px;
+
+              --bg:var(--color-bg);
+              --surface:var(--color-surface);
+              --surface-2:var(--color-surface-muted);
+              --surface-elevated:var(--color-surface);
+              --surface-subtle:var(--color-surface-subtle);
+              --text:var(--color-text);
+              --text-secondary:var(--color-text-secondary);
+              --muted:var(--color-text-muted);
+              --line:var(--color-border);
+              --line-strong:var(--color-border-strong);
+              --border:var(--color-border);
+              --primary:var(--color-primary);
+              --primary-soft:var(--color-primary-soft);
+              --accent:var(--color-accent);
+              --accent-strong:var(--color-accent-strong);
+              --accent-soft:var(--color-accent-soft);
+              --on-primary:var(--color-on-primary);
+              --success:var(--color-success);
+              --success-soft:var(--color-success-soft);
+              --warning:var(--color-warning);
+              --warning-soft:var(--color-warning-soft);
+              --danger:var(--color-danger);
+              --danger-soft:var(--color-danger-soft);
+              --focus:var(--color-focus);
+              --premium-glass:rgba(255,255,255,.88);
+            }
+
+            @media(prefers-color-scheme:dark){
+              :root{
+                --color-bg:#0f130c;
+                --color-surface:#181e13;
+                --color-surface-muted:#222a1a;
+                --color-surface-subtle:#202818;
+                --color-text:#f0f3e7;
+                --color-text-secondary:#d5dccb;
+                --color-text-muted:#b5bea8;
+                --color-border:#39442f;
+                --color-border-strong:#536045;
+                --color-primary:#a9b96a;
+                --color-primary-soft:#2c351f;
+                --color-accent:#b8c979;
+                --color-accent-strong:#cedb98;
+                --color-accent-soft:#303923;
+                --color-on-primary:#11150d;
+                --color-success:#78bd7d;
+                --color-success-soft:#1e3321;
+                --color-warning:#d8b75d;
+                --color-warning-soft:#3b3018;
+                --color-danger:#dda0a0;
+                --color-danger-soft:#402323;
+                --color-focus:#b8c979;
+                --shadow:0 16px 34px rgba(0,0,0,.28);
+                --shadow-strong:0 20px 42px rgba(0,0,0,.38);
+                --premium-glass:rgba(24,30,19,.9);
+              }
+            }
+
+            html,body{background:var(--bg);color:var(--text)}
+            body{
+              min-height:100vh;
+              padding-bottom:calc(100px + env(safe-area-inset-bottom));
+              overflow-x:hidden;
+              font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+              -webkit-font-smoothing:antialiased;
+              text-rendering:optimizeLegibility;
+            }
+            button,input,select,textarea{color:var(--text)}
+            button{min-height:var(--touch);border-radius:var(--radius-sm)}
+            button:disabled{opacity:.48;cursor:not-allowed}
+            a{color:var(--accent-strong)}
+            h1,h2,h3,h4,p{overflow-wrap:anywhere}
+            .muted,.subtitle,.caption,.hint,.subtle{color:var(--muted)}
+            .negative{color:var(--danger)}
+            .positive{color:var(--success)}
+            .warning-text{color:var(--warning)}
+
+            main{
+              width:100%;
+              max-width:var(--content-max);
+              min-width:0;
+              margin:0 auto;
+              padding:22px 16px 92px;
+              background:var(--bg);
+            }
+            #app,.workspace-content{min-width:0;max-width:100%}
+
+            .topbar{
+              position:sticky;
+              top:0;
+              z-index:700;
+              display:flex;
+              align-items:center;
+              justify-content:space-between;
+              gap:12px;
+              padding:calc(10px + env(safe-area-inset-top)) 16px 10px;
+              background:color-mix(in srgb,var(--surface) 94%,transparent);
+              color:var(--text);
+              border-bottom:1px solid var(--line);
+              backdrop-filter:saturate(160%) blur(18px);
+              -webkit-backdrop-filter:saturate(160%) blur(18px);
+            }
+            .topbar h1{margin:0}
+            .brand{display:flex;align-items:center;gap:10px;min-width:0}
+            .brand>div:nth-child(2){min-width:0}
+            .brand-mark{display:grid;place-items:center;flex:0 0 auto}
+            .top-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+            .subtitle{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+            .main-tabs{
+              position:fixed;
+              left:0;
+              right:0;
+              bottom:0;
+              z-index:500;
+              display:grid;
+              grid-template-columns:repeat(5,minmax(0,1fr));
+              width:min(680px,100vw);
+              margin-inline:auto;
+              padding:6px 7px calc(6px + env(safe-area-inset-bottom));
+              background:color-mix(in srgb,var(--surface) 97%,transparent);
+              border:1px solid var(--line);
+              border-bottom:0;
+              border-radius:18px 18px 0 0;
+              box-shadow:0 -8px 24px rgba(16,24,40,.06);
+              backdrop-filter:blur(18px);
+              -webkit-backdrop-filter:blur(18px);
+            }
+            .main-tabs button{
+              min-width:0;
+              min-height:55px;
+              border:0;
+              background:transparent;
+              color:var(--muted);
+            }
+
+            .hero,.card,.item,.workspace-card{
+              min-width:0;
+              max-width:100%;
+              background:var(--surface);
+              color:var(--text);
+              border:1px solid var(--line);
+              border-radius:var(--radius);
+              box-shadow:var(--shadow);
+            }
+            .hero{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:13px}
+            .card,.item{margin-bottom:13px}
+            .eyebrow{margin:0 0 5px;font-size:10px;letter-spacing:.14em;font-weight:800;color:var(--muted)}
+            .grid{display:grid;gap:12px}
+            .cards{grid-template-columns:repeat(4,minmax(0,1fr))}
+            .row{display:flex;align-items:center;gap:10px;min-width:0}
+            .between{justify-content:space-between}
+            .stack{display:flex;flex-direction:column;gap:10px}
+            .two-up{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+            .card-head>div{min-width:0}
+
+            .primary,.secondary,.danger,.ghost,.icon-action,.close-action{
+              border:1px solid transparent;
+              padding:10px 14px;
+              font-weight:750;
+            }
+            .primary,.primary-action{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+            .secondary,.ghost{background:var(--accent-soft);color:var(--text);border-color:var(--line)}
+            .danger{background:var(--danger-soft);color:var(--danger);border-color:var(--danger)}
+            .compact{min-height:var(--touch);padding:7px 10px;font-size:13px}
+            .wide{width:100%;margin-top:12px}
+            .linkbutton{background:transparent;border:0;text-decoration:underline;color:inherit}
+
+            .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+            .form-grid label,.file-label{display:flex;flex-direction:column;gap:6px;font-weight:650;font-size:14px;min-width:0}
+            .form-grid input,.form-grid select,.form-grid textarea,.big-input{
+              width:100%;
+              min-width:0;
+              max-width:100%;
+              border:1px solid var(--line-strong);
+              border-radius:var(--radius-sm);
+              padding:11px 12px;
+              background:var(--surface-2);
+              color:var(--text);
+            }
+            input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
+            .full{grid-column:1/-1}
+            .form-actions{display:flex;justify-content:flex-end;gap:8px}
+
+            .legal-ok,.legal-warn,.legal-bad,.info{
+              padding:12px;
+              border-radius:12px;
+              border:1px solid var(--line);
+              margin:8px 0;
+            }
+            .legal-ok{background:var(--success-soft);border-color:var(--success);color:var(--success)}
+            .legal-warn{background:var(--warning-soft);border-color:var(--warning);color:var(--warning)}
+            .legal-bad{background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
+            .info{background:var(--accent-soft);color:var(--text)}
+            .pill,.tag,.chip,.badge,.confidence{
+              display:inline-flex;
+              align-items:center;
+              border:1px solid var(--line);
+              border-radius:999px;
+              padding:4px 8px;
+              background:var(--surface-2);
+              color:var(--text);
+              font-size:11px;
+              font-weight:750;
+            }
+            .pill.good,.badge.good,.confidence-good{background:var(--success-soft);color:var(--success);border-color:var(--success)}
+            .pill.warn,.badge.warn,.confidence-warn{background:var(--warning-soft);color:var(--warning);border-color:var(--warning)}
+            .pill.bad,.badge.bad,.confidence-bad{background:var(--danger-soft);color:var(--danger);border-color:var(--danger)}
+
+            .analysis-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+            .analysis-grid>div{padding:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px}
+            .analysis-grid small,.analysis-grid strong{display:block}
+            .task{border:1px solid var(--line);border-radius:13px;padding:12px;margin:8px 0;background:var(--surface-2)}
+            .task h4{margin:0 0 4px}
+
+            .tablewrap{max-width:100%;overflow:auto;border-radius:12px}
+            .costtable{width:100%;border-collapse:collapse}
+            .costtable th,.costtable td{text-align:left;padding:10px;border-bottom:1px solid var(--line);white-space:nowrap}
+            .costtable th{position:sticky;top:0;background:var(--surface-2);z-index:1}
+
+            .action-grid,.quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+            .action-grid button,.quick-grid button,.search-result{
+              width:100%;
+              min-width:0;
+              border:1px solid var(--line);
+              background:var(--surface-2);
+              color:var(--text);
+              border-radius:14px;
+              padding:14px;
+              text-align:left;
+            }
+            .action-grid strong,.action-grid small,.quick-grid strong,.quick-grid small,.search-result strong,.search-result small{display:block}
+            .action-grid small,.quick-grid small,.search-result small{color:var(--muted);margin-top:4px}
+
+            .overlay{
+              position:fixed;
+              inset:0;
+              z-index:1000;
+              display:flex;
+              align-items:flex-end;
+              justify-content:center;
+              padding:10px;
+              background:rgba(10,14,8,.66);
+              backdrop-filter:blur(4px);
+              -webkit-backdrop-filter:blur(4px);
+            }
+            .overlay.hidden{display:none}
+            .sheet{
+              position:relative;
+              width:100%;
+              max-width:760px;
+              max-height:90vh;
+              min-width:0;
+              overflow:auto;
+              overscroll-behavior:contain;
+              padding:18px;
+              background:var(--surface);
+              color:var(--text);
+              border:1px solid var(--line);
+              border-radius:22px 22px 14px 14px;
+              box-shadow:var(--shadow-strong);
+            }
+            .sheet-head{margin-bottom:14px}
+            .sheet-head h2{margin:0}
+            .close-action{display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;background:var(--surface-2);color:var(--text)}
+            .section-tabs{display:flex;gap:7px;overflow:auto;margin-bottom:12px;scrollbar-width:none}
+            .section-tabs::-webkit-scrollbar{display:none}
+            .section-tabs button{white-space:nowrap}
+          }
+          ''') + "\n"
+
+          design += "@layer components {\n" + components + "\n}\n\n"
+          design += "@layer patterns {\n" + premium_patterns + "\n" + simplified + "\n" + building + "\n}\n\n"
+          design += "@layer features {\n" + legacy_features + "\n" + meter_features + "\n" + validation + "\n}\n\n"
+          design += B(r'''
+          @layer responsive {
+            html,body{width:100%;max-width:100%;overflow-x:hidden}
+            main,#app,.workspace-content,.card,.item,.sheet{min-width:0;max-width:100%}
+
+            nav.main-tabs{
+              left:0;
+              right:0;
+              bottom:0;
+              transform:none;
+              width:min(680px,100vw);
+              margin-inline:auto;
+              pointer-events:auto;
+            }
+            nav.main-tabs button{position:relative;min-width:0;pointer-events:auto}
+
+            #buildingAdminForm{display:block;width:100%;min-width:0}
+            #buildingAdminForm>label{
+              display:flex;
+              width:100%;
+              min-width:0;
+              min-height:66px;
+              margin:0 0 14px;
+            }
+            #buildingAdminForm>label>input,
+            #buildingAdminForm>label>select,
+            #buildingAdminForm>label>textarea{min-width:0;max-width:100%}
+            #buildingAdminForm>.form-actions{
+              display:block;
+              position:static;
+              width:100%;
+              min-width:0;
+              min-height:64px;
+              margin:24px 0 0;
+              padding:10px 0 0;
+              background:transparent;
+            }
+            #buildingAdminForm>.form-actions>.primary{display:block;width:100%;min-width:0;min-height:48px}
+
+            @media(max-width:820px){
+              main{padding:16px 12px 96px}
+              .workspace-layout{display:block}
+              .workspace-sidebar{display:none}
+              .workspace-mobile-picker{display:flex}
+              .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+              .two-up{grid-template-columns:1fr}
+              .quick-actions-bar{grid-template-columns:repeat(2,minmax(0,1fr))}
+              .form-grid{grid-template-columns:1fr}
+              .full{grid-column:1}
+            }
+
+            @media(max-width:520px){
+              body{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+              main{padding:13px 10px 96px}
+              .topbar{gap:7px;padding-left:12px;padding-right:12px}
+              .brand{flex:1 1 auto}
+              .top-actions{flex:0 0 auto}
+              .action-label{display:none}
+              .icon-action{width:44px;min-width:44px;justify-content:center;padding:8px}
+              .building-switch>span{display:none}
+              .building-switch select{max-width:108px;min-width:0;font-size:12px}
+
+              #app .card-head{
+                display:grid;
+                grid-template-columns:minmax(0,1fr);
+                align-items:start;
+                width:100%;
+                min-width:0;
+              }
+              #app .card-head>div{min-width:0;max-width:100%}
+              #app .card-head>div.row{
+                display:grid;
+                grid-template-columns:minmax(0,1fr);
+                width:100%;
+                min-width:0;
+                gap:8px;
+              }
+              #app .card-head>div.row>.secondary{
+                width:100%;
+                min-width:0;
+                max-width:100%;
+                white-space:normal;
+              }
+              #modal .row.between{flex-wrap:wrap;min-width:0}
+              #modal .row.between>*{min-width:0;max-width:100%}
+              #modal #addBuildingAdmin{width:100%}
+              .analysis-grid{grid-template-columns:1fr 1fr}
+              .action-grid{grid-template-columns:1fr}
+              .doc-page{align-items:flex-start;flex-direction:column}
+              .doc-page>div:last-child{width:100%}
+            }
+
+            @media(min-width:1100px){
+              body{padding-bottom:0}
+              main{max-width:1280px;padding:26px 28px 48px 116px}
+              .main-tabs{
+                top:88px;
+                bottom:auto;
+                left:16px;
+                right:auto;
+                width:80px;
+                max-width:none;
+                margin:0;
+                grid-template-columns:1fr;
+                gap:4px;
+                padding:8px;
+                border:1px solid var(--line);
+                border-radius:18px;
+                box-shadow:var(--shadow);
+              }
+              .main-tabs button{min-height:64px;font-size:10px}
+              .main-tabs button svg{width:22px;height:22px}
+              .overlay{align-items:center;padding:24px}
+              .sheet{border-radius:22px;max-height:min(88vh,900px)}
+            }
+          }
+
+          @layer accessibility {
+            :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+            .field-error{color:var(--danger)}
+            @media(prefers-reduced-motion:reduce){
+              *,*::before,*::after{scroll-behavior:auto;transition:none;animation:none}
+            }
+            @media(prefers-contrast:more){
+              .card,.item,.sheet,input,select,textarea{border-width:2px}
+              .muted{color:var(--text-secondary)}
+            }
+            @media print{
+              .main-tabs,.topbar,.workspace-tabs,button{display:none}
+              body{padding:0;background:#fff;color:#000}
+              main{max-width:none;padding:0}
+            }
+          }
+          ''')
+
+          forbidden = [
+              "V14 Navigation & UX",
+              "V15 Meter Vision",
+              "V16 Premium Final",
+              "V18 consolidated olive theme",
+              "V18 simplified navigation preview",
+              "Architecture E: mobile touch safety",
+              "!important"
+          ]
+          for token in forbidden:
+              if token in design:
+                  raise SystemExit(f"Neues Design-System enthält verbotenen Altbestand: {token}")
+          if design.count(":root{") != 2:
+              raise SystemExit(f"Design-System erwartet exakt zwei Token-Roots, gefunden {design.count(':root{')}")
+          if design.count("{") != design.count("}"):
+              raise SystemExit("Design-System-CSS ist nicht klammerbalanciert.")
+          write("src/ui/design-system.css", design)
+          write("style.css", design)
+
+          write("scripts/build-styles.mjs", B(r'''
+          import fs from "node:fs";
+          import path from "node:path";
+
+          const root = process.cwd();
+          const source = path.join(root, "src", "ui", "design-system.css");
+          const target = path.join(root, "style.css");
+
+          if (!fs.existsSync(source)) throw new Error("src/ui/design-system.css fehlt.");
+          const css = fs.readFileSync(source, "utf8");
+          if (!css.includes("Mietverwaltung Design System F")) throw new Error("Design-System-F Kennung fehlt.");
+          fs.writeFileSync(target, css, "utf8");
+          console.log(`style.css reproduzierbar aus src/ui/design-system.css erzeugt (${Buffer.byteLength(css, "utf8")} Bytes).`);
+          '''))
+
+          write("scripts/test-design-system.mjs", B(r'''
+          import assert from "node:assert/strict";
+          import fs from "node:fs";
+
+          const source = fs.readFileSync("src/ui/design-system.css", "utf8");
+          const built = fs.readFileSync("style.css", "utf8");
+
+          assert.equal(built, source, "style.css ist nicht byte-identisch zur Design-System-Quelle.");
+          assert(source.includes("Mietverwaltung Design System F"), "Design-System-F Kennung fehlt.");
+          assert(source.includes("@layer reset, base, components, patterns, features, responsive, accessibility;"), "CSS-Layer-Vertrag fehlt.");
+
+          for (const token of [
+            "--color-bg", "--color-surface", "--color-text", "--color-text-muted",
+            "--color-border", "--color-primary", "--color-accent", "--color-success",
+            "--color-warning", "--color-danger", "--touch", "--content-max"
+          ]) assert(source.includes(token), `Design-Token fehlt: ${token}`);
+
+          for (const forbidden of [
+            "V14 Navigation & UX",
+            "V15 Meter Vision",
+            "V16 Premium Final",
+            "V18 consolidated olive theme",
+            "V18 simplified navigation preview",
+            "Architecture E: mobile touch safety",
+            "!important"
+          ]) assert(!source.includes(forbidden), `Historische CSS-Schicht/Spezifitäts-Notbremse verblieben: ${forbidden}`);
+
+          assert.equal((source.match(/:root\s*\{/g) || []).length, 2, "Es darf nur Light-Root plus Dark-Root geben.");
+          assert.equal((source.match(/prefers-color-scheme:dark/g) || []).length, 1, "Dark Theme muss zentral genau einmal definiert sein.");
+          assert(source.includes("@media(min-width:1100px)"), "Desktop-Arbeitsoberfläche fehlt.");
+          assert(source.includes("#buildingAdminForm>.form-actions"), "Gebäudeformular-Touchvertrag fehlt.");
+          assert(source.includes("nav.main-tabs"), "Hauptnavigation fehlt im Design-System.");
+          assert(source.includes(".workspace-sidebar"), "Desktop-Workspace-Navigation fehlt.");
+          assert(source.includes(".next-best-action"), "Aufgabenorientierte Startseite ist nicht gestaltet.");
+          assert(source.includes(".field-error"), "Zentrale Formularfehler sind nicht gestaltet.");
+          assert(source.includes(".empty-state"), "Leerezustände sind nicht gestaltet.");
+          assert(source.length < 42000, `Design-System überschreitet Größenratchet: ${source.length} Zeichen.`);
+
+          console.log(`Design-System F bestanden: ${source.length} Zeichen, 1 Quelle, 0 historische Override-Schichten.`);
+          '''))
+
+          write("tests/design-system.spec.js", B(r'''
+          const { test, expect } = require('@playwright/test');
+          const { openApp, top } = require('./helpers');
+
+          async function geometry(page) {
+            return page.evaluate(() => ({
+              innerWidth: window.innerWidth,
+              clientWidth: document.documentElement.clientWidth,
+              scrollWidth: document.documentElement.scrollWidth,
+              bodyScrollWidth: document.body.scrollWidth
+            }));
+          }
+
+          async function expectNoHorizontalOverflow(page, label) {
+            const g = await geometry(page);
+            expect(g.scrollWidth, `${label}: document overflow`).toBeLessThanOrEqual(g.clientWidth + 1);
+            expect(g.bodyScrollWidth, `${label}: body overflow`).toBeLessThanOrEqual(g.clientWidth + 1);
+          }
+
+          async function expectHitAtCenter(locator, label) {
+            await locator.scrollIntoViewIfNeeded();
+            const hit = await locator.evaluate(el => {
+              const r = el.getBoundingClientRect();
+              const x = r.left + r.width / 2;
+              const y = r.top + r.height / 2;
+              const target = document.elementFromPoint(x, y);
+              return {
+                ok: Boolean(target && (target === el || el.contains(target))),
+                width: r.width,
+                height: r.height,
+                left: r.left,
+                right: r.right,
+                viewport: window.innerWidth,
+                target: target ? `${target.tagName}#${target.id || ''}.${String(target.className || '')}` : null
+              };
+            });
+            expect(hit.width, `${label}: Breite`).toBeGreaterThanOrEqual(44);
+            expect(hit.height, `${label}: Höhe`).toBeGreaterThanOrEqual(44);
+            expect(hit.left, `${label}: links im Viewport`).toBeGreaterThanOrEqual(-1);
+            expect(hit.right, `${label}: rechts im Viewport`).toBeLessThanOrEqual(hit.viewport + 1);
+            expect(hit.ok, `${label}: Mittelpunkt trifft ${hit.target}`).toBeTruthy();
+          }
+
+          test('F hält die komplette iPhone-Arbeitsfläche overflow-frei und direkt bedienbar', async ({ browser }) => {
+            const context = await browser.newContext({
+              baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:4173/',
+              viewport: { width: 390, height: 844 },
+              isMobile: true,
+              hasTouch: true,
+              locale: 'de-DE',
+              timezoneId: 'Europe/Berlin',
+              colorScheme: 'light'
+            });
+            const page = await context.newPage();
+            await openApp(page, '#home');
+
+            await expect(page.getByRole('heading', { name: 'Dein Haus auf einen Blick' })).toBeVisible();
+            await expect(page.locator('.quick-actions-bar')).toBeVisible();
+            await expectNoHorizontalOverflow(page, 'Start');
+
+            for (const name of ['Vermietung', 'Haus', 'Finanzen', 'Mehr']) {
+              await top(page, name);
+              await expectNoHorizontalOverflow(page, name);
+            }
+
+            await top(page, 'Haus');
+            await expectHitAtCenter(page.getByRole('button', { name: 'Finanzen', exact: true }), 'Bottom-Navigation Finanzen');
+            await page.getByRole('button', { name: 'Gebäude verwalten' }).click();
+            await page.getByRole('button', { name: 'Gebäude hinzufügen' }).click();
+            await expectNoHorizontalOverflow(page, 'Gebäudeformular');
+            await expectHitAtCenter(page.getByRole('button', { name: 'Gebäude anlegen' }), 'Gebäude anlegen');
+
+            await context.close();
+          });
+
+          test('F liefert auf Desktop eine eigenständige Arbeitsnavigation statt einer vergrößerten Mobile-Leiste', async ({ browser }) => {
+            const context = await browser.newContext({
+              baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:4173/',
+              viewport: { width: 1440, height: 900 },
+              locale: 'de-DE',
+              timezoneId: 'Europe/Berlin'
+            });
+            const page = await context.newPage();
+            await openApp(page, '#home');
+
+            const nav = page.locator('.main-tabs');
+            await expect(nav).toBeVisible();
+            const box = await nav.boundingBox();
+            expect(box.width).toBeLessThanOrEqual(90);
+            expect(box.height).toBeGreaterThan(250);
+            expect(box.x).toBeLessThan(30);
+            await expectNoHorizontalOverflow(page, 'Desktop Start');
+
+            await top(page, 'Haus');
+            await expect(page.locator('.workspace-sidebar')).toBeVisible();
+            await expect(page.locator('.workspace-mobile-picker')).toBeHidden();
+            await expectNoHorizontalOverflow(page, 'Desktop Haus');
+            await page.screenshot({ path: 'test-results/design-system-f-desktop.png', fullPage: true });
+
+            await context.close();
+          });
+          '''))
+
+          pkg = json.loads(read("package.json"))
+          scripts = pkg.setdefault("scripts", {})
+          if scripts.get("build") != "node scripts/build-app.mjs":
+              raise SystemExit(f"package.json: unerwarteter build-Script: {scripts.get('build')!r}")
+          scripts["build"] = "node scripts/build-app.mjs && node scripts/build-styles.mjs"
+          current_arch = scripts.get("test:architecture", "")
+          if "test:design-system" in current_arch:
+              raise SystemExit("package.json enthält test:design-system bereits im Architektur-Gate.")
+          scripts["test:architecture"] = current_arch + " && npm run test:design-system"
+          scripts["test:design-system"] = "node scripts/test-design-system.mjs"
+          write("package.json", json.dumps(pkg, indent=2, ensure_ascii=False) + "\n")
+
+          replace_once(
+              ".github/workflows/ci.yml",
+              "git diff --exit-code -- app.js",
+              "git diff --exit-code -- app.js style.css"
+          )
+
+          replace_once("index.html", "style.css?v=1810p9", "style.css?v=1810p10")
+          replace_once("service-worker.js", "mietverwaltung-v18-portfolio-admin-e-1", "mietverwaltung-v18-design-system-f-1")
+          replace_once("service-worker.js", "./style.css?v=1810p9", "./style.css?v=1810p10")
+
+          deployment = read("tests/deployment.spec.js")
+          if deployment.count("style.css?v=1810p9") != 3:
+              raise SystemExit(
+                  f"tests/deployment.spec.js: erwartete 3 Style-Key-Fundstellen, gefunden "
+                  f"{deployment.count('style.css?v=1810p9')}"
+              )
+          deployment = deployment.replace("style.css?v=1810p9", "style.css?v=1810p10")
+          if deployment.count("mietverwaltung-v18-portfolio-admin-e-1") != 1:
+              raise SystemExit("tests/deployment.spec.js: E-Cache-Fundstelle nicht eindeutig.")
+          deployment = deployment.replace(
+              "mietverwaltung-v18-portfolio-admin-e-1",
+              "mietverwaltung-v18-design-system-f-1"
+          )
+          write("tests/deployment.spec.js", deployment)
+
+          pwa = read("scripts/test-pwa-update.mjs")
+          old_line = 'must(sw.includes("mietverwaltung-v18-portfolio-admin-e-1"),"Portfolio-E Production-Cache fehlt");\n'
+          new_line = (
+              'must(sw.includes("mietverwaltung-v18-design-system-f-1"),"Design-System-F Production-Cache fehlt");\n'
+              'must(!sw.includes("mietverwaltung-v18-portfolio-admin-e-1"),"alter Portfolio-E Cache ist noch vorhanden");\n'
+          )
+          if pwa.count(old_line) != 1:
+              raise SystemExit("scripts/test-pwa-update.mjs: E-Cache-Vertrag nicht eindeutig.")
+          write("scripts/test-pwa-update.mjs", pwa.replace(old_line, new_line, 1))
+
+          arch = read("ARCHITECTURE.md")
+          if "## Schritt F: Design System & UX-Konsolidierung" in arch:
+              raise SystemExit("ARCHITECTURE.md enthält Schritt F bereits.")
+          arch += B(r'''
+
+          ## Schritt F: Design System & UX-Konsolidierung
+
+          Schritt F ersetzt die historisch gewachsene CSS-Kaskade aus Basisregeln sowie V14-/V15-/V16-/V18-
+          Override-Schichten durch genau eine reproduzierbare Design-System-Quelle:
+          `src/ui/design-system.css`. `style.css` ist ab F ausschließlich Build-Ausgabe aus dieser Quelle.
+          Der permanente CI-Workflow prüft neben `app.js` deshalb auch `style.css` auf reproduzierbaren Build.
+
+          Das Design-System ordnet Regeln in semantische CSS-Layer (`reset`, `base`, `components`, `patterns`,
+          `features`, `responsive`, `accessibility`) und definiert Light-/Dark-Mode zentral über Design Tokens.
+          Historische Versionsmarker und `!important`-Notbremsen sind als Architektur-Ratchet verboten.
+
+          Die bereits in C/D/E aufgebaute Fach- und Presentation-Architektur bleibt unverändert. Sichtbar werden
+          insbesondere eine konsistente Aufgaben-/Kartenhierarchie, einheitliche Formulare, Status- und
+          Leerezustände, robuste Modals, sichere iPhone-Touchflächen sowie eine eigenständige Desktop-
+          Arbeitsnavigation. Die Startseite bleibt auf den nächsten sinnvollen Schritt und kontextbezogene
+          Schnellaktionen ausgerichtet; der Gebäude-/Workspace-Kontext aus D/E wird nicht neu modelliert.
+
+          `scripts/test-design-system.mjs` schützt die eine CSS-Quelle, Tokenvertrag, Layerstruktur,
+          Dark-Mode-Zentralisierung, Größenratchet und das Verbot historischer Override-Schichten.
+          `tests/design-system.spec.js` prüft zusätzlich 390×844-iPhone-Geometrie, Touch-Hit-Tests,
+          horizontales Overflow sowie die Desktop-Arbeitsnavigation im echten Browser.
+
+          Schritt F ändert weder App-Version (`18.0.0`), State-Schema (`15`), IndexedDB-Version (`3`) noch
+          Backupformate. `app.js?v=1805` bleibt unverändert. Der Stylesheet-Key steigt auf
+          `style.css?v=1810p10`, der Production-Cache auf `mietverwaltung-v18-design-system-f-1`.
+          ''')
+          write("ARCHITECTURE.md", arch)
+
+          print(
+              "Architecture F geschrieben: "
+              f"alte CSS={len(old_style.encode('utf-8'))} Bytes, "
+              f"Design-System={len(design.encode('utf-8'))} Bytes."
+          )
+          PY
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: App und Styles reproduzierbar bauen
+        run: npm run build
+
+      - name: TypeScript prüfen
+        id: typecheck
+        continue-on-error: true
+        run: npm run typecheck
+
+      - name: Validierung prüfen
+        id: validation
+        continue-on-error: true
+        run: npm run test:validation
+
+      - name: Architektur einschließlich F prüfen
+        id: architecture
+        continue-on-error: true
+        run: npm run test:architecture
+
+      - name: Quality-Ratchet prüfen
+        id: quality
+        continue-on-error: true
+        run: npm run test:quality
+
+      - name: PWA-Vertrag prüfen
+        id: pwa
+        continue-on-error: true
+        run: npm run test:pwa
+
+      - name: Reproduzierbare Build-Ausgaben prüfen
+        id: reproducible
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- app.js
+          cmp -s src/ui/design-system.css style.css
+          node scripts/test-design-system.mjs
+
+      - name: Chromium installieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d /etc/apt/sources.list.d ]; then
+            mapfile -t google_sources < <(sudo grep -RIl 'dl.google.com/linux/chrome-stable/deb' /etc/apt/sources.list.d 2>/dev/null || true)
+            for source in "${google_sources[@]:-}"; do
+              [ -n "$source" ] || continue
+              echo "Deaktiviere instabile Runner-APT-Quelle: $source"
+              sudo mv "$source" "$source.disabled-architecture-f"
+            done
+          fi
+          if [ -f /etc/apt/sources.list ] && sudo grep -q 'dl.google.com/linux/chrome-stable/deb' /etc/apt/sources.list; then
+            sudo sed -i '\|dl.google.com/linux/chrome-stable/deb| s|^[[:space:]]*deb |# disabled by Architecture F: deb |' /etc/apt/sources.list
+          fi
+          sudo rm -rf /var/lib/apt/lists/*
+          npx playwright install --with-deps chromium
+
+      - name: PDF-Prüfwerkzeuge installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+
+      - name: Lokalen Server starten
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/f-server.log 2>&1 &
+          echo $! > /tmp/f-server.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/f-server.log
+          exit 1
+
+      - name: Design-System Browservertrag
+        id: design_e2e
+        continue-on-error: true
+        run: npx playwright test tests/design-system.spec.js
+
+      - name: Vollständige lokale Browser-E2E-Suite
+        id: e2e
+        continue-on-error: true
+        run: npm run test:e2e
+
+      - name: F-Prüfmatrix auswerten
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          check() {
+            local name="$1" outcome="$2"
+            if [ "$outcome" = "success" ]; then
+              echo "✓ $name"
+            else
+              echo "✗ $name: $outcome"
+              failed=1
+            fi
+          }
+          check "TypeScript" "${{ steps.typecheck.outcome }}"
+          check "Validation" "${{ steps.validation.outcome }}"
+          check "Architecture + Design System" "${{ steps.architecture.outcome }}"
+          check "Quality" "${{ steps.quality.outcome }}"
+          check "PWA" "${{ steps.pwa.outcome }}"
+          check "Reproducible build" "${{ steps.reproducible.outcome }}"
+          check "Design-System E2E" "${{ steps.design_e2e.outcome }}"
+          check "Full E2E" "${{ steps.e2e.outcome }}"
+          test "$failed" -eq 0
+
+      - name: F-Änderungsumfang verifizieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+
+          cat > /tmp/f-expected-files.txt <<'EOF'
+          .github/workflows/ci.yml
+          ARCHITECTURE.md
+          index.html
+          package.json
+          scripts/build-styles.mjs
+          scripts/test-design-system.mjs
+          scripts/test-pwa-update.mjs
+          service-worker.js
+          src/ui/design-system.css
+          style.css
+          tests/deployment.spec.js
+          tests/design-system.spec.js
+          EOF
+
+          { git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u > /tmp/f-actual-files.txt
+          sort -o /tmp/f-expected-files.txt /tmp/f-expected-files.txt
+          diff -u /tmp/f-expected-files.txt /tmp/f-actual-files.txt
+
+          test ! -e .github/workflows/architecture-e-portfolio-administration.yml
+          test ! -e .github/workflows/architecture-d-presentation-workspace.yml
+          test -e .github/workflows/architecture-f-design-system.yml
+          test -e .github/workflows/ci.yml
+          test -e .github/workflows/e2e-live.yml
+
+          test -e src/ui/design-system.css
+          test -e scripts/build-styles.mjs
+          test -e scripts/test-design-system.mjs
+          test -e tests/design-system.spec.js
+          cmp -s src/ui/design-system.css style.css
+
+          grep -q 'Mietverwaltung Design System F' src/ui/design-system.css
+          grep -q '@layer reset, base, components, patterns, features, responsive, accessibility;' src/ui/design-system.css
+          ! grep -q 'V14 Navigation & UX' style.css
+          ! grep -q 'V16 Premium Final' style.css
+          ! grep -q 'V18 consolidated olive theme' style.css
+          ! grep -q 'Architecture E: mobile touch safety' style.css
+          ! grep -q '!important' style.css
+
+          grep -q 'style.css?v=1810p10' index.html
+          grep -q 'app.js?v=1805' index.html
+          grep -q 'mietverwaltung-v18-design-system-f-1' service-worker.js
+          grep -q 'git diff --exit-code -- app.js style.css' .github/workflows/ci.yml
+
+          test -z "$(git diff --name-only HEAD -- src/application src/presentation src/domain src/core src/infrastructure src/io src/ui/app-runtime.ts src/ui/building-workspace-ui.ts app.js)"
+          echo "F-Änderungen:"
+          git status --short
+
+      - name: F-Produktcommit erstellen
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            .github/workflows/ci.yml \
+            ARCHITECTURE.md \
+            index.html \
+            package.json \
+            scripts/build-styles.mjs \
+            scripts/test-design-system.mjs \
+            scripts/test-pwa-update.mjs \
+            service-worker.js \
+            src/ui/design-system.css \
+            style.css \
+            tests/deployment.spec.js \
+            tests/design-system.spec.js
+
+          git diff --cached --check
+          git commit -m "Consolidate design system and responsive UX"
+          git push origin HEAD:main
+          echo "F_PRODUCT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Ergebnis
+        run: |
+          echo "Architecture E Hygiene-Commit: ${E_HYGIENE_SHA}"
+          echo "Architecture F Produktcommit: ${F_PRODUCT_SHA}"
+          echo "Danach Pages, permanentes CI und permanentes Live-E2E exakt für F_PRODUCT_SHA prüfen."
