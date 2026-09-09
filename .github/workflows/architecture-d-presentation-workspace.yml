@@ -721,39 +721,13 @@ jobs:
           )
           replace_once(
               "src/core/traceability.ts",
-              '''
-                const current = cloneState(state);
-                const currentSnapshot = cloneState(state);
-              ''',
-              '''
-                const current = cloneState(fullPortfolioState());
-                const currentSnapshot = cloneState(current);
-              '''
+              "  const current = cloneState(state);\n  const currentSnapshot = cloneState(state);\n",
+              "  const current = cloneState(fullPortfolioState());\n  const currentSnapshot = cloneState(current);\n"
           )
           replace_once(
               "src/core/traceability.ts",
-              '''
-                try {
-                  state = restored;
-                  LAST_STABLE_STATE = cloneState(state);
-                  await saveState(state);
-                  return true;
-                } catch (error) {
-                  state = current;
-                  LAST_STABLE_STATE = cloneState(current);
-                  throw error;
-                }
-              ''',
-              '''
-                try {
-                  await saveState(restored);
-                  applyRestoredPortfolioState(restored);
-                  return true;
-                } catch (error) {
-                  applyRestoredPortfolioState(current);
-                  throw error;
-                }
-              '''
+              "  try {\n    state = restored;\n    LAST_STABLE_STATE = cloneState(state);\n    await saveState(state);\n    return true;\n  } catch (error) {\n    state = current;\n    LAST_STABLE_STATE = cloneState(current);\n    throw error;\n  }\n",
+              "  try {\n    await saveState(restored);\n    applyRestoredPortfolioState(restored);\n    return true;\n  } catch (error) {\n    applyRestoredPortfolioState(current);\n    throw error;\n  }\n"
           )
 
           runtime = read("src/ui/app-runtime.ts")
