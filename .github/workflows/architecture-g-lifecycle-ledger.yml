@@ -222,7 +222,6 @@ jobs:
           return {key,lease,expected:row.total,paid:row.paid,difference:row.difference,status:row.status==="overpaid"?"over":row.status,confidence:(row.allocations||[]).length?100:0,payments:(state.payments||[]).filter(p=>paymentIds.has(p.id))}
           }
           ''')
-          replace_once('src/domain/smart-engine.ts','''    if(active)rentalIncome+=Number(l.rent||0)+Number(l.advance||0)''','''    if(active)rentalIncome+=Number(AppLifecycleLedger.leaseChargeForMonth(l,key).total||0)''')
           replace_once('src/domain/smart-engine.ts','''  return (state.billingSnapshots||[]).slice().sort((a,b)=>Number(b.periodYear)-Number(a.periodYear))[0]||null''','''  return (state.billingSnapshots||[]).slice().sort((a,b)=>Number(b.periodYear)-Number(a.periodYear)||Number(b.version||1)-Number(a.version||1)||String(b.createdAt||"").localeCompare(String(a.createdAt||"")))[0]||null''')
 
           # Lifecycle warnings join the existing decision queue.
