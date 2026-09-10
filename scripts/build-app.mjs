@@ -43,6 +43,7 @@ const typedRuntime = (
     compileModule("src/core/feedback.ts", "AppFeedback"),
     compileModule("src/core/state.ts", "AppState"),
     compileModule("src/domain/portfolio-model.ts", "AppPortfolioModel"),
+    compileModule("src/domain/lifecycle-ledger.ts", "AppLifecycleLedger"),
     compileModule("src/infrastructure/portfolio-repository.ts", "AppPortfolioRepository"),
     compileModule("src/application/index.ts", "AppApplication"),
     compileModule("src/presentation/index.ts", "AppPresentation"),
@@ -60,7 +61,8 @@ const typedRuntime = (
     compileModule("src/domain/v18-assistant.ts", "AppV18Assistant"),
     compileModule("src/io/backup-codec.ts", "AppBackupCodec"),
     compileModule("src/ui/ui-core.ts", "AppUiCore"),
-    compileModule("src/ui/building-workspace-ui.ts", "AppBuildingWorkspaceUi")
+    compileModule("src/ui/building-workspace-ui.ts", "AppBuildingWorkspaceUi"),
+compileModule("src/ui/rental-lifecycle-ui.ts", "AppRentalLifecycleUi")
   ])
 ).join("");
 

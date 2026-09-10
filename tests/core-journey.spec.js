@@ -26,16 +26,19 @@ async function buildCoreData(page) {
 
   await top(page, 'Vermietung');
   await page.getByRole('button', { name: 'Mietvertrag anlegen' }).click();
-  await page.getByLabel('Mieter/in – Name').fill('Testperson');
-  await page.getByLabel('Korrespondenzadresse').fill('Musterweg 10');
-  await page.getByLabel('Vertragsbeginn').fill(takeover);
-  await page.getByLabel('Kaltmiete pro Monat (€)').fill('500');
-  await page.getByLabel('Betriebskostenvorauszahlung pro Monat (€)').fill('150');
-  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
-  const leaseOverview = page.locator('#workspaceBody .lease-overview-card');
+  await expect(page).toHaveURL(/#rental\/lifecycle$/);
+  await page.getByRole('button', { name: 'Mietverhältnis', exact: true }).click();
+  await page.locator('#gTenancyForm input[name="tenantName"]').fill('Testperson');
+  await page.locator('#gTenancyForm input[name="tenantAddress"]').fill('Musterweg 10');
+  await page.locator('#gTenancyForm select[name="unitId"]').selectOption({ label: 'Mietwohnung Test' });
+  await page.locator('#gTenancyForm input[name="start"]').fill(takeover);
+  await page.locator('#gTenancyForm input[name="rent"]').fill('500');
+  await page.locator('#gTenancyForm input[name="advance"]').fill('150');
+  await page.locator('#gTenancyForm').getByRole('button', { name: 'Anlegen', exact: true }).click();
+  const leaseOverview = page.locator('[data-tenancy-card]').filter({ hasText: 'Testperson' }).first();
   await expect(leaseOverview).toContainText('Testperson');
-  await expect(leaseOverview).toContainText('500,00 € / Monat');
-  await expect(leaseOverview).toContainText('150,00 € / Monat');
+  await expect(leaseOverview).toContainText('500,00');
+  await expect(leaseOverview).toContainText('150,00');
 
   await top(page, 'Haus');
   await section(page, 'costs');

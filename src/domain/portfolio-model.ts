@@ -54,7 +54,7 @@ function mapById(items: any[]): Map<string, any> {
 
 function linkedBuildingId(item: any, refs: Array<Map<string, any>>): string {
   for (const ref of refs) {
-    for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId"]) {
+    for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId", "oldMeterId", "newMeterId"]) {
       const linked = item?.[key] ? ref.get(String(item[key])) : null;
       if (linked?.buildingId) return String(linked.buildingId);
     }
@@ -68,7 +68,7 @@ export function ensurePortfolioModel<T extends AnyRecord>(value: T): T {
   state.property = state.property && typeof state.property === "object" ? state.property : {};
   for (const key of [
     "portfolios", "buildings", "units", "leases", "meters", "sources", "costPositions", "tasks",
-    "payments", "waterSettlements", "billingWorkflows", "billingSnapshots", "containers", "water"
+    "payments", "waterSettlements", "billingWorkflows", "billingSnapshots", "rentAllocations", "meterReplacements", "containers", "water"
   ]) state[key] = array(state[key]);
 
   ensureIds(state.portfolios, "portfolio");
@@ -176,7 +176,7 @@ export function ensurePortfolioModel<T extends AnyRecord>(value: T): T {
     }
   }
 
-  for (const key of ["billingWorkflows", "billingSnapshots", "containers", "water"]) {
+  for (const key of ["billingWorkflows", "billingSnapshots", "rentAllocations", "meterReplacements", "containers", "water"]) {
     for (const item of state[key]) {
       if (item && typeof item === "object" && !buildingIds.has(String(item.buildingId || ""))) {
         item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
@@ -279,6 +279,8 @@ export function validatePortfolioModel(value: any): PortfolioModelValidation {
     ["tasks", "Aufgaben"],
     ["billingWorkflows", "Abrechnungsworkflows"],
     ["billingSnapshots", "Snapshots"],
+    ["rentAllocations", "Mietkonto-Zuordnungen"],
+    ["meterReplacements", "Zählerwechsel"],
     ["containers", "Behälter"],
     ["water", "Wasserdaten"]
   ] as const) {

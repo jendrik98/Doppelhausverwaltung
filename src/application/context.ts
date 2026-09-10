@@ -11,6 +11,8 @@ const BUILDING_SCOPED_COLLECTIONS = [
   "payments",
   "billingWorkflows",
   "billingSnapshots",
+  "rentAllocations",
+  "meterReplacements",
   "containers",
   "water"
 ] as const;

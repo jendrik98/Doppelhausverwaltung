@@ -19,6 +19,8 @@ const ARRAY_KEYS = [
   "tasks",
   "billingWorkflows",
   "billingSnapshots",
+  "rentAllocations",
+  "meterReplacements",
   "payments",
   "audit"
 ] as const;
@@ -42,6 +44,8 @@ export interface AppState {
   finance: Dict;
   billingWorkflows: any[];
   billingSnapshots: any[];
+  rentAllocations: any[];
+  meterReplacements: any[];
   payments: any[];
   audit: any[];
   [key: string]: any;
@@ -99,6 +103,8 @@ export function createEmptyState(): AppState {
     finance: { repayment: 900, fixed: 0 },
     billingWorkflows: [],
     billingSnapshots: [],
+    rentAllocations: [],
+    meterReplacements: [],
     payments: [],
     audit: []
   };

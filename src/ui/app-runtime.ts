@@ -1060,6 +1060,7 @@ async function documentsView(autoQueue=true){
 function rentalWorkspace(){
   const tabs=[
     {id:"overview",label:"Überblick",icon:"⌂"},
+    {id:"lifecycle",label:"Mietkonto",icon:"↔"},
     {id:"water",label:"Kaltwasser",icon:"◌"},
     {id:"billing",label:"Abrechnung",icon:"€"}
   ];
@@ -1069,6 +1070,7 @@ function rentalWorkspace(){
   $("app").innerHTML=workspaceHeader("VERMIETUNG","Vermietung","Mietverhältnis, Kaltwasser und Betriebskostenabrechnung.",tabs,visibleSub("rental",active));
   bindWorkspaceTabs("rental",rentalWorkspace);
   if(active==="overview")rentalOverview();
+  else if(active==="lifecycle")rentalLifecycleView();
   else if(active==="lease")leaseDataView();
   else if(active==="water")waterRentalView();
   else calculationView()
@@ -1078,14 +1080,9 @@ function v17LedgerMonthKeys(count=12){
   for(let i=0;i<count;i++){const x=new Date(d.getFullYear(),d.getMonth()-i,1);out.push(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}`)}
   return out
 }
-function v17RentLedgerCard(s){
-  const rows=v17LedgerMonthKeys(12).map(key=>rentMonthStatus(s,key)).filter(r=>r.status!=="none");
-  const current=rentMonthStatus(s),arrears=rows.reduce((sum,r)=>sum+Math.max(0,-Number(r.difference||0)),0);
-  const pill=r=>{const c=r.status==="paid"?"good":r.status==="missing"?"bad":"warn";return `<span class="pill ${c}">${esc(rentStatusLabel(r))}</span>`};
-  return `<section id="v17RentLedger" class="card"><div class="card-head"><div><p class="eyebrow">MIETKONTO</p><h3>Mietkonto & Zahlungsstatus</h3></div>${current.status!=="none"?pill(current):""}</div>
-  <div class="grid cards"><article class="card metric-card"><span>Soll aktuell</span><strong>${euro(current.expected)}</strong></article><article class="card metric-card"><span>Erkannt aktuell</span><strong>${euro(current.paid)}</strong></article><article class="card metric-card"><span>Offener Saldo 12M</span><strong class="${arrears>0?"negative":"positive"}">${euro(arrears)}</strong></article></div>
-  <div class="tablewrap"><table class="costtable"><thead><tr><th>Monat</th><th>Soll</th><th>Erhalten</th><th>Differenz</th><th>Status</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.key)}</td><td>${euro(r.expected)}</td><td>${euro(r.paid)}</td><td class="${r.difference<-.01?"negative":"positive"}">${euro(r.difference)}</td><td>${pill(r)}</td></tr>`).join("")}</tbody></table></div>
-  <p class="muted">Erkennung aus Mietvertrag und gespeicherten Zahlungseingängen. Teil-, Fehl- und Überzahlungen bleiben sichtbar.</p></section>`
+function v17RentLedgerCard(s){return AppRentalLifecycleUi.renderCompactLedger(s,{euro,esc})}
+function rentalLifecycleView(){
+AppRentalLifecycleUi.renderRentalLifecycle({state,activeBuildingId:String(state?.meta?.presentationBuildingId||state?.meta?.primaryBuildingId||""),host:$("workspaceBody"),esc,euro,dateDE,modal,closeModal,formField,executeCommand,rerender:rentalLifecycleView,go})
 }
 function v17UtilitiesCard(s){
   const p=s.meta?.v17?.utilityProfile||{};
@@ -1136,7 +1133,7 @@ async function renderLeaseDocumentSlot(){
   }
 }
 function rentalOverview(){
-  const y=currentPeriodYear(),a=billingAnalysis(state,y),p=billingProjection(state,y),rent=rentMonthStatus(state),ctx=billingPeriodContext(state,y),cb=confidenceBand(p.confidence),l=state.leases[0];
+  const y=currentPeriodYear(),a=billingAnalysis(state,y),p=billingProjection(state,y),rent=rentMonthStatus(state),ctx=billingPeriodContext(state,y),cb=confidenceBand(p.confidence),l=AppLifecycleLedger.activeLeaseAt(state,localDateISO())||state.leases.slice().sort((x,y)=>String(y.start||"").localeCompare(String(x.start||"")))[0];
   $("workspaceBody").innerHTML=`<div class="grid cards">
     <article class="card metric-card"><span>Bestätigte Kosten Mieterin</span><strong>${euro(a.tenantCosts)}</strong><small>aktueller Rechenstand</small></article>
     <article class="card metric-card"><span>Vorauszahlungen</span><strong>${euro(a.advances)}</strong><small>für diese Periode</small></article>
@@ -1161,7 +1158,7 @@ function rentalOverview(){
   <div class="card"><div class="fact-row"><span>Mietzahlung ${esc(rent.key)}</span><strong>${rent.status==="none"?"kein aktiver Vertrag":esc(rentStatusLabel(rent))}</strong></div>${rent.status!=="none"?`<small>${euro(rent.paid)} von ${euro(rent.expected)} in erfassten Zahlungen erkannt.</small>`:""}</div>
   ${v17RentLedgerCard(state)}
   ${v17UtilitiesCard(state)}`;
-  $("editLeaseOverview").onclick=()=>openLeaseEditor(l||null);
+  $("editLeaseOverview").onclick=()=>go("rental","lifecycle");
   $("addLeaseDocument").onclick=()=>{go("data","documents");setTimeout(()=>{openDocumentCapture();setTimeout(()=>{if($("newDocLabel")&&!$("newDocLabel").value)$("newDocLabel").value="Mietvertrag"},0)},0)};
   renderLeaseDocumentSlot()
 }
@@ -1224,38 +1221,40 @@ function openWaterEditor(x=null){
   })
 }
 function calculationView(){
-  const y=selectedBillingYear(state),yearOptions=billingSelectableYears(state),closure=billingClosureChecklist(state,y),a=closure.analysis,snap=(state.billingSnapshots||[]).find(s=>Number(s.periodYear)===Number(y)),ctx=billingPeriodContext(state,y),v18=v18BillingAssistant(state,y);
+  const y=selectedBillingYear(state),yearOptions=billingSelectableYears(state),baseClosure=billingClosureChecklist(state,y),g=AppRentalLifecycleUi.billingLifecycleContext(state,y,baseClosure,sessionStorage.getItem("billingSelectedLeaseId")||""),closure=g.closure,a=g.analysis,snap=g.snapshot,ctx=billingPeriodContext(state,y),v18=v18BillingAssistant(state,y);
   const routeFor={period:["data","property"],periodComplete:["rental","billing"],costs:["data","positions"],assignment:["data","positions"],water:["rental","water"],advance:["rental","overview"],readiness:["more","smart"]};
-  $("workspaceBody").innerHTML=`<div class="card"><div class="row between"><div><p class="eyebrow">BETRIEBSKOSTENABRECHNUNG</p><h3>${billingPeriodLabel(state,y)}</h3><p class="muted">${esc(ctx.message)}</p><label style="display:block;margin-top:10px"><span class="muted">Abrechnungsperiode</span><select id="billingYearSelect" aria-label="Abrechnungsperiode">${yearOptions.map(yy=>`<option value="${yy}" ${yy===y?"selected":""}>${esc(billingPeriodLabel(state,yy))}</option>`).join("")}</select></label></div><span class="pill ${closure.ok?"good":"warn"}">${closure.ok?"Abschlussbereit":"Noch offen"}</span></div></div>
+  $("workspaceBody").innerHTML=`<div class="card"><div class="row between"><div><p class="eyebrow">BETRIEBSKOSTENABRECHNUNG</p><h3>${billingPeriodLabel(state,y)}</h3><p class="muted">${esc(ctx.message)}</p><label style="display:block;margin-top:10px"><span class="muted">Abrechnungsperiode</span><select id="billingYearSelect" aria-label="Abrechnungsperiode">${yearOptions.map(yy=>`<option value="${yy}" ${yy===y?"selected":""}>${esc(billingPeriodLabel(state,yy))}</option>`).join("")}</select></label>${g.leases.length>1?`<label style="display:block;margin-top:10px"><span class="muted">Mietverhältnis</span><select id="billingLeaseSelect" aria-label="Mietverhältnis">${g.leases.map(l=>`<option value="${esc(l.id)}" ${l.id===g.selectedLeaseId?"selected":""}>${esc(l.tenantName||l.id)} · ${dateDE(l.start)}${l.end?` – ${dateDE(l.end)}`:""}</option>`).join("")}</select></label>`:""}</div><span class="pill ${closure.ok?"good":"warn"}">${closure.ok?"Abschlussbereit":"Noch offen"}</span></div></div>
   ${v18BillingAssistantHTML(state,y,{compact:false})}
   <div class="card"><h3>Abschlussprüfung</h3><p class="muted">Offene Punkte führen direkt zur passenden Eingabe.</p>${closure.points.map((p,i)=>`<${p.ok?"div":"button"} class="closure-step ${p.ok?"done":"open actionable"}" ${p.ok?"":`data-closure="${p.id}"`}><span>${p.ok?"✓":"!"}</span><div><strong>${i+1}. ${esc(p.label)}</strong>${p.ok?"":"<small>Öffnen und beheben</small>"}</div></${p.ok?"div":"button"}>`).join("")}</div>
   <div class="grid cards"><article class="card metric-card"><span>Umlagefähige Kosten</span><strong>${euro(a.tenantCosts)}</strong></article><article class="card metric-card"><span>Vorauszahlungen</span><strong>${euro(a.advances)}</strong></article><article class="card metric-card"><span>Ergebnis</span><strong>${euro(Math.abs(a.result))}</strong><small>${a.result>=0?"Nachzahlung":"Guthaben"}</small></article></div>
   <div class="card"><h3>Abrechnungspositionen</h3>${a.events.length?`<div class="tablewrap"><table class="costtable"><thead><tr><th>Position</th><th>Gesamt</th><th>Verteilung</th><th>Mieteranteil</th><th>Herkunft</th></tr></thead><tbody>${a.events.map(e=>{const p=positionById(state,e.positionId);return`<tr><td>${esc(e.label)}</td><td>${euro(e.amount)}</td><td>${esc(formatRuleForReport(e))}</td><td>${euro(e.tenantAmount)}</td><td><button class="linkbutton" data-bill-trace="${e.positionId}">${esc(provenanceLabel(p))}</button></td></tr>`}).join("")}</tbody></table></div>`:`<div class="empty-state compact-empty"><strong>Noch keine Abrechnungspositionen</strong><p>Bestätigte Kosten der Periode erscheinen hier.</p></div>`}</div>
-  ${snap?`<div class="legal-ok"><strong>Abrechnung eingefroren</strong><br>${esc(snapshotVerification(snap).label)}</div><div class="card action-row"><button id="downloadBillingPDF" class="primary">PDF erstellen</button><button id="printBillingBtn" class="secondary">Druckansicht</button></div>`:`<div class="card"><button id="freezeBilling" class="primary wide" ${closure.ok?"":"disabled"}>Final prüfen & einfrieren</button>${closure.ok?"":"<p class='muted'>Der Abschluss wird automatisch freigeschaltet, sobald alle Pflichtpunkte erfüllt sind.</p>"}</div>`}`;
-  if($("billingYearSelect"))$("billingYearSelect").onchange=e=>{sessionStorage.setItem("billingSelectedYear",String(Number(e.target.value)));calculationView()};
+  ${snap?`<div class="legal-ok"><strong>Abrechnung eingefroren · Version ${Number(snap.version||1)}</strong><br>${esc(snapshotVerification(snap).label)}${snap.correctionReason?`<br><small>Korrekturgrund: ${esc(snap.correctionReason)}</small>`:""}</div><div class="card action-row"><button id="downloadBillingPDF" class="primary">PDF erstellen</button><button id="printBillingBtn" class="secondary">Druckansicht</button><button id="correctBillingBtn" class="secondary">Korrektur erstellen</button></div>`:`<div class="card"><button id="freezeBilling" class="primary wide" ${closure.ok?"":"disabled"}>Final prüfen & einfrieren</button>${closure.ok?"":"<p class='muted'>Der Abschluss wird automatisch freigeschaltet, sobald alle Pflichtpunkte erfüllt sind.</p>"}</div>`}`;
+  if($("billingYearSelect"))$("billingYearSelect").onchange=e=>{sessionStorage.setItem("billingSelectedYear",String(Number(e.target.value)));sessionStorage.removeItem("billingSelectedLeaseId");calculationView()};
+if($("billingLeaseSelect"))$("billingLeaseSelect").onchange=e=>{sessionStorage.setItem("billingSelectedLeaseId",String(e.target.value));calculationView()};
   bindV18AssistantActions();
   document.querySelectorAll("[data-closure]").forEach(b=>b.onclick=()=>{const r=routeFor[b.dataset.closure];if(r)go(r[0],r[1])});
   document.querySelectorAll("[data-bill-trace]").forEach(b=>b.onclick=()=>openPositionTrace(positionById(state,b.dataset.billTrace)));
-  if($("freezeBilling"))$("freezeBilling").onclick=()=>openBillingFinalReview(y);
+  if($("freezeBilling"))$("freezeBilling").onclick=()=>openBillingFinalReview(y,g.selectedLeaseId);
+if($("correctBillingBtn"))$("correctBillingBtn").onclick=()=>openBillingFinalReview(y,g.selectedLeaseId,snap);
   if($("downloadBillingPDF"))$("downloadBillingPDF").onclick=async()=>{try{const pdf=await generateProfessionalBillingPDF(state,y,snap);pdf.save(`Betriebskostenabrechnung_${y}.pdf`);AppFeedback.showToast("Abrechnungs-PDF erstellt",{kind:"success"})}catch(e){recordClientError("billing-pdf",e);AppFeedback.showToast("PDF-Erstellung fehlgeschlagen",{kind:"error"});alert(e.message||e)}};
   if($("printBillingBtn"))$("printBillingBtn").onclick=()=>printBilling(snap||a,y,snap)
 }
-function openBillingFinalReview(y){
-  const closure=billingClosureChecklist(state,y);if(!closure.ok)return alert("Die Abrechnung ist noch nicht vollständig.");
-  const a=closure.analysis;
-  modal("Abrechnung finalisieren",`<div class="legal-warn"><strong>Letzte Prüfung</strong><br>Nach dem Einfrieren wird ein revisionssicherer Snapshot mit Prüfsumme erstellt. Änderungen an Stammdaten wirken nicht rückwirkend auf diesen Snapshot.</div>
-  <div class="card"><p>Umlagefähige Kosten: <strong>${euro(a.tenantCosts)}</strong></p><p>Vorauszahlungen: <strong>${euro(a.advances)}</strong></p><p>Ergebnis: <strong>${euro(a.result)}</strong></p></div>
-  <label class="confirm-row"><input id="billingConfirm" type="checkbox"> Ich habe Zeitraum, Belege, Umlageschlüssel und Vorauszahlungen geprüft.</label>
-  <button id="billingFinalize" class="primary" disabled>Abrechnung einfrieren</button>`,()=>{
-    $("billingConfirm").onchange=e=>$("billingFinalize").disabled=!e.target.checked;
-    $("billingFinalize").onclick=async()=>{
-      const result=await executeCommand("billing.freeze",{periodYear:y},async()=>{
-        const snap=createBillingSnapshot(state,y);await finalizeSnapshotIntegrity(snap);state.billingSnapshots.push(snap);return snap
-      },{auditText:"Abrechnung eingefroren",restorePoint:true});
-      if(!result.ok)return alert(result.message);
-      closeModal(true);calculationView()
-    }
-  })
+function openBillingFinalReview(y,leaseId="",supersedes=null){
+const baseClosure=billingClosureChecklist(state,y),g=AppRentalLifecycleUi.billingLifecycleContext(state,y,baseClosure,leaseId),closure=g.closure;if(!closure.ok)return alert("Die Abrechnung ist noch nicht vollständig.");
+const a=closure.analysis,isCorrection=!!supersedes,nextVersion=isCorrection?Number(supersedes.version||1)+1:1;
+modal(isCorrection?`Abrechnung korrigieren · Version ${nextVersion}`:"Abrechnung finalisieren",`<div class="legal-warn"><strong>${isCorrection?"Revisionssichere Korrektur":"Letzte Prüfung"}</strong><br>${isCorrection?"Die bisherige Abrechnung bleibt unverändert erhalten. Es entsteht eine neue Version mit eigener Prüfsumme.":"Nach dem Einfrieren wird ein revisionssicherer Snapshot mit Prüfsumme erstellt. Änderungen an Stammdaten wirken nicht rückwirkend auf diesen Snapshot."}</div>
+<div class="card"><p>Mietverhältnis: <strong>${esc(a.lease?.tenantName||"Mieter/in")}</strong></p><p>Umlagefähige Kosten: <strong>${euro(a.tenantCosts)}</strong></p><p>Vorauszahlungen: <strong>${euro(a.advances)}</strong></p><p>Ergebnis: <strong>${euro(a.result)}</strong></p></div>
+${isCorrection?`<label class="full">Korrekturgrund<textarea id="billingCorrectionReason" class="big-input" rows="3" placeholder="z. B. nachgereichter Gebührenbescheid"></textarea></label>`:""}
+<label class="confirm-row"><input id="billingConfirm" type="checkbox"> Ich habe Zeitraum, Belege, Umlageschlüssel und Vorauszahlungen geprüft.</label>
+<button id="billingFinalize" class="primary" disabled>${isCorrection?`Version ${nextVersion} einfrieren`:"Abrechnung einfrieren"}</button>`,()=>{
+$("billingConfirm").onchange=e=>$("billingFinalize").disabled=!e.target.checked;
+$("billingFinalize").onclick=async()=>{
+const correctionReason=isCorrection?String($("billingCorrectionReason")?.value||"").trim():"";if(isCorrection&&!correctionReason)return alert("Bitte den Korrekturgrund dokumentieren.");
+const payload={periodYear:y,leaseId:g.selectedLeaseId,correctionReason,supersedesSnapshotId:supersedes?.id||""};
+const result=await executeCommand(isCorrection?"billing.correct":"billing.freeze",payload,async()=>{const snap=createBillingSnapshot(state,y,payload);await finalizeSnapshotIntegrity(snap);state.billingSnapshots.push(snap);return snap},{auditText:isCorrection?"Abrechnung korrigiert":"Abrechnung eingefroren",restorePoint:true});
+if(!result.ok)return alert(result.message);closeModal(true);calculationView()
+}
+})
 }
 function printBilling(a,y,snapshot=null){
   const w=window.open("","_blank");if(!w)return alert("Druckfenster blockiert.");
@@ -1402,7 +1401,7 @@ function openBankImportPreview(parsed,fileName){
 function openPaymentEditor(){
   const sources=(state.sources||[]).map(s=>({value:s.id,label:s.name})),positions=(state.costPositions||[]).filter(p=>p.confirmed).map(p=>({value:p.id,label:`${p.label} · ${euro(p.amount)}`}));
   modal("Zahlung erfassen",`<form id="f" class="form-grid">${formField({name:"date",label:"Datum",type:"date",value:localDateISO()})}${formField({name:"direction",label:"Art",type:"select",value:"outflow",options:[{value:"outflow",label:"Ausgabe"},{value:"income",label:"Einnahme"}]})}${formField({name:"label",label:"Bezeichnung"})}${formField({name:"amount",label:"Betrag €",type:"number",step:"0.01",min:0.01})}${formField({name:"sourceId",label:"Quelle",type:"select",value:"",options:[{value:"",label:"keine Quelle"},...sources]})}${formField({name:"positionId",label:"Kostenposition",type:"select",value:"",options:[{value:"",label:"keine Kostenposition"},...positions]})}<div class="full"><button class="primary">Speichern</button></div></form>`,()=>{
-    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),amount=Number(v.amount);if(!v.date)return alert("Bitte ein Buchungsdatum eintragen.");if(!String(v.label||"").trim())return alert("Bitte eine aussagekräftige Bezeichnung eintragen.");if(!Number.isFinite(amount)||amount<=0)return alert("Der Betrag muss größer als 0,00 € sein.");const payment={id:uid(),date:v.date,direction:v.direction,label:v.label.trim(),amount,sourceId:v.sourceId||"",positionId:v.positionId||""};const result=await executeCommand("payment.create",payment,async()=>state.payments.push(payment),{auditText:"Zahlung erfasst"});if(!result.ok)return alert(result.message);closeModal(true);cashflowView()}
+    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),amount=Number(v.amount);if(!v.date)return alert("Bitte ein Buchungsdatum eintragen.");if(!String(v.label||"").trim())return alert("Bitte eine aussagekräftige Bezeichnung eintragen.");if(!Number.isFinite(amount)||amount<=0)return alert("Der Betrag muss größer als 0,00 € sein.");const payment={id:uid(),buildingId:activeBuildingId,date:v.date,direction:v.direction,label:v.label.trim(),amount,sourceId:v.sourceId||"",positionId:v.positionId||""};const result=await executeCommand("payment.create",payment,async()=>state.payments.push(payment),{auditText:"Zahlung erfasst"});if(!result.ok)return alert(result.message);closeModal(true);cashflowView()}
   })
 }
 

@@ -22,6 +22,8 @@ export interface BuildingWorkspace {
   payments: AnyRecord[];
   billingWorkflows: AnyRecord[];
   billingSnapshots: AnyRecord[];
+  rentAllocations: AnyRecord[];
+  meterReplacements: AnyRecord[];
   containers: AnyRecord[];
   water: AnyRecord[];
 }
@@ -43,6 +45,8 @@ export function queryBuildingWorkspace(state: AnyRecord, requested: Partial<Appl
     payments: scoped(records(state.payments), buildingId),
     billingWorkflows: scoped(records(state.billingWorkflows), buildingId),
     billingSnapshots: scoped(records(state.billingSnapshots), buildingId),
+    rentAllocations: scoped(records(state.rentAllocations), buildingId),
+    meterReplacements: scoped(records(state.meterReplacements), buildingId),
     containers: scoped(records(state.containers), buildingId),
     water: scoped(records(state.water), buildingId)
   };

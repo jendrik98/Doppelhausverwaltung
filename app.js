@@ -270,6 +270,8 @@ var AppState = (() => {
     "tasks",
     "billingWorkflows",
     "billingSnapshots",
+    "rentAllocations",
+    "meterReplacements",
     "payments",
     "audit"
   ];
@@ -320,6 +322,8 @@ var AppState = (() => {
       finance: { repayment: 900, fixed: 0 },
       billingWorkflows: [],
       billingSnapshots: [],
+      rentAllocations: [],
+      meterReplacements: [],
       payments: [],
       audit: []
     };
@@ -438,7 +442,7 @@ var AppPortfolioModel = (() => {
   }
   function linkedBuildingId(item, refs) {
     for (const ref of refs) {
-      for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId"]) {
+      for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId", "oldMeterId", "newMeterId"]) {
         const linked = item?.[key] ? ref.get(String(item[key])) : null;
         if (linked?.buildingId) return String(linked.buildingId);
       }
@@ -462,6 +466,8 @@ var AppPortfolioModel = (() => {
       "waterSettlements",
       "billingWorkflows",
       "billingSnapshots",
+      "rentAllocations",
+      "meterReplacements",
       "containers",
       "water"
     ]) state[key] = array(state[key]);
@@ -555,7 +561,7 @@ var AppPortfolioModel = (() => {
         if (linkedLease && !unitIds.has(String(item.unitId || ""))) item.unitId = linkedLease.unitId || "";
       }
     }
-    for (const key of ["billingWorkflows", "billingSnapshots", "containers", "water"]) {
+    for (const key of ["billingWorkflows", "billingSnapshots", "rentAllocations", "meterReplacements", "containers", "water"]) {
       for (const item of state[key]) {
         if (item && typeof item === "object" && !buildingIds.has(String(item.buildingId || ""))) {
           item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
@@ -643,6 +649,8 @@ var AppPortfolioModel = (() => {
       ["tasks", "Aufgaben"],
       ["billingWorkflows", "Abrechnungsworkflows"],
       ["billingSnapshots", "Snapshots"],
+      ["rentAllocations", "Mietkonto-Zuordnungen"],
+      ["meterReplacements", "Zählerwechsel"],
       ["containers", "Behälter"],
       ["water", "Wasserdaten"]
     ]) {
@@ -669,6 +677,515 @@ var AppPortfolioModel = (() => {
     };
   }
   return __toCommonJS(portfolio_model_exports);
+})();
+
+
+/* ===== compiled src/domain/lifecycle-ledger.ts ===== */
+"use strict";
+var AppLifecycleLedger = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/domain/lifecycle-ledger.ts
+  var lifecycle_ledger_exports = {};
+  __export(lifecycle_ledger_exports, {
+    LIFECYCLE_LEDGER_VERSION: () => LIFECYCLE_LEDGER_VERSION,
+    activeLeaseAt: () => activeLeaseAt,
+    actualAdvanceFromLedger: () => actualAdvanceFromLedger,
+    addLeaseTerm: () => addLeaseTerm,
+    allocationsForLeaseMonth: () => allocationsForLeaseMonth,
+    autoAllocationProposal: () => autoAllocationProposal,
+    billingRevisionHistory: () => billingRevisionHistory,
+    createTenancy: () => createTenancy,
+    daysInclusive: () => daysInclusive,
+    decorateSnapshotRevision: () => decorateSnapshotRevision,
+    ensureLeaseTerms: () => ensureLeaseTerms,
+    ensureLifecycleState: () => ensureLifecycleState,
+    latestSnapshotFor: () => latestSnapshotFor,
+    leaseBillingAnalysis: () => leaseBillingAnalysis,
+    leaseChargeForMonth: () => leaseChargeForMonth,
+    leaseOverlapsYear: () => leaseOverlapsYear,
+    leaseTermAt: () => leaseTermAt,
+    leaseWaterConsumption: () => leaseWaterConsumption,
+    leasesForBillingYear: () => leasesForBillingYear,
+    leasesForUnit: () => leasesForUnit,
+    ledgerRow: () => ledgerRow,
+    lifecycleAlerts: () => lifecycleAlerts,
+    maxDate: () => maxDate,
+    meterChain: () => meterChain,
+    minDate: () => minDate,
+    monthEnd: () => monthEnd,
+    monthRange: () => monthRange,
+    monthStart: () => monthStart,
+    nextSnapshotVersion: () => nextSnapshotVersion,
+    paymentAllocations: () => paymentAllocations,
+    periodOverlap: () => periodOverlap,
+    recordHandover: () => recordHandover,
+    recordMeterReplacement: () => recordMeterReplacement,
+    rentLedger: () => rentLedger,
+    replacePaymentAllocations: () => replacePaymentAllocations,
+    replacementsInPeriod: () => replacementsInPeriod,
+    roleConsumptionBetween: () => roleConsumptionBetween,
+    splitAllocation: () => splitAllocation,
+    updateTenancyEnd: () => updateTenancyEnd,
+    validateLifecycleState: () => validateLifecycleState,
+    waterConsumptionBetween: () => waterConsumptionBetween
+  });
+  var LIFECYCLE_LEDGER_VERSION = 1;
+  var arr = (v) => Array.isArray(v) ? v : [];
+  var num = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
+  var id = (prefix = "id") => globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  var dateOk = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+  var monthOk = (v) => /^\d{4}-\d{2}$/.test(String(v || ""));
+  var dayValue = (v) => {
+    const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN;
+  };
+  var daysInclusive = (a, b) => {
+    const x = dayValue(a), y = dayValue(b);
+    return Number.isFinite(x) && Number.isFinite(y) && y >= x ? Math.round((y - x) / 864e5) + 1 : 0;
+  };
+  var maxDate = (a, b) => !a ? b : !b ? a : a > b ? a : b;
+  var minDate = (a, b) => !a ? b : !b ? a : a < b ? a : b;
+  var monthStart = (month) => `${month}-01`;
+  function monthEnd(month) {
+    const [y, m] = month.split("-").map(Number);
+    return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+  }
+  function monthRange(startMonth, endMonth) {
+    if (!monthOk(startMonth) || !monthOk(endMonth) || endMonth < startMonth) return [];
+    const out = [];
+    let [y, m] = startMonth.split("-").map(Number);
+    while (`${y}-${String(m).padStart(2, "0")}` <= endMonth && out.length < 600) {
+      out.push(`${y}-${String(m).padStart(2, "0")}`);
+      m++;
+      if (m === 13) {
+        m = 1;
+        y++;
+      }
+    }
+    return out;
+  }
+  function periodOverlap(start, end, otherStart, otherEnd) {
+    const s = maxDate(start, otherStart), e = minDate(end, otherEnd);
+    return s && e && s <= e ? { start: s, end: e, days: daysInclusive(s, e) } : null;
+  }
+  function ensureLeaseTerms(lease) {
+    lease.terms = arr(lease.terms);
+    if (!lease.terms.length && dateOk(lease.start)) lease.terms.push({ id: id("term"), effectiveFrom: lease.start, rent: num(lease.rent), advance: num(lease.advance), reason: "Migration aus Vertragsstammdaten" });
+    lease.terms = lease.terms.filter((t) => dateOk(t.effectiveFrom)).map((t) => ({ id: t.id || id("term"), effectiveFrom: t.effectiveFrom, rent: Math.max(0, num(t.rent)), advance: Math.max(0, num(t.advance)), reason: String(t.reason || "") })).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+    const latest = lease.terms.at(-1);
+    if (latest) {
+      lease.rent = latest.rent;
+      lease.advance = latest.advance;
+    }
+    lease.handover = lease.handover && typeof lease.handover === "object" ? lease.handover : {};
+    return lease;
+  }
+  function ensureLifecycleState(state) {
+    state.meta = state.meta && typeof state.meta === "object" ? state.meta : {};
+    const previousVersion = Number(state.meta.lifecycleLedgerVersion || 0);
+    state.leases = arr(state.leases);
+    state.payments = arr(state.payments);
+    state.meters = arr(state.meters);
+    state.billingSnapshots = arr(state.billingSnapshots);
+    state.rentAllocations = arr(state.rentAllocations);
+    state.meterReplacements = arr(state.meterReplacements);
+    state.units = arr(state.units);
+    for (const lease of state.leases) ensureLeaseTerms(lease);
+    for (const a of state.rentAllocations) {
+      a.id = a.id || id("alloc");
+      a.total = num(a.total || num(a.rentAmount) + num(a.advanceAmount));
+      a.rentAmount = num(a.rentAmount);
+      a.advanceAmount = num(a.advanceAmount);
+      a.sign = a.sign === -1 ? -1 : 1;
+    }
+    if (previousVersion < LIFECYCLE_LEDGER_VERSION) {
+      migrateLegacyRentAllocations(state);
+      state.meta.lifecycleLedgerMigratedAt = (/* @__PURE__ */ new Date()).toISOString();
+    }
+    state.meta.lifecycleLedgerVersion = LIFECYCLE_LEDGER_VERSION;
+    return state;
+  }
+  function legacyPaymentMatchesLease(payment, lease) {
+    if (String(payment.leaseId || "") === String(lease.id || "")) return true;
+    const label = normalize(String(payment.label || "")), tenant = normalize(String(lease.tenantName || ""));
+    return /\bmiete\b|mietzahlung|monatsmiete|betriebskosten|nebenkosten|\bbk\b/.test(label) || !!(tenant && label.includes(tenant));
+  }
+  function migrateLegacyRentAllocations(state) {
+    if (state.rentAllocations.length) return;
+    for (const payment of state.payments.filter((p) => p.direction === "income" && num(p.amount) > 0).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))) {
+      const date = String(payment.date || "").slice(0, 10);
+      if (!dateOk(date)) continue;
+      const explicit = payment.leaseId ? state.leases.find((l) => String(l.id || "") === String(payment.leaseId)) : null;
+      const active = state.leases.filter((l) => (!l.start || l.start <= date) && (!l.end || l.end >= date));
+      const lease = explicit || (active.length === 1 ? active[0] : active.find((l) => legacyPaymentMatchesLease(payment, l)));
+      if (!lease || !legacyPaymentMatchesLease(payment, lease)) continue;
+      const month = date.slice(0, 7), charge = leaseChargeForMonth(lease, month), applied = Math.min(num(payment.amount), num(charge.total));
+      if (applied <= 5e-3) continue;
+      const split = splitAllocation(applied, charge);
+      state.rentAllocations.push({ id: id("alloc"), buildingId: lease.buildingId || payment.buildingId || "", leaseId: lease.id, paymentId: payment.id, month, rentAmount: split.rentAmount, advanceAmount: split.advanceAmount, total: split.total, sign: 1, kind: "payment", origin: "legacy-payment-migration", confidence: legacyPaymentMatchesLease(payment, lease) ? 90 : 70, createdAt: (/* @__PURE__ */ new Date()).toISOString() });
+      payment.leaseId = payment.leaseId || lease.id;
+    }
+  }
+  function leaseTermAt(lease, date) {
+    ensureLeaseTerms(lease);
+    return lease.terms.filter((t) => t.effectiveFrom <= date).at(-1) || lease.terms[0] || { rent: num(lease.rent), advance: num(lease.advance), effectiveFrom: lease.start || date };
+  }
+  function leasesForUnit(state, unitId) {
+    return arr(state.leases).filter((l) => String(l.unitId || "") === String(unitId || "")).sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")));
+  }
+  function activeLeaseAt(state, date, unitId = "") {
+    return arr(state.leases).find((l) => (!unitId || String(l.unitId || "") === unitId) && (!l.start || l.start <= date) && (!l.end || l.end >= date)) || null;
+  }
+  function leaseOverlapsYear(lease, year) {
+    const ps = `${year}-01-01`, pe = `${year}-12-31`;
+    return !!periodOverlap(lease.start || ps, lease.end || pe, ps, pe);
+  }
+  function leasesForBillingYear(state, year, buildingId = "") {
+    return arr(state.leases).filter((l) => (!buildingId || String(l.buildingId || "") === buildingId) && leaseOverlapsYear(l, year)).sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")));
+  }
+  function leaseChargeForMonth(lease, month) {
+    if (!monthOk(month)) return { month, leaseId: lease.id, rent: 0, advance: 0, total: 0, activeDays: 0, monthDays: 0 };
+    ensureLeaseTerms(lease);
+    const ms = monthStart(month), me = monthEnd(month), active = periodOverlap(lease.start || ms, lease.end || me, ms, me), monthDays = daysInclusive(ms, me);
+    if (!active) return { month, leaseId: lease.id, rent: 0, advance: 0, total: 0, activeDays: 0, monthDays };
+    const boundaries = /* @__PURE__ */ new Set([active.start]);
+    for (const term of lease.terms) if (term.effectiveFrom > active.start && term.effectiveFrom <= active.end) boundaries.add(term.effectiveFrom);
+    const starts = [...boundaries].sort(), parts = [];
+    let rent = 0, advance = 0;
+    for (let i = 0; i < starts.length; i++) {
+      const start = starts[i], next = starts[i + 1], end = next ? new Date(dayValue(next) - 864e5).toISOString().slice(0, 10) : active.end, days = daysInclusive(start, end), term = leaseTermAt(lease, start), factor = days / monthDays;
+      rent += num(term.rent) * factor;
+      advance += num(term.advance) * factor;
+      parts.push({ start, end, days, rent: num(term.rent) * factor, advance: num(term.advance) * factor, termId: term.id });
+    }
+    return { month, leaseId: lease.id, rent, advance, total: rent + advance, activeDays: active.days, monthDays, parts };
+  }
+  function allocationSigned(a) {
+    return (a.sign === -1 ? -1 : 1) * num(a.total || num(a.rentAmount) + num(a.advanceAmount));
+  }
+  function allocationsForLeaseMonth(state, leaseId, month) {
+    return arr(state.rentAllocations).filter((a) => String(a.leaseId || "") === leaseId && a.month === month);
+  }
+  function ledgerRow(state, lease, month) {
+    const charge = leaseChargeForMonth(lease, month), allocations = allocationsForLeaseMonth(state, String(lease.id), month), paid = allocations.reduce((s, a) => s + allocationSigned(a), 0), advancePaid = allocations.reduce((s, a) => s + (a.sign === -1 ? -1 : 1) * num(a.advanceAmount), 0), difference = paid - charge.total;
+    return { ...charge, tenantName: lease.tenantName || "", allocations, paid, advancePaid, difference, status: charge.total <= 5e-3 ? "none" : difference >= -0.01 ? difference > 0.01 ? "overpaid" : "paid" : paid > 0.01 ? "partial" : "missing" };
+  }
+  function rentLedger(state, { buildingId = "", leaseId = "", startMonth = "", endMonth = "" } = {}) {
+    ensureLifecycleState(state);
+    const now = /* @__PURE__ */ new Date(), end = endMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`, start = startMonth || (() => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    })(), months = monthRange(start, end), leases = state.leases.filter((l) => (!buildingId || String(l.buildingId || "") === buildingId) && (!leaseId || String(l.id || "") === leaseId)), rows = [];
+    for (const lease of leases) for (const month of months) {
+      const row = ledgerRow(state, lease, month);
+      if (row.status !== "none") rows.push(row);
+    }
+    const open = rows.reduce((s, r) => s + Math.max(0, -r.difference), 0), credit = rows.reduce((s, r) => s + Math.max(0, r.difference), 0), expected = rows.reduce((s, r) => s + r.total, 0), paid = rows.reduce((s, r) => s + r.paid, 0);
+    return { rows, expected, paid, open, credit, startMonth: start, endMonth: end };
+  }
+  function splitAllocation(total, charge) {
+    const signed = Math.max(0, num(total)), rent = Math.min(signed, Math.max(0, num(charge.rent))), advance = Math.min(Math.max(0, signed - rent), Math.max(0, num(charge.advance)));
+    return { rentAmount: rent, advanceAmount: advance, total: rent + advance, unapplied: Math.max(0, signed - rent - advance) };
+  }
+  function paymentAllocations(state, paymentId) {
+    return arr(state.rentAllocations).filter((a) => String(a.paymentId || "") === String(paymentId || ""));
+  }
+  function replacePaymentAllocations(state, paymentId, items) {
+    ensureLifecycleState(state);
+    const payment = state.payments.find((p) => String(p.id || "") === String(paymentId || ""));
+    if (!payment) throw new Error("Zahlung fehlt.");
+    const sign = payment.kind === "rent-reversal" || payment.rentReversal === true ? -1 : 1, amount = Math.max(0, num(payment.amount));
+    let sum = 0;
+    const out = [];
+    for (const raw of items || []) {
+      const lease = state.leases.find((l) => String(l.id || "") === String(raw.leaseId || payment.leaseId || ""));
+      if (!lease) throw new Error("Mietverhältnis für Zahlungszuordnung fehlt.");
+      if (!monthOk(raw.month)) throw new Error("Monat der Zahlungszuordnung ist ungültig.");
+      const charge = leaseChargeForMonth(lease, raw.month), requested = Math.max(0, num(raw.total));
+      const split = raw.rentAmount != null || raw.advanceAmount != null ? { rentAmount: Math.max(0, num(raw.rentAmount)), advanceAmount: Math.max(0, num(raw.advanceAmount)), total: Math.max(0, num(raw.rentAmount)) + Math.max(0, num(raw.advanceAmount)), unapplied: 0 } : splitAllocation(requested, charge);
+      sum += split.total;
+      out.push({ id: id("alloc"), buildingId: lease.buildingId || payment.buildingId || "", leaseId: lease.id, paymentId: payment.id, month: raw.month, rentAmount: split.rentAmount, advanceAmount: split.advanceAmount, total: split.total, sign, kind: sign < 0 ? "reversal" : "payment", createdAt: (/* @__PURE__ */ new Date()).toISOString() });
+    }
+    if (sum > amount + 0.01) throw new Error("Zugeordneter Betrag ist höher als die Buchung.");
+    state.rentAllocations = state.rentAllocations.filter((a) => String(a.paymentId || "") !== String(payment.id)).concat(out);
+    payment.leaseId = out[0]?.leaseId || payment.leaseId || "";
+    payment.kind = sign < 0 ? "rent-reversal" : "rent";
+    return { allocations: out, allocated: sum, unallocated: Math.max(0, amount - sum) };
+  }
+  function autoAllocationProposal(state, paymentId) {
+    ensureLifecycleState(state);
+    const p = state.payments.find((x) => String(x.id || "") === String(paymentId || ""));
+    if (!p || p.direction !== "income") return [];
+    const date = String(p.date || "").slice(0, 10), lease = state.leases.find((l) => String(l.id || "") === String(p.leaseId || "")) || activeLeaseAt(state, date) || state.leases.find((l) => normalize(String(p.label || "")).includes(normalize(String(l.tenantName || ""))));
+    if (!lease) return [];
+    const targetMonth = date.slice(0, 7), months = monthRange(lease.start?.slice(0, 7) || targetMonth, targetMonth), rows = months.map((m) => ledgerRow(state, lease, m)).filter((r) => r.difference < -0.01), out = [];
+    let remaining = Math.max(0, num(p.amount));
+    for (const row of rows) {
+      if (remaining <= 5e-3) break;
+      const need = Math.min(remaining, -row.difference), split = splitAllocation(need, { rent: Math.max(0, row.rent - Math.max(0, row.paid)), advance: row.advance });
+      out.push({ leaseId: lease.id, month: row.month, ...split, total: need });
+      remaining -= need;
+    }
+    if (!out.length && remaining > 5e-3) out.push({ leaseId: lease.id, month: targetMonth, ...splitAllocation(remaining, leaseChargeForMonth(lease, targetMonth)), total: remaining });
+    return out;
+  }
+  function normalize(v) {
+    return String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  }
+  function actualAdvanceFromLedger(state, lease, periodStart, periodEnd) {
+    ensureLifecycleState(state);
+    const rows = arr(state.rentAllocations).filter((a) => String(a.leaseId || "") === String(lease?.id || "") && monthOk(a.month) && periodOverlap(monthStart(a.month), monthEnd(a.month), periodStart, periodEnd)), recognizedPayments = new Set(rows.map((a) => a.paymentId).filter(Boolean));
+    return { amount: rows.reduce((s, a) => s + (a.sign === -1 ? -1 : 1) * num(a.advanceAmount), 0), recognizedPayments: recognizedPayments.size, source: "ledger", allocationCount: rows.length };
+  }
+  function createTenancy(state, payload) {
+    ensureLifecycleState(state);
+    if (!dateOk(payload.start)) throw new Error("Vertragsbeginn fehlt.");
+    const unit = state.units.find((u) => String(u.id || "") === String(payload.unitId || ""));
+    if (!unit) throw new Error("Mietwohnung fehlt.");
+    const end = payload.end || "9999-12-31";
+    for (const other of state.leases) {
+      if (String(other.unitId || "") !== String(unit.id) || String(other.id || "") === String(payload.id || "")) continue;
+      const overlap = periodOverlap(payload.start, end, other.start || "0001-01-01", other.end || "9999-12-31");
+      if (overlap) throw new Error(`Mietverhältnisse überschneiden sich ab ${overlap.start}.`);
+    }
+    const lease = { id: payload.id || id("lease"), buildingId: unit.buildingId, unitId: unit.id, tenantName: String(payload.tenantName || "").trim(), tenantAddress: String(payload.tenantAddress || "").trim(), start: payload.start, end: payload.end || "", rent: Math.max(0, num(payload.rent)), advance: Math.max(0, num(payload.advance)), note: String(payload.note || "").trim(), terms: [], handover: {} };
+    ensureLeaseTerms(lease);
+    state.leases.push(lease);
+    return lease;
+  }
+  function updateTenancyEnd(state, leaseId, end, note = "") {
+    ensureLifecycleState(state);
+    const lease = state.leases.find((l) => String(l.id || "") === String(leaseId));
+    if (!lease) throw new Error("Mietverhältnis fehlt.");
+    if (end && (!dateOk(end) || end < lease.start)) throw new Error("Vertragsende ist ungültig.");
+    lease.end = end || "";
+    if (note) lease.note = [lease.note, note].filter(Boolean).join(" · ");
+    return lease;
+  }
+  function addLeaseTerm(state, leaseId, payload) {
+    ensureLifecycleState(state);
+    const lease = state.leases.find((l) => String(l.id || "") === String(leaseId));
+    if (!lease) throw new Error("Mietverhältnis fehlt.");
+    const effectiveFrom = String(payload.effectiveFrom || "");
+    if (!dateOk(effectiveFrom) || effectiveFrom < lease.start || lease.end && effectiveFrom > lease.end) throw new Error("Stichtag der Vertragsänderung liegt außerhalb des Mietverhältnisses.");
+    ensureLeaseTerms(lease);
+    const existing = lease.terms.find((t) => t.effectiveFrom === effectiveFrom), term = { id: existing?.id || id("term"), effectiveFrom, rent: Math.max(0, num(payload.rent)), advance: Math.max(0, num(payload.advance)), reason: String(payload.reason || "Vertragsänderung").trim() };
+    if (existing) Object.assign(existing, term);
+    else lease.terms.push(term);
+    ensureLeaseTerms(lease);
+    return term;
+  }
+  function meterForRoleAt(state, role, date, buildingId = "") {
+    return state.meters.filter((m) => m.role === role && (!buildingId || String(m.buildingId || "") === buildingId) && (!m.installedAt || m.installedAt <= date) && (!m.removedAt || m.removedAt >= date)).sort((a, b) => String(b.installedAt || "").localeCompare(String(a.installedAt || "")))[0] || null;
+  }
+  function exactReading(meter, date) {
+    return arr(meter?.readings).find((r) => r.date === date) || null;
+  }
+  function addReading(meter, date, value, origin) {
+    meter.readings = arr(meter.readings);
+    const existing = exactReading(meter, date);
+    if (existing) {
+      existing.value = value;
+      existing.origin = origin;
+      return existing;
+    }
+    const r = { id: id("reading"), date, value: num(value), origin, synthetic: false, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    meter.readings.push(r);
+    meter.readings.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return r;
+  }
+  function recordHandover(state, leaseId, payload) {
+    ensureLifecycleState(state);
+    const lease = state.leases.find((l) => String(l.id || "") === String(leaseId));
+    if (!lease) throw new Error("Mietverhältnis fehlt.");
+    const kind = payload.kind === "move-out" ? "moveOut" : "moveIn", date = String(payload.date || "");
+    if (!dateOk(date)) throw new Error("Übergabedatum fehlt.");
+    if (kind === "moveIn" && lease.start && date !== lease.start) throw new Error("Einzugsübergabe muss am Vertragsbeginn liegen.");
+    if (kind === "moveOut" && lease.end && date !== lease.end) throw new Error("Auszugsübergabe muss am Vertragsende liegen.");
+    const readings = [];
+    for (const x of arr(payload.readings)) {
+      if (x.value == null || x.value === "") continue;
+      const meter = x.meterId ? state.meters.find((m) => String(m.id) === String(x.meterId)) : meterForRoleAt(state, String(x.role || ""), date, String(lease.buildingId || ""));
+      if (!meter) continue;
+      const reading = addReading(meter, date, num(x.value), "handover");
+      readings.push({ meterId: meter.id, role: meter.role, readingId: reading.id, value: reading.value });
+    }
+    const persons = Math.max(0, num(payload.persons)), unit = state.units.find((u) => String(u.id || "") === String(lease.unitId || ""));
+    if (unit && payload.persons !== void 0 && payload.persons !== null && payload.persons !== "") {
+      unit.occupancy = arr(unit.occupancy);
+      if (kind === "moveIn") {
+        for (const o of unit.occupancy) if (!o.to && o.from && o.from < date) o.to = new Date(dayValue(date) - 864e5).toISOString().slice(0, 10);
+        const existing = unit.occupancy.find((o) => o.from === date);
+        if (existing) existing.count = persons;
+        else unit.occupancy.push({ from: date, to: "", count: persons });
+      } else {
+        const active = unit.occupancy.filter((o) => (!o.from || o.from <= date) && (!o.to || o.to >= date)).sort((a, b) => String(b.from || "").localeCompare(String(a.from || "")))[0];
+        if (active) active.to = date;
+      }
+      unit.occupancy.sort((a, b) => String(a.from || "").localeCompare(String(b.from || "")));
+    }
+    lease.handover = lease.handover || {};
+    lease.handover[kind] = { date, persons, readings, note: String(payload.note || ""), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    return lease.handover[kind];
+  }
+  function recordMeterReplacement(state, payload) {
+    ensureLifecycleState(state);
+    const old = state.meters.find((m) => String(m.id || "") === String(payload.oldMeterId || ""));
+    if (!old) throw new Error("Ausgebauter Zähler fehlt.");
+    const date = String(payload.date || "");
+    if (!dateOk(date)) throw new Error("Wechseldatum fehlt.");
+    if (old.removedAt && old.removedAt < date) throw new Error("Zähler war zu diesem Datum bereits ausgebaut.");
+    const closing = addReading(old, date, num(payload.oldValue), "meter-replacement-close");
+    old.removedAt = date;
+    const fresh = { id: id("meter"), buildingId: old.buildingId, unitId: old.unitId || "", role: old.role, name: String(payload.name || old.name || "Zähler"), number: String(payload.newNumber || "").trim(), unit: old.unit || "m³", installedAt: date, removedAt: "", predecessorMeterId: old.id, readings: [] };
+    const opening = addReading(fresh, date, num(payload.newValue), "meter-replacement-open");
+    old.successorMeterId = fresh.id;
+    state.meters.push(fresh);
+    const event = { id: id("replacement"), buildingId: old.buildingId, role: old.role, date, oldMeterId: old.id, newMeterId: fresh.id, oldReadingId: closing.id, newReadingId: opening.id, reason: String(payload.reason || "Zählerwechsel"), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    state.meterReplacements.push(event);
+    return { event, oldMeter: old, newMeter: fresh };
+  }
+  function meterChain(state, role, buildingId = "") {
+    return state.meters.filter((m) => m.role === role && (!buildingId || String(m.buildingId || "") === buildingId)).sort((a, b) => String(a.installedAt || "0001-01-01").localeCompare(String(b.installedAt || "0001-01-01")));
+  }
+  function roleConsumptionBetween(state, role, start, end, buildingId = "") {
+    ensureLifecycleState(state);
+    if (!dateOk(start) || !dateOk(end) || end < start) return { valid: false, total: 0, segments: [], missing: [start, end] };
+    const segments = [], missing = [];
+    for (const meter of meterChain(state, role, buildingId)) {
+      const seg = periodOverlap(start, end, meter.installedAt || start, meter.removedAt || end);
+      if (!seg) continue;
+      const sr = exactReading(meter, seg.start), er = exactReading(meter, seg.end);
+      if (!sr) missing.push(`${meter.id}:${seg.start}`);
+      if (!er) missing.push(`${meter.id}:${seg.end}`);
+      if (sr && er) {
+        const delta = num(er.value) - num(sr.value);
+        segments.push({ meterId: meter.id, start: seg.start, end: seg.end, startReadingId: sr.id, endReadingId: er.id, startValue: num(sr.value), endValue: num(er.value), delta });
+      }
+    }
+    const total = segments.reduce((s, x) => s + x.delta, 0), valid = segments.length > 0 && !missing.length && segments.every((x) => x.delta >= 0);
+    return { valid, total, segments, missing: [...new Set(missing)] };
+  }
+  function waterConsumptionBetween(state, start, end, buildingId = "") {
+    const main = roleConsumptionBetween(state, "mainWater", start, end, buildingId), owner = roleConsumptionBetween(state, "ownerWater", start, end, buildingId), tenant = main.total - owner.total;
+    return { house: main.total, owner: owner.total, tenant, share: main.total > 0 ? tenant / main.total : 0, mainSegments: main.segments, ownerSegments: owner.segments, missing: [...main.missing, ...owner.missing], valid: main.valid && owner.valid && tenant >= 0 };
+  }
+  function replacementsInPeriod(state, start, end, buildingId = "") {
+    return arr(state.meterReplacements).filter((r) => (!buildingId || String(r.buildingId || "") === buildingId) && r.date >= start && r.date <= end);
+  }
+  function leaseWaterConsumption(state, lease, year) {
+    const ps = `${year}-01-01`, pe = `${year}-12-31`, ov = periodOverlap(lease.start || ps, lease.end || pe, ps, pe);
+    return ov ? waterConsumptionBetween(state, ov.start, ov.end, String(lease.buildingId || "")) : { valid: false, house: 0, owner: 0, tenant: 0, share: 0, missing: [] };
+  }
+  function leaseBillingAnalysis(state, base, year, leaseId) {
+    ensureLifecycleState(state);
+    const lease = state.leases.find((l) => String(l.id || "") === String(leaseId || ""));
+    if (!lease) throw new Error("Mietverhältnis für Abrechnung fehlt.");
+    const ps = base?.period?.start || `${year}-01-01`, pe = base?.period?.end || `${year}-12-31`, leasePeriod = periodOverlap(lease.start || ps, lease.end || pe, ps, pe);
+    if (!leasePeriod) return { ...base, lease, leaseId: lease.id, events: [], tenantCosts: 0, advances: 0, result: 0, unresolved: [{ id: "lease-period", reason: "Mietverhältnis liegt außerhalb der Periode." }] };
+    const fullDays = daysInclusive(ps, pe), leaseDays = leasePeriod.days, water = waterConsumptionBetween(state, leasePeriod.start, leasePeriod.end, String(lease.buildingId || "")), wholeWater = waterConsumptionBetween(state, ps, pe, String(lease.buildingId || ""));
+    const yearLeases = leasesForBillingYear(state, year, String(lease.buildingId || ""));
+    const leasePersons = (l) => Math.max(0, num(l.handover?.moveIn?.persons || 1));
+    const events = arr(base?.events).map((e) => {
+      const eventPeriod = periodOverlap(maxDate(ps, e.serviceStart || ps), minDate(pe, e.serviceEnd || pe), ps, pe), leaseEvent = eventPeriod ? periodOverlap(eventPeriod.start, eventPeriod.end, leasePeriod.start, leasePeriod.end) : null;
+      let factor = eventPeriod?.days ? num(leaseEvent?.days) / eventPeriod.days : fullDays ? leaseDays / fullDays : 0;
+      if (e.decision?.rule === "persons" && eventPeriod) {
+        const weighted = yearLeases.map((l) => {
+          const ov = periodOverlap(l.start || eventPeriod.start, l.end || eventPeriod.end, eventPeriod.start, eventPeriod.end);
+          return { id: l.id, value: num(ov?.days) * leasePersons(l) };
+        }), den = weighted.reduce((sum, x) => sum + x.value, 0), mine = weighted.find((x) => String(x.id) === String(lease.id))?.value || 0;
+        factor = den > 0 ? mine / den : factor;
+      }
+      if (e.decision?.rule === "consumption") {
+        factor = wholeWater.valid && wholeWater.tenant > 0 && water.valid ? water.tenant / wholeWater.tenant : 0;
+      }
+      const tenantAmount = num(e.tenantAmount) * factor;
+      return { ...e, tenantAmount, lifecycleFactor: factor, leaseId: lease.id, leasePeriod: { ...leasePeriod }, lifecycleWater: e.decision?.rule === "consumption" ? water : null };
+    });
+    const unresolved = arr(base?.unresolved).slice();
+    if (arr(base?.events).some((e) => e.decision?.rule === "consumption") && !water.valid) unresolved.push({ id: "lease-water", reason: "Übergabe-/Zählerstände für den Mietzeitraum sind nicht vollständig.", missing: water.missing });
+    const ledger = actualAdvanceFromLedger(state, lease, leasePeriod.start, leasePeriod.end), legacyFallback = !ledger.allocationCount && yearLeases.length === 1 ? num(base?.advances) : 0, advances = ledger.allocationCount ? ledger.amount : legacyFallback;
+    if (!ledger.allocationCount && yearLeases.length > 1) unresolved.push({ id: "lease-ledger", reason: "Bei mehreren Mietverhältnissen müssen die Vorauszahlungen im Mietkonto zugeordnet sein." });
+    const tenantCosts = events.reduce((s, e) => s + num(e.tenantAmount), 0);
+    return { ...base, lease, leaseId: lease.id, leasePeriod, events, unresolved, tenantCosts, advances, advanceEvidence: ledger, result: tenantCosts - advances, waterConsumption: water };
+  }
+  function latestSnapshotFor(state, periodYear, leaseId = "") {
+    return arr(state.billingSnapshots).filter((s) => Number(s.periodYear) === Number(periodYear) && (!leaseId || String(s.leaseId || s.lease?.id || "") === String(leaseId))).sort((a, b) => Number(b.version || 1) - Number(a.version || 1) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
+  }
+  function nextSnapshotVersion(state, periodYear, leaseId = "") {
+    return Number(latestSnapshotFor(state, periodYear, leaseId)?.version || 0) + 1;
+  }
+  function decorateSnapshotRevision(state, snapshot, { leaseId = "", correctionReason = "", supersedesSnapshotId = "" } = {}) {
+    const actualLeaseId = leaseId || snapshot.leaseId || snapshot.lease?.id || "", prior = supersedesSnapshotId ? state.billingSnapshots.find((s) => String(s.id) === String(supersedesSnapshotId)) : latestSnapshotFor(state, Number(snapshot.periodYear), actualLeaseId), version = prior ? Number(prior.version || 1) + 1 : 1;
+    return { ...snapshot, leaseId: actualLeaseId, statementId: snapshot.statementId || `${snapshot.buildingId || "building"}:${snapshot.periodYear}:${actualLeaseId || "lease"}`, version, supersedesSnapshotId: prior?.id || "", correctionReason: version > 1 ? String(correctionReason || "").trim() : "", revisionCreatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+  }
+  function billingRevisionHistory(state, periodYear, leaseId = "") {
+    return arr(state.billingSnapshots).filter((s) => Number(s.periodYear) === Number(periodYear) && (!leaseId || String(s.leaseId || s.lease?.id || "") === String(leaseId))).sort((a, b) => Number(a.version || 1) - Number(b.version || 1));
+  }
+  function lifecycleAlerts(state, buildingId = "", today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) {
+    ensureLifecycleState(state);
+    const out = [], leases = state.leases.filter((l) => !buildingId || String(l.buildingId || "") === buildingId);
+    for (const lease of leases) {
+      if (lease.start <= today && (!lease.end || lease.end >= today) && !lease.handover?.moveIn) out.push({ id: `handover-in-${lease.id}`, severity: "warn", title: "Einzugsübergabe fehlt", detail: `${lease.tenantName || "Mietverhältnis"}: Übergabestand zum ${lease.start} erfassen.`, route: "rental", sub: "lifecycle", leaseId: lease.id });
+      if (lease.end && lease.end <= today && !lease.handover?.moveOut) out.push({ id: `handover-out-${lease.id}`, severity: "warn", title: "Auszugsübergabe fehlt", detail: `${lease.tenantName || "Mietverhältnis"}: Schlussablesung zum ${lease.end} erfassen.`, route: "rental", sub: "lifecycle", leaseId: lease.id });
+    }
+    const ledger = rentLedger(state, { buildingId });
+    for (const row of ledger.rows.filter((r) => ["missing", "partial"].includes(r.status) && monthEnd(r.month) < today).slice(-6)) out.push({ id: `rent-${row.leaseId}-${row.month}`, severity: "warn", title: `Mietkonto ${row.month} offen`, detail: `${row.tenantName || "Mietverhältnis"}: ${Math.abs(row.difference).toFixed(2)} € offen.`, route: "rental", sub: "lifecycle", leaseId: row.leaseId });
+    return out;
+  }
+  function validateLifecycleState(state) {
+    ensureLifecycleState(state);
+    const errors = [], warnings = [];
+    const leaseIds = new Set(state.leases.map((l) => String(l.id || ""))), paymentIds = new Set(state.payments.map((p) => String(p.id || ""))), meterIds = new Set(state.meters.map((m) => String(m.id || "")));
+    for (const unit of state.units) {
+      const leases = leasesForUnit(state, String(unit.id || ""));
+      for (let i = 1; i < leases.length; i++) {
+        const a = leases[i - 1], b = leases[i], ov = periodOverlap(a.start || "0001-01-01", a.end || "9999-12-31", b.start || "0001-01-01", b.end || "9999-12-31");
+        if (ov) errors.push(`Mietverhältnisse ${a.id}/${b.id} überschneiden sich ab ${ov.start}`);
+      }
+    }
+    for (const lease of state.leases) {
+      if (!dateOk(lease.start)) warnings.push(`Mietverhältnis ${lease.id}: historischer Vertragsbeginn fehlt`);
+      ensureLeaseTerms(lease);
+      const seen = /* @__PURE__ */ new Set();
+      for (const term of lease.terms) {
+        if (seen.has(term.effectiveFrom)) errors.push(`Mietverhältnis ${lease.id}: doppelter Vertragsstichtag ${term.effectiveFrom}`);
+        seen.add(term.effectiveFrom);
+      }
+    }
+    for (const a of state.rentAllocations) {
+      if (!leaseIds.has(String(a.leaseId || ""))) errors.push(`Mietzuordnung ${a.id}: Mietverhältnis fehlt`);
+      if (!paymentIds.has(String(a.paymentId || ""))) errors.push(`Mietzuordnung ${a.id}: Zahlung fehlt`);
+      if (!monthOk(a.month)) errors.push(`Mietzuordnung ${a.id}: Monat ungültig`);
+      if (num(a.rentAmount) < 0 || num(a.advanceAmount) < 0) errors.push(`Mietzuordnung ${a.id}: negativer Teilbetrag`);
+    }
+    for (const r of state.meterReplacements) {
+      if (!meterIds.has(String(r.oldMeterId || "")) || !meterIds.has(String(r.newMeterId || ""))) errors.push(`Zählerwechsel ${r.id}: Zählerreferenz fehlt`);
+      if (!dateOk(r.date)) errors.push(`Zählerwechsel ${r.id}: Datum ungültig`);
+    }
+    for (const s of state.billingSnapshots) {
+      if (Number(s.version || 1) > 1 && !String(s.correctionReason || "").trim()) warnings.push(`Abrechnung ${s.id}: Korrekturgrund fehlt`);
+    }
+    return { errors, warnings };
+  }
+  return __toCommonJS(lifecycle_ledger_exports);
 })();
 
 
@@ -946,17 +1463,26 @@ var AppApplication = (() => {
   __export(index_exports, {
     APPLICATION_VERSION: () => APPLICATION_VERSION,
     PORTFOLIO_ADMIN_VERSION: () => PORTFOLIO_ADMIN_VERSION,
+    RENTAL_LIFECYCLE_APPLICATION_VERSION: () => RENTAL_LIFECYCLE_APPLICATION_VERSION,
+    addLeaseTermCommand: () => addLeaseTermCommand,
+    allocateRentPaymentCommand: () => allocateRentPaymentCommand,
     assertBuildingScopedMutation: () => assertBuildingScopedMutation,
     assertContextIntegrity: () => assertContextIntegrity,
     buildingScopedCollections: () => buildingScopedCollections,
+    closeTenancyCommand: () => closeTenancyCommand,
     commandResult: () => commandResult,
     createBuildingInPortfolio: () => createBuildingInPortfolio,
     createCommandBus: () => createCommandBus,
+    createRentReversalCommand: () => createRentReversalCommand,
+    createTenancyCommand: () => createTenancyCommand,
+    lifecycleWorkspaceModel: () => lifecycleWorkspaceModel,
     loadApplicationState: () => loadApplicationState,
     portfolioNavigation: () => portfolioNavigation,
     queryBuildingWorkspace: () => queryBuildingWorkspace,
     queryTaskList: () => queryTaskList,
     reconciliationSummary: () => reconciliationSummary,
+    recordHandoverCommand: () => recordHandoverCommand,
+    recordMeterReplacementCommand: () => recordMeterReplacementCommand,
     resolveApplicationContext: () => resolveApplicationContext,
     safeCommandSummary: () => safeCommandSummary,
     updateBuildingInPortfolio: () => updateBuildingInPortfolio
@@ -977,6 +1503,8 @@ var AppApplication = (() => {
     "payments",
     "billingWorkflows",
     "billingSnapshots",
+    "rentAllocations",
+    "meterReplacements",
     "containers",
     "water"
   ];
@@ -1116,6 +1644,8 @@ var AppApplication = (() => {
       payments: scoped(records2(state.payments), buildingId),
       billingWorkflows: scoped(records2(state.billingWorkflows), buildingId),
       billingSnapshots: scoped(records2(state.billingSnapshots), buildingId),
+      rentAllocations: scoped(records2(state.rentAllocations), buildingId),
+      meterReplacements: scoped(records2(state.meterReplacements), buildingId),
       containers: scoped(records2(state.containers), buildingId),
       water: scoped(records2(state.water), buildingId)
     };
@@ -1385,7 +1915,7 @@ var AppApplication = (() => {
   }
   function linkedBuildingId(item, refs) {
     for (const ref of refs) {
-      for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId"]) {
+      for (const key of ["unitId", "leaseId", "positionId", "sourceId", "meterId", "mainMeterId", "ownerMeterId", "oldMeterId", "newMeterId"]) {
         const linked = item?.[key] ? ref.get(String(item[key])) : null;
         if (linked?.buildingId) return String(linked.buildingId);
       }
@@ -1409,6 +1939,8 @@ var AppApplication = (() => {
       "waterSettlements",
       "billingWorkflows",
       "billingSnapshots",
+      "rentAllocations",
+      "meterReplacements",
       "containers",
       "water"
     ]) state[key] = array(state[key]);
@@ -1502,7 +2034,7 @@ var AppApplication = (() => {
         if (linkedLease && !unitIds.has(String(item.unitId || ""))) item.unitId = linkedLease.unitId || "";
       }
     }
-    for (const key of ["billingWorkflows", "billingSnapshots", "containers", "water"]) {
+    for (const key of ["billingWorkflows", "billingSnapshots", "rentAllocations", "meterReplacements", "containers", "water"]) {
       for (const item of state[key]) {
         if (item && typeof item === "object" && !buildingIds.has(String(item.buildingId || ""))) {
           item.buildingId = linkedBuildingId(item, refs) || primaryBuilding.id;
@@ -1590,6 +2122,8 @@ var AppApplication = (() => {
       ["tasks", "Aufgaben"],
       ["billingWorkflows", "Abrechnungsworkflows"],
       ["billingSnapshots", "Snapshots"],
+      ["rentAllocations", "Mietkonto-Zuordnungen"],
+      ["meterReplacements", "Zählerwechsel"],
       ["containers", "Behälter"],
       ["water", "Wasserdaten"]
     ]) {
@@ -1711,6 +2245,62 @@ var AppApplication = (() => {
     }
     return checkedState(state);
   }
+
+  // src/application/rental-lifecycle.ts
+  var uid = (prefix = "id") => globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  var RENTAL_LIFECYCLE_APPLICATION_VERSION = 1;
+  function lifecycleWorkspaceModel(state, context = {}, today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) {
+    AppLifecycleLedger.ensureLifecycleState(state);
+    const buildingId = String(context.buildingId || state?.meta?.primaryBuildingId || "");
+    const leases = (state.leases || []).filter((l) => !buildingId || String(l.buildingId || "") === buildingId).sort((a, b) => String(b.start || "").localeCompare(String(a.start || "")));
+    const active = leases.find((l) => (!l.start || l.start <= today) && (!l.end || l.end >= today)) || null;
+    const ledger = AppLifecycleLedger.rentLedger(state, { buildingId });
+    const replacements = (state.meterReplacements || []).filter((r) => !buildingId || String(r.buildingId || "") === buildingId).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    const alerts = AppLifecycleLedger.lifecycleAlerts(state, buildingId, today);
+    const snapshots = (state.billingSnapshots || []).filter((s) => !buildingId || String(s.buildingId || "") === buildingId).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    return { buildingId, leases, active, ledger, replacements, alerts, snapshots };
+  }
+  function createTenancyCommand(state, payload, context = {}) {
+    AppLifecycleLedger.ensureLifecycleState(state);
+    const unitId = String(payload.unitId || context.unitId || state.units?.find((u) => u.type === "rental" && (!context.buildingId || u.buildingId === context.buildingId))?.id || "");
+    return AppLifecycleLedger.createTenancy(state, { ...payload, unitId });
+  }
+  function addLeaseTermCommand(state, payload) {
+    return AppLifecycleLedger.addLeaseTerm(state, String(payload.leaseId || payload.id || ""), payload);
+  }
+  function closeTenancyCommand(state, payload) {
+    return AppLifecycleLedger.updateTenancyEnd(state, String(payload.leaseId || payload.id || ""), String(payload.end || ""), String(payload.note || ""));
+  }
+  function recordHandoverCommand(state, payload) {
+    return AppLifecycleLedger.recordHandover(state, String(payload.leaseId || ""), payload);
+  }
+  function allocateRentPaymentCommand(state, payload) {
+    return AppLifecycleLedger.replacePaymentAllocations(state, String(payload.paymentId || ""), payload.allocations || []);
+  }
+  function recordMeterReplacementCommand(state, payload) {
+    return AppLifecycleLedger.recordMeterReplacement(state, payload);
+  }
+  function createRentReversalCommand(state, payload, context = {}) {
+    AppLifecycleLedger.ensureLifecycleState(state);
+    const original = state.payments?.find((p) => String(p.id || "") === String(payload.paymentId || payload.originalPaymentId || ""));
+    if (!original) throw new Error("Ursprüngliche Mietzahlung fehlt.");
+    const prior = AppLifecycleLedger.paymentAllocations(state, original.id);
+    if (!prior.length) throw new Error("Die ursprüngliche Zahlung ist noch keinem Mietmonat zugeordnet.");
+    const requested = payload.amount == null ? Number(original.amount || 0) : Number(payload.amount || 0);
+    if (!(requested > 0)) throw new Error("Rücklastschriftbetrag ist ungültig.");
+    const reversal = { id: uid("payment"), buildingId: original.buildingId || context.buildingId || "", unitId: original.unitId || "", leaseId: original.leaseId || prior[0]?.leaseId || "", direction: "outflow", kind: "rent-reversal", rentReversal: true, reversesPaymentId: original.id, date: String(payload.date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)), amount: requested, label: String(payload.label || `Rücklastschrift ${original.label || "Mietzahlung"}`), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    state.payments.push(reversal);
+    let remaining = requested;
+    const allocations = [];
+    for (const a of prior) {
+      if (remaining <= 5e-3) break;
+      const max = Number(a.total || 0), part = Math.min(remaining, max), ratio = max > 0 ? part / max : 0;
+      allocations.push({ leaseId: a.leaseId, month: a.month, rentAmount: Number(a.rentAmount || 0) * ratio, advanceAmount: Number(a.advanceAmount || 0) * ratio, total: part });
+      remaining -= part;
+    }
+    AppLifecycleLedger.replacePaymentAllocations(state, reversal.id, allocations);
+    return reversal;
+  }
   return __toCommonJS(index_exports);
 })();
 
@@ -1810,6 +2400,8 @@ var AppPresentation = (() => {
     "payments",
     "billingWorkflows",
     "billingSnapshots",
+    "rentAllocations",
+    "meterReplacements",
     "containers",
     "water"
   ];
@@ -1901,6 +2493,8 @@ var AppPresentation = (() => {
       payments: scoped(records2(state.payments), buildingId),
       billingWorkflows: scoped(records2(state.billingWorkflows), buildingId),
       billingSnapshots: scoped(records2(state.billingSnapshots), buildingId),
+      rentAllocations: scoped(records2(state.rentAllocations), buildingId),
+      meterReplacements: scoped(records2(state.meterReplacements), buildingId),
       containers: scoped(records2(state.containers), buildingId),
       water: scoped(records2(state.water), buildingId)
     };
@@ -2494,6 +3088,9 @@ var AppIntegrity = (() => {
     const portfolioIssues = AppPortfolioModel.validatePortfolioModel(value);
     issues.errors.push(...portfolioIssues.errors);
     issues.warnings.push(...portfolioIssues.warnings);
+    const lifecycleIssues = AppLifecycleLedger.validateLifecycleState(value);
+    issues.errors.push(...lifecycleIssues.errors);
+    issues.warnings.push(...lifecycleIssues.warnings);
     for (const [key, label] of [
       ["units", "Einheiten"],
       ["leases", "Mietverträge"],
@@ -2504,7 +3101,9 @@ var AppIntegrity = (() => {
       ["containers", "Behälter"],
       ["tasks", "Aufgaben"],
       ["payments", "Zahlungen"],
-      ["billingSnapshots", "Snapshots"]
+      ["billingSnapshots", "Snapshots"],
+      ["rentAllocations", "Mietkonto-Zuordnungen"],
+      ["meterReplacements", "Zählerwechsel"]
     ]) {
       uniqueIds(value[key], label, issues);
     }
@@ -2551,6 +3150,7 @@ var AppIntegrity = (() => {
     repaired = migrateDomainState(repaired);
     ensureDefaultMeters(repaired);
     repaired = AppPortfolioModel.ensurePortfolioModel(repaired);
+    repaired = AppLifecycleLedger.ensureLifecycleState(repaired);
     for (const meter of repaired.meters || []) {
       meter.readings = Array.isArray(meter.readings) ? meter.readings : [];
       const seen = /* @__PURE__ */ new Set();
@@ -3283,11 +3883,16 @@ var AppPropertyDomain = (() => {
   function settlementConsumption(state, settlement) {
     if (!settlement) return null;
     const main = meterById(state, settlement.mainMeterId), owner = meterById(state, settlement.ownerMeterId);
+    const bp = Number.isInteger(Number(settlement.periodYear)) ? billingPeriodInfo(state, Number(settlement.periodYear)) : null;
+    const buildingId = String(settlement.buildingId || main?.buildingId || owner?.buildingId || state?.meta?.primaryBuildingId || "");
+    if (bp && AppLifecycleLedger.replacementsInPeriod(state, bp.start, bp.end, buildingId).length) {
+      const chained = AppLifecycleLedger.waterConsumptionBetween(state, bp.start, bp.end, buildingId);
+      return { ...chained, periodAligned: true, valid: !!chained.valid };
+    }
     const ms = readingById(main, settlement.mainStartReadingId), me = readingById(main, settlement.mainEndReadingId);
     const os = readingById(owner, settlement.ownerStartReadingId), oe = readingById(owner, settlement.ownerEndReadingId);
     if (!ms || !me || !os || !oe) return null;
     const house = Number(me.value) - Number(ms.value), own = Number(oe.value) - Number(os.value), tenant = house - own;
-    const bp = Number.isInteger(Number(settlement.periodYear)) ? billingPeriodInfo(state, Number(settlement.periodYear)) : null;
     const periodAligned = !bp || ms.date === bp.start && os.date === bp.start && me.date === bp.end && oe.date === bp.end;
     return {
       house,
@@ -3342,7 +3947,7 @@ var AppPropertyDomain = (() => {
     const events = bp.active ? (s.costPositions || []).flatMap((p) => positionToEvents(s, p, periodYear)).map((e) => allocateCostPosition(s, e, periodYear)) : [];
     const unresolved = events.filter((e) => e.decision.status === "check" || e.decision.rule === "manual");
     const tenantCosts = events.reduce((sum, e) => sum + Number(e.tenantAmount || 0), 0);
-    const lease = s.leases[0], advanceEvidence = actualAdvanceEvidenceInPeriod(s, lease, periodYear), advances = advanceEvidence.amount;
+    const lease = (s.leases || []).find((l) => (!l.start || l.start <= bp.end) && (!l.end || l.end >= bp.start)) || s.leases[0], advanceEvidence = actualAdvanceEvidenceInPeriod(s, lease, periodYear), advances = advanceEvidence.amount;
     return { events, unresolved, tenantCosts, advances, advanceEvidence, result: tenantCosts - advances, lease, period: bp };
   }
   function syncSimpleSourcePosition(state, source) {
@@ -3714,6 +4319,8 @@ var AppBillingDomain = (() => {
     if (!lease) return { amount: 0, recognizedPayments: 0 };
     const bp = billingPeriodInfo(s, periodYear);
     if (!bp.active) return { amount: 0, recognizedPayments: 0 };
+    const ledger = AppLifecycleLedger.actualAdvanceFromLedger(s, lease, bp.start, bp.end);
+    if (Number(ledger.allocationCount || 0) > 0) return ledger;
     const start = lease.start && lease.start > bp.start ? lease.start : bp.start, end = lease.end && lease.end < bp.end ? lease.end : bp.end;
     let amount = 0, recognizedPayments = 0;
     for (const payment of s.payments || []) {
@@ -3762,13 +4369,17 @@ var AppBillingDomain = (() => {
     }
     return rows;
   }
-  function snapshotFor(state2, periodYear) {
-    return (state2.billingSnapshots || []).find((s) => Number(s.periodYear) === Number(periodYear));
+  function snapshotFor(state2, periodYear, leaseId = "") {
+    return AppLifecycleLedger.latestSnapshotFor(state2, periodYear, leaseId);
   }
-  function createBillingSnapshot(state2, periodYear) {
-    const analysis = billingAnalysis(state2, periodYear), waterConsumption = settlementConsumption(state2, settlementByPeriod(state2, periodYear));
-    return {
+  function createBillingSnapshot(state2, periodYear, options = {}) {
+    const base = billingAnalysis(state2, periodYear), leaseId = String(options.leaseId || "");
+    const analysis = leaseId ? AppLifecycleLedger.leaseBillingAnalysis(state2, base, periodYear, leaseId) : base;
+    const waterConsumption = analysis.waterConsumption || settlementConsumption(state2, settlementByPeriod(state2, periodYear));
+    const snapshot = {
       id: uid(),
+      buildingId: String(analysis.lease?.buildingId || state2.meta?.primaryBuildingId || ""),
+      leaseId,
       periodYear: Number(periodYear),
       period: structuredClone(analysis.period),
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -3789,6 +4400,7 @@ var AppBillingDomain = (() => {
       result: Number(analysis.result || 0),
       frozen: true
     };
+    return AppLifecycleLedger.decorateSnapshotRevision(state2, snapshot, options);
   }
   return __toCommonJS(billing_domain_exports);
 })();
@@ -4393,19 +5005,11 @@ var AppSmartEngine = (() => {
     return !!lease && (!lease.start || lease.start <= end) && (!lease.end || lease.end >= start);
   }
   function rentMonthStatus(state, key = smartMonthKey()) {
+    AppLifecycleLedger.ensureLifecycleState(state);
     const lease = (state.leases || []).find((l) => activeLeaseInMonth(l, key));
     if (!lease) return { key, status: "none", expected: 0, paid: 0, confidence: 0, payments: [] };
-    const expected = Number(lease.rent || 0) + Number(lease.advance || 0), tenant = normalizeLabelText(lease.tenantName || "");
-    const pays = (state.payments || []).filter((p) => p.direction === "income" && paymentMonthKey(p.date) === key).filter((p) => {
-      const label = normalizeLabelText(p.label), det = detectRentPayment(state, p);
-      return det?.leaseId === lease.id || /\bmiete\b|betriebskosten|nebenkosten|\bbk\b/.test(label) || tenant && label.includes(tenant);
-    });
-    const paid = pays.reduce((s, p) => s + Number(p.amount || 0), 0), ratio = expected ? paid / expected : 0;
-    let status = paid <= 0 ? "missing" : ratio >= 0.995 ? "paid" : "partial";
-    if (ratio > 1.08) status = "over";
-    let confidence = 0;
-    if (pays.length) confidence = Math.max(...pays.map((p) => Number(detectRentPayment(state, p)?.score || (/\bmiete\b/.test(normalizeLabelText(p.label)) ? 70 : 45))));
-    return { key, lease, expected, paid, difference: paid - expected, status, confidence, payments: pays };
+    const row = AppLifecycleLedger.ledgerRow(state, lease, key), paymentIds = new Set((row.allocations || []).map((a) => a.paymentId));
+    return { key, lease, expected: row.total, paid: row.paid, difference: row.difference, status: row.status === "overpaid" ? "over" : row.status, confidence: (row.allocations || []).length ? 100 : 0, payments: (state.payments || []).filter((p) => paymentIds.has(p.id)) };
   }
   function rentMonitor(state, months = 8) {
     return Array.from({ length: months }, (_, i) => rentMonthStatus(state, smartMonthOffset(-i)));
@@ -4414,7 +5018,7 @@ var AppSmartEngine = (() => {
     return s.status === "paid" ? "vollständig erkannt" : s.status === "partial" ? "teilweise erkannt" : s.status === "over" ? "über Soll erkannt" : s.status === "missing" ? "noch nicht erkannt" : "kein aktiver Mietvertrag";
   }
   function latestBillingSnapshot(state) {
-    return (state.billingSnapshots || []).slice().sort((a, b) => Number(b.periodYear) - Number(a.periodYear))[0] || null;
+    return (state.billingSnapshots || []).slice().sort((a, b) => Number(b.periodYear) - Number(a.periodYear) || Number(b.version || 1) - Number(a.version || 1) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
   }
   function billingProjection(s, year = currentPeriodYear()) {
     const current = billingAnalysis(s, year), cur = periodCategoryTotals(s, year), prior = periodCategoryTotals(s, year - 1), pp = billingPeriodInfo(s, year - 1), currentCats = new Set(cur.filter((x) => x.total > 0).map((x) => x.category)), factor = pp.active && pp.days > 0 ? pp.nominalDays / pp.days : 1;
@@ -4796,6 +5400,7 @@ var AppV18Assistant = (() => {
   }
   function smartInsights(state) {
     const out = [], today = smartToday(), rent = rentMonthStatus(state), proj = billingProjection(state), paymentPlan = smartPaymentPlan(state), todayDay = Number(today.slice(8, 10)), rentAttention = rentAttentionDay(state);
+    for (const item of AppLifecycleLedger.lifecycleAlerts(state, String(state?.meta?.primaryBuildingId || ""), today)) out.push({ ...item, why: "Vermietungs-Lifecycle & explizites Mietkonto", confidence: 100 });
     for (const c of billingReadiness(state, currentPeriodYear()).filter((x) => !x.ok)) out.push({ id: `ready-${c.id}`, severity: "warn", title: c.label, detail: "Die Abrechnung ist an dieser Stelle noch nicht vollständig.", why: "Abschlussprüfung", confidence: 100, route: c.route, sub: c.sub });
     if (rent.status === "missing" && Number(rent.expected) > 0 && todayDay >= rentAttention) {
       const late = todayDay - rentAttention;
@@ -4834,6 +5439,7 @@ var AppV18Assistant = (() => {
     return s === "bad" ? 400 : s === "warn" ? 260 : s === "info" ? 100 : 0;
   }
   function decisionActionLabel(x) {
+    if (x.route === "rental" && x.sub === "lifecycle") return "Mietkonto öffnen";
     if (x.route === "rental" && x.sub === "calculation") return "Abrechnung prüfen";
     if (x.route === "rental" && x.sub === "water") return "Wasser prüfen";
     if (x.route === "owner" && x.sub === "cashflow") return "Zahlungen öffnen";
@@ -5395,6 +6001,221 @@ var AppBuildingWorkspaceUi = (() => {
     });
   }
   return __toCommonJS(building_workspace_ui_exports);
+})();
+
+
+/* ===== compiled src/ui/rental-lifecycle-ui.ts ===== */
+"use strict";
+var AppRentalLifecycleUi = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/ui/rental-lifecycle-ui.ts
+  var rental_lifecycle_ui_exports = {};
+  __export(rental_lifecycle_ui_exports, {
+    RENTAL_LIFECYCLE_UI_VERSION: () => RENTAL_LIFECYCLE_UI_VERSION,
+    billingLifecycleContext: () => billingLifecycleContext,
+    renderCompactLedger: () => renderCompactLedger,
+    renderRentalLifecycle: () => renderRentalLifecycle
+  });
+  var RENTAL_LIFECYCLE_UI_VERSION = 1;
+  var q = (id) => document.getElementById(id);
+  var money = (v) => Math.max(0, Number(v) || 0);
+  var statusLabel = (s) => s === "paid" ? "Bezahlt" : s === "partial" ? "Teilzahlung" : s === "missing" ? "Offen" : s === "overpaid" ? "Überzahlt" : "–";
+  var statusClass = (s) => s === "paid" ? "good" : s === "overpaid" ? "good" : s === "partial" ? "warn" : "bad";
+  function fmtMonth(month) {
+    const [y, m] = month.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString("de-DE", { month: "short", year: "numeric" });
+  }
+  function currentMonth() {
+    const d = /* @__PURE__ */ new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+  function remainingForPayment(state, p) {
+    const used = AppLifecycleLedger.paymentAllocations(state, p.id).reduce((s, a) => s + Number(a.total || 0), 0);
+    return Math.max(0, Number(p.amount || 0) - used);
+  }
+  function billingLifecycleContext(state, year, baseClosure, requestedLeaseId = "") {
+    AppLifecycleLedger.ensureLifecycleState(state);
+    const buildingId = String(state?.meta?.presentationBuildingId || state?.meta?.primaryBuildingId || "");
+    const leases = AppLifecycleLedger.leasesForBillingYear(state, year, buildingId);
+    const selectedLease = leases.find((l) => String(l.id) === String(requestedLeaseId)) || leases[0] || baseClosure?.analysis?.lease || null;
+    let analysis = baseClosure?.analysis || {}, points = [...baseClosure?.points || []], ok = !!baseClosure?.ok, lifecycleIssues = [];
+    if (selectedLease && leases.length > 1) {
+      analysis = AppLifecycleLedger.leaseBillingAnalysis(state, analysis, year, String(selectedLease.id));
+      points = points.map((x) => x.id === "advance" ? { ...x, ok: Number(analysis.advanceEvidence?.recognizedPayments || 0) > 0, label: "Vorauszahlungen dieses Mietverhältnisses sind im Mietkonto zugeordnet" } : x);
+      lifecycleIssues = (analysis.unresolved || []).filter((x) => ![...baseClosure?.analysis?.unresolved || []].some((b) => b === x || b.id && b.id === x.id));
+      ok = points.every((x) => x.ok) && !(analysis.unresolved || []).length;
+    }
+    const selectedLeaseId = String(selectedLease?.id || ""), snapshot = AppLifecycleLedger.latestSnapshotFor(state, year, selectedLeaseId);
+    return { year, buildingId, leases, selectedLease, selectedLeaseId, analysis, closure: { ...baseClosure, analysis, points, ok }, snapshot, lifecycleIssues, history: AppLifecycleLedger.billingRevisionHistory(state, year, selectedLeaseId) };
+  }
+  function renderCompactLedger(state, h) {
+    AppLifecycleLedger.ensureLifecycleState(state);
+    const model = AppLifecycleLedger.rentLedger(state, { buildingId: String(state?.meta?.primaryBuildingId || "") }), rows = model.rows.slice(-12).reverse();
+    return `<section id="v17RentLedger" class="card"><div class="card-head"><div><p class="eyebrow">MIETKONTO</p><h3>Soll, Ist & Zuordnung</h3></div><span class="pill ${model.open > 0.01 ? "warn" : "good"}">${model.open > 0.01 ? `${h.euro(model.open)} offen` : "Ausgeglichen"}</span></div>
+  <div class="grid cards"><article class="card metric-card"><span>Soll 12M</span><strong>${h.euro(model.expected)}</strong></article><article class="card metric-card"><span>Zugeordnet</span><strong>${h.euro(model.paid)}</strong></article><article class="card metric-card"><span>Offen</span><strong>${h.euro(model.open)}</strong></article></div>
+  <div class="tablewrap"><table class="costtable"><thead><tr><th>Monat</th><th>Soll</th><th>Zugeordnet</th><th>Differenz</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${fmtMonth(r.month)}</td><td>${h.euro(r.total)}</td><td>${h.euro(r.paid)}</td><td>${h.euro(r.difference)}</td><td><span class="pill ${statusClass(r.status)}">${statusLabel(r.status)}</span></td></tr>`).join("")}</tbody></table></div><p class="muted">Ab G basiert das Mietkonto auf zeitanteiligem Soll und expliziten Zahlungszuordnungen. Historische Daten bleiben erhalten.</p></section>`;
+  }
+  function tenancyCard(p, lease) {
+    const { esc, euro, dateDE } = p, terms = (lease.terms || []).slice().sort((a, b) => String(b.effectiveFrom).localeCompare(String(a.effectiveFrom))), latest = terms[0] || lease, moveIn = lease.handover?.moveIn, moveOut = lease.handover?.moveOut;
+    return `<article class="card" data-tenancy-card="${esc(lease.id)}"><div class="card-head"><div><p class="eyebrow">${lease.end ? "MIETVERHÄLTNIS" : "AKTIVES MIETVERHÄLTNIS"}</p><h3>${esc(lease.tenantName || "Mieter/in")}</h3></div><span class="pill ${lease.end ? "" : "good"}">${dateDE(lease.start)}${lease.end ? ` – ${dateDE(lease.end)}` : " – laufend"}</span></div>
+    <div class="fact-row"><span>Kaltmiete aktuell</span><strong>${euro(latest.rent)} / Monat</strong></div><div class="fact-row"><span>BK-Vorauszahlung aktuell</span><strong>${euro(latest.advance)} / Monat</strong></div><div class="fact-row"><span>Vertragsstände</span><strong>${terms.length}</strong></div>
+    <div class="fact-row"><span>Einzugsübergabe</span><strong>${moveIn ? `✓ ${dateDE(moveIn.date)}` : "fehlt"}</strong></div><div class="fact-row"><span>Auszugsübergabe</span><strong>${lease.end ? moveOut ? `✓ ${dateDE(moveOut.date)}` : "fehlt" : "–"}</strong></div>
+    <div class="row"><button class="secondary compact" data-term="${esc(lease.id)}">Miete/BK ändern</button><button class="secondary compact" data-handover="${esc(lease.id)}">Übergabe</button>${!lease.end ? `<button class="secondary compact" data-close-tenancy="${esc(lease.id)}">Auszug</button>` : ""}</div>
+    ${terms.length > 1 ? `<details class="secondary-detail"><summary>Vertragshistorie</summary><div class="detail-content">${terms.map((t) => `<div class="fact-row"><span>${dateDE(t.effectiveFrom)}</span><strong>${euro(t.rent)} + ${euro(t.advance)} BK</strong></div>`).join("")}</div></details>` : ""}</article>`;
+  }
+  function openTenancy(p) {
+    const units = (p.state.units || []).filter((u) => u.type === "rental" && (!p.activeBuildingId || u.buildingId === p.activeBuildingId));
+    if (!units.length) return alert("Bitte zuerst eine Mietwohnung anlegen.");
+    p.modal("Mietverhältnis anlegen", `<form id="gTenancyForm" class="form-grid">${p.formField({ name: "tenantName", label: "Mieter/in", value: "" })}${p.formField({ name: "tenantAddress", label: "Korrespondenzadresse", value: "", full: true })}${p.formField({ name: "unitId", label: "Mietwohnung", type: "select", value: units[0].id, options: units.map((u) => ({ value: u.id, label: u.name || "Mietwohnung" })) })}${p.formField({ name: "start", label: "Vertragsbeginn", type: "date", value: "" })}${p.formField({ name: "end", label: "Vertragsende (optional)", type: "date", value: "" })}${p.formField({ name: "rent", label: "Kaltmiete €", type: "number", step: "0.01", min: 0, value: "" })}${p.formField({ name: "advance", label: "BK-Vorauszahlung €", type: "number", step: "0.01", min: 0, value: "" })}${p.formField({ name: "note", label: "Notiz", value: "", full: true })}<div class="full form-actions"><button class="primary">Anlegen</button></div></form>`, () => {
+      const form = q("gTenancyForm");
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(form));
+        const result = await p.executeCommand("tenancy.create", v, () => AppApplication.createTenancyCommand(p.state, v, { buildingId: p.activeBuildingId, unitId: String(v.unitId || "") }), { auditText: "Mietverhältnis angelegt", restorePoint: true });
+        if (!result.ok) return alert(result.message);
+        p.closeModal(true);
+        p.rerender();
+      };
+    });
+  }
+  function openTerm(p, lease) {
+    const latest = AppLifecycleLedger.leaseTermAt(lease, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
+    p.modal("Miete / Vorauszahlung ändern", `<form id="gTermForm" class="form-grid">${p.formField({ name: "effectiveFrom", label: "Gültig ab", type: "date", value: "" })}${p.formField({ name: "rent", label: "Kaltmiete €", type: "number", step: "0.01", min: 0, value: latest.rent })}${p.formField({ name: "advance", label: "BK-Vorauszahlung €", type: "number", step: "0.01", min: 0, value: latest.advance })}${p.formField({ name: "reason", label: "Grund / Notiz", value: "Anpassung", full: true })}<div class="full info">Der bisherige Vertragsstand wird nicht überschrieben. Ab dem Stichtag entsteht ein neuer historischer Vertragsstand.</div><div class="full form-actions"><button class="primary">Änderung speichern</button></div></form>`, () => {
+      const form = q("gTermForm");
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(form));
+        const payload = { ...v, leaseId: lease.id, rent: money(v.rent), advance: money(v.advance) };
+        const result = await p.executeCommand("tenancy.term.add", payload, () => AppApplication.addLeaseTermCommand(p.state, payload), { auditText: "Vertragsstand ergänzt", restorePoint: true });
+        if (!result.ok) return alert(result.message);
+        p.closeModal(true);
+        p.rerender();
+      };
+    });
+  }
+  function openClose(p, lease) {
+    p.modal("Auszug erfassen", `<form id="gCloseForm" class="form-grid">${p.formField({ name: "end", label: "Vertragsende / Auszug", type: "date", value: lease.end || "" })}${p.formField({ name: "note", label: "Notiz", value: "", full: true })}<div class="full legal-warn"><strong>Danach Übergabestände erfassen.</strong><br>Die App trennt Soll, Vorauszahlungen und Verbrauch am Auszugsdatum.</div><div class="full form-actions"><button class="primary">Auszug speichern</button></div></form>`, () => {
+      const form = q("gCloseForm");
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(form)), payload = { ...v, leaseId: lease.id };
+        const result = await p.executeCommand("tenancy.close", payload, () => AppApplication.closeTenancyCommand(p.state, payload), { auditText: "Mietverhältnis beendet", restorePoint: true });
+        if (!result.ok) return alert(result.message);
+        p.closeModal(true);
+        p.rerender();
+      };
+    });
+  }
+  function openHandover(p, lease) {
+    const canOut = !!lease.end, kind = canOut && !lease.handover?.moveOut ? "move-out" : "move-in", date = kind === "move-out" ? lease.end : lease.start;
+    p.modal(kind === "move-out" ? "Auszugsübergabe" : "Einzugsübergabe", `<form id="gHandoverForm" class="form-grid"><label><span>Art</span><select name="kind"><option value="move-in" ${kind === "move-in" ? "selected" : ""}>Einzug</option>${canOut ? `<option value="move-out" ${kind === "move-out" ? "selected" : ""}>Auszug</option>` : ""}</select></label>${p.formField({ name: "date", label: "Übergabedatum", type: "date", value: date })}${p.formField({ name: "persons", label: "Personenzahl", type: "number", step: "1", min: 0, value: "" })}${p.formField({ name: "mainValue", label: "Hauptwasserzähler", type: "number", step: "0.001", value: "" })}${p.formField({ name: "ownerValue", label: "Zwischenzähler Eigennutzung", type: "number", step: "0.001", value: "" })}${p.formField({ name: "note", label: "Notiz", value: "", full: true })}<div class="full info">Für eine saubere Kaltwassertrennung bei Mieterwechseln werden beide Zählerstände am selben Übergabedatum gespeichert.</div><div class="full form-actions"><button class="primary">Übergabe speichern</button></div></form>`, () => {
+      const form = q("gHandoverForm");
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(form)), payload = { leaseId: lease.id, kind: v.kind, date: v.date, persons: Number(v.persons) || 0, note: v.note, readings: [{ role: "mainWater", value: Number(v.mainValue) }, { role: "ownerWater", value: Number(v.ownerValue) }] };
+        const result = await p.executeCommand("tenancy.handover", payload, () => AppApplication.recordHandoverCommand(p.state, payload), { auditText: "Übergabe dokumentiert", restorePoint: true });
+        if (!result.ok) return alert(result.message);
+        p.closeModal(true);
+        p.rerender();
+      };
+    });
+  }
+  function openAllocation(p) {
+    const payments = (p.state.payments || []).filter((x) => x.direction === "income" && remainingForPayment(p.state, x) > 0.01), leases = (p.state.leases || []).filter((l) => !p.activeBuildingId || l.buildingId === p.activeBuildingId);
+    if (!payments.length) return alert("Keine noch zuzuordnende Einnahme vorhanden.");
+    if (!leases.length) return alert("Kein Mietverhältnis vorhanden.");
+    p.modal("Mietzahlung zuordnen", `<form id="gAllocForm" class="form-grid"><label class="full"><span>Zahlung</span><select name="paymentId">${payments.map((x) => `<option value="${p.esc(x.id)}">${p.esc(x.date)} · ${p.euro(remainingForPayment(p.state, x))} frei · ${p.esc(x.label || "")}</option>`).join("")}</select></label><label class="full"><span>Mietverhältnis</span><select name="leaseId">${leases.map((l) => `<option value="${p.esc(l.id)}">${p.esc(l.tenantName || l.id)}</option>`).join("")}</select></label>${p.formField({ name: "month", label: "Mietmonat", type: "month", value: currentMonth() })}${p.formField({ name: "total", label: "Betrag €", type: "number", step: "0.01", min: 0, value: "" })}<div class="full info">Die App ordnet den Betrag zuerst der Kaltmiete und danach der BK-Vorauszahlung des gewählten Monats zu. Eine Zahlung kann anschließend auf weitere Monate verteilt werden.</div><div class="full form-actions"><button class="primary">Zuordnen</button></div></form>`, () => {
+      const form = q("gAllocForm");
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(form)), payment = p.state.payments.find((x) => x.id === v.paymentId), total = money(v.total) || remainingForPayment(p.state, payment), payload = { paymentId: v.paymentId, allocations: [{ leaseId: v.leaseId, month: v.month, total }] };
+        const existing = AppLifecycleLedger.paymentAllocations(p.state, String(v.paymentId));
+        if (existing.length) payload.allocations = [...existing.map((a) => ({ leaseId: a.leaseId, month: a.month, rentAmount: a.rentAmount, advanceAmount: a.advanceAmount, total: a.total })), ...payload.allocations];
+        const result = await p.executeCommand("rent.allocate", payload, () => AppApplication.allocateRentPaymentCommand(p.state, payload), { auditText: "Mietzahlung zugeordnet" });
+        if (!result.ok) return alert(result.message);
+        p.closeModal(true);
+        p.rerender();
+      };
+    });
+  }
+  function openReversal(p) {
+    const candidates = (p.state.payments || []).filter((x) => x.direction === "income" && AppLifecycleLedger.paymentAllocations(p.state, x.id).length);
+    if (!candidates.length) return alert("Keine zugeordnete Mietzahlung für eine Rücklastschrift vorhanden.");
+    p.modal("Rücklastschrift erfassen", `<form id="gReverseForm" class="form-grid"><label class="full"><span>Ursprüngliche Zahlung</span><select name="paymentId">${candidates.map((x) => `<option value="${p.esc(x.id)}">${p.esc(x.date)} · ${p.euro(x.amount)} · ${p.esc(x.label || "")}</option>`).join("")}</select></label>${p.formField({ name: "date", label: "Rücklastschrift am", type: "date", value: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) })}${p.formField({ name: "amount", label: "Betrag € (leer = vollständig)", type: "number", step: "0.01", min: 0, value: "" })}${p.formField({ name: "label", label: "Bezeichnung", value: "Rücklastschrift Miete", full: true })}<div class="full legal-warn">Die ursprüngliche Buchung wird nicht gelöscht. Die Rücklastschrift erhält eine negative Gegenbuchung im Mietkonto.</div><div class="full form-actions"><button class="primary">Rücklastschrift buchen</button></div></form>`, () => {
+      const form = q("gReverseForm");
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(form)), payload = { ...v, amount: v.amount ? Number(v.amount) : void 0 };
+        const result = await p.executeCommand("rent.reversal", payload, () => AppApplication.createRentReversalCommand(p.state, payload, { buildingId: p.activeBuildingId }), { auditText: "Miet-Rücklastschrift erfasst", restorePoint: true });
+        if (!result.ok) return alert(result.message);
+        p.closeModal(true);
+        p.rerender();
+      };
+    });
+  }
+  function openReplacement(p) {
+    const meters = (p.state.meters || []).filter((m) => !m.removedAt && ["mainWater", "ownerWater"].includes(m.role));
+    if (!meters.length) return alert("Kein aktiver Wasserzähler vorhanden.");
+    p.modal("Zähler wechseln", `<form id="gMeterForm" class="form-grid"><label class="full"><span>Ausgebauter Zähler</span><select name="oldMeterId">${meters.map((m) => `<option value="${p.esc(m.id)}">${p.esc(m.name)} · ${p.esc(m.number || "ohne Nummer")}</option>`).join("")}</select></label>${p.formField({ name: "date", label: "Wechseldatum", type: "date", value: "" })}${p.formField({ name: "oldValue", label: "Ausbaustand", type: "number", step: "0.001", value: "" })}${p.formField({ name: "newNumber", label: "Neue Zählernummer", value: "" })}${p.formField({ name: "newValue", label: "Einbaustand", type: "number", step: "0.001", value: "0" })}${p.formField({ name: "reason", label: "Grund / Notiz", value: "Zählerwechsel", full: true })}<div class="full info">Alter Zähler und neuer Zähler werden als getrennte Geräte verkettet. Verbrauch wird über beide Geräte addiert; ein neuer Zähler darf deshalb wieder bei 0 starten.</div><div class="full form-actions"><button class="primary">Wechsel speichern</button></div></form>`, () => {
+      const form = q("gMeterForm");
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = Object.fromEntries(new FormData(form)), payload = { ...v, oldValue: Number(v.oldValue), newValue: Number(v.newValue) };
+        const result = await p.executeCommand("meter.replace", payload, () => AppApplication.recordMeterReplacementCommand(p.state, payload), { auditText: "Zählerwechsel dokumentiert", restorePoint: true });
+        if (!result.ok) return alert(result.message);
+        p.closeModal(true);
+        p.rerender();
+      };
+    });
+  }
+  function renderRentalLifecycle(p) {
+    AppLifecycleLedger.ensureLifecycleState(p.state);
+    const m = AppApplication.lifecycleWorkspaceModel(p.state, { buildingId: p.activeBuildingId }), rows = m.ledger.rows.slice(-18).reverse(), unallocated = (p.state.payments || []).filter((x) => x.direction === "income" && remainingForPayment(p.state, x) > 0.01);
+    p.host.innerHTML = `<div class="grid cards"><article class="card metric-card"><span>Mietverhältnisse</span><strong>${m.leases.length}</strong><small>${m.active ? `${p.esc(m.active.tenantName || "aktiv")}` : "aktuell keines"}</small></article><article class="card metric-card"><span>Offener Sollsaldo</span><strong>${p.euro(m.ledger.open)}</strong><small>explizites Mietkonto</small></article><article class="card metric-card"><span>Nicht zugeordnete Einnahmen</span><strong>${unallocated.length}</strong><small>noch im Mietkonto prüfen</small></article><article class="card metric-card"><span>Zählerwechsel</span><strong>${m.replacements.length}</strong><small>historisch verkettet</small></article></div>
+  ${m.alerts.length ? `<section class="card"><div class="card-head"><div><p class="eyebrow">HANDLUNGSBEDARF</p><h3>${m.alerts.length} Lifecycle-Hinweis(e)</h3></div></div>${m.alerts.slice(0, 6).map((a) => `<div class="legal-warn"><strong>${p.esc(a.title)}</strong><br>${p.esc(a.detail)}</div>`).join("")}</section>` : "<div class='legal-ok'><strong>Lifecycle vollständig</strong><br>Aktuell fehlen keine Übergabe- oder Mietkonto-Schritte.</div>"}
+  <section class="card"><div class="card-head"><div><p class="eyebrow">MIETVERHÄLTNISSE</p><h3>Historie statt Überschreiben</h3></div><button id="gAddTenancy" class="primary compact">Mietverhältnis</button></div><p class="muted">Mieterwechsel und Änderungen von Kaltmiete/BK werden mit Stichtag gespeichert. Alte Abrechnungsjahre behalten ihren damaligen Vertragsstand.</p></section>${m.leases.map((l) => tenancyCard(p, l)).join("") || "<div class='empty-state'><strong>Noch kein Mietverhältnis</strong><p>Lege das erste Mietverhältnis an.</p></div>"}
+  <section class="card"><div class="card-head"><div><p class="eyebrow">MIETKONTO</p><h3>Monatliches Soll gegen echte Zahlungen</h3></div><div class="row"><button id="gAllocate" class="primary compact">Zahlung zuordnen</button><button id="gReverse" class="secondary compact">Rücklastschrift</button></div></div><div class="tablewrap"><table class="costtable"><thead><tr><th>Monat</th><th>Mieter/in</th><th>Soll</th><th>Zugeordnet</th><th>Differenz</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${fmtMonth(r.month)}</td><td>${p.esc(r.tenantName)}</td><td>${p.euro(r.total)}</td><td>${p.euro(r.paid)}</td><td>${p.euro(r.difference)}</td><td><span class="pill ${statusClass(r.status)}">${statusLabel(r.status)}</span></td></tr>`).join("")}</tbody></table></div></section>
+  <section class="card"><div class="card-head"><div><p class="eyebrow">ZÄHLER-LIFECYCLE</p><h3>Gerätewechsel ohne Verbrauchssprung</h3></div><button id="gReplaceMeter" class="primary compact">Zähler wechseln</button></div>${m.replacements.length ? m.replacements.map((r) => {
+      const old = p.state.meters.find((x) => x.id === r.oldMeterId), fresh = p.state.meters.find((x) => x.id === r.newMeterId);
+      return `<div class="fact-row"><span>${p.dateDE(r.date)} · ${p.esc(old?.name || r.role)}</span><strong>${p.esc(old?.number || "alt")} → ${p.esc(fresh?.number || "neu")}</strong></div>`;
+    }).join("") : "<p class='muted'>Noch kein Zählerwechsel dokumentiert.</p>"}</section>
+  <section class="card"><div class="card-head"><div><p class="eyebrow">ABRECHNUNGSVERSIONEN</p><h3>Revisionshistorie</h3></div><button id="gOpenBilling" class="secondary compact">Abrechnung öffnen</button></div>${m.snapshots.length ? m.snapshots.slice(0, 12).map((s) => `<div class="fact-row"><span>${s.periodYear} · ${p.esc(s.lease?.tenantName || "Mietverhältnis")} · Version ${Number(s.version || 1)}</span><strong>${p.euro(s.result)}</strong></div>`).join("") : "<p class='muted'>Noch keine eingefrorene Abrechnung vorhanden.</p>"}</section>`;
+    q("gAddTenancy").onclick = () => openTenancy(p);
+    q("gAllocate").onclick = () => openAllocation(p);
+    q("gReverse").onclick = () => openReversal(p);
+    q("gReplaceMeter").onclick = () => openReplacement(p);
+    q("gOpenBilling").onclick = () => p.go("rental", "billing");
+    document.querySelectorAll("[data-term]").forEach((b) => b.onclick = () => {
+      const l = p.state.leases.find((x) => x.id === b.dataset.term);
+      if (l) openTerm(p, l);
+    });
+    document.querySelectorAll("[data-close-tenancy]").forEach((b) => b.onclick = () => {
+      const l = p.state.leases.find((x) => x.id === b.dataset.closeTenancy);
+      if (l) openClose(p, l);
+    });
+    document.querySelectorAll("[data-handover]").forEach((b) => b.onclick = () => {
+      const l = p.state.leases.find((x) => x.id === b.dataset.handover);
+      if (l) openHandover(p, l);
+    });
+  }
+  return __toCommonJS(rental_lifecycle_ui_exports);
 })();
 
 /* ===== schema.js ===== */
@@ -6827,6 +7648,7 @@ async function documentsView(autoQueue=true){
 function rentalWorkspace(){
   const tabs=[
     {id:"overview",label:"Überblick",icon:"⌂"},
+    {id:"lifecycle",label:"Mietkonto",icon:"↔"},
     {id:"water",label:"Kaltwasser",icon:"◌"},
     {id:"billing",label:"Abrechnung",icon:"€"}
   ];
@@ -6836,6 +7658,7 @@ function rentalWorkspace(){
   $("app").innerHTML=workspaceHeader("VERMIETUNG","Vermietung","Mietverhältnis, Kaltwasser und Betriebskostenabrechnung.",tabs,visibleSub("rental",active));
   bindWorkspaceTabs("rental",rentalWorkspace);
   if(active==="overview")rentalOverview();
+  else if(active==="lifecycle")rentalLifecycleView();
   else if(active==="lease")leaseDataView();
   else if(active==="water")waterRentalView();
   else calculationView()
@@ -6845,14 +7668,9 @@ function v17LedgerMonthKeys(count=12){
   for(let i=0;i<count;i++){const x=new Date(d.getFullYear(),d.getMonth()-i,1);out.push(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}`)}
   return out
 }
-function v17RentLedgerCard(s){
-  const rows=v17LedgerMonthKeys(12).map(key=>rentMonthStatus(s,key)).filter(r=>r.status!=="none");
-  const current=rentMonthStatus(s),arrears=rows.reduce((sum,r)=>sum+Math.max(0,-Number(r.difference||0)),0);
-  const pill=r=>{const c=r.status==="paid"?"good":r.status==="missing"?"bad":"warn";return `<span class="pill ${c}">${esc(rentStatusLabel(r))}</span>`};
-  return `<section id="v17RentLedger" class="card"><div class="card-head"><div><p class="eyebrow">MIETKONTO</p><h3>Mietkonto & Zahlungsstatus</h3></div>${current.status!=="none"?pill(current):""}</div>
-  <div class="grid cards"><article class="card metric-card"><span>Soll aktuell</span><strong>${euro(current.expected)}</strong></article><article class="card metric-card"><span>Erkannt aktuell</span><strong>${euro(current.paid)}</strong></article><article class="card metric-card"><span>Offener Saldo 12M</span><strong class="${arrears>0?"negative":"positive"}">${euro(arrears)}</strong></article></div>
-  <div class="tablewrap"><table class="costtable"><thead><tr><th>Monat</th><th>Soll</th><th>Erhalten</th><th>Differenz</th><th>Status</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.key)}</td><td>${euro(r.expected)}</td><td>${euro(r.paid)}</td><td class="${r.difference<-.01?"negative":"positive"}">${euro(r.difference)}</td><td>${pill(r)}</td></tr>`).join("")}</tbody></table></div>
-  <p class="muted">Erkennung aus Mietvertrag und gespeicherten Zahlungseingängen. Teil-, Fehl- und Überzahlungen bleiben sichtbar.</p></section>`
+function v17RentLedgerCard(s){return AppRentalLifecycleUi.renderCompactLedger(s,{euro,esc})}
+function rentalLifecycleView(){
+AppRentalLifecycleUi.renderRentalLifecycle({state,activeBuildingId:String(state?.meta?.presentationBuildingId||state?.meta?.primaryBuildingId||""),host:$("workspaceBody"),esc,euro,dateDE,modal,closeModal,formField,executeCommand,rerender:rentalLifecycleView,go})
 }
 function v17UtilitiesCard(s){
   const p=s.meta?.v17?.utilityProfile||{};
@@ -6903,7 +7721,7 @@ async function renderLeaseDocumentSlot(){
   }
 }
 function rentalOverview(){
-  const y=currentPeriodYear(),a=billingAnalysis(state,y),p=billingProjection(state,y),rent=rentMonthStatus(state),ctx=billingPeriodContext(state,y),cb=confidenceBand(p.confidence),l=state.leases[0];
+  const y=currentPeriodYear(),a=billingAnalysis(state,y),p=billingProjection(state,y),rent=rentMonthStatus(state),ctx=billingPeriodContext(state,y),cb=confidenceBand(p.confidence),l=AppLifecycleLedger.activeLeaseAt(state,localDateISO())||state.leases.slice().sort((x,y)=>String(y.start||"").localeCompare(String(x.start||"")))[0];
   $("workspaceBody").innerHTML=`<div class="grid cards">
     <article class="card metric-card"><span>Bestätigte Kosten Mieterin</span><strong>${euro(a.tenantCosts)}</strong><small>aktueller Rechenstand</small></article>
     <article class="card metric-card"><span>Vorauszahlungen</span><strong>${euro(a.advances)}</strong><small>für diese Periode</small></article>
@@ -6928,7 +7746,7 @@ function rentalOverview(){
   <div class="card"><div class="fact-row"><span>Mietzahlung ${esc(rent.key)}</span><strong>${rent.status==="none"?"kein aktiver Vertrag":esc(rentStatusLabel(rent))}</strong></div>${rent.status!=="none"?`<small>${euro(rent.paid)} von ${euro(rent.expected)} in erfassten Zahlungen erkannt.</small>`:""}</div>
   ${v17RentLedgerCard(state)}
   ${v17UtilitiesCard(state)}`;
-  $("editLeaseOverview").onclick=()=>openLeaseEditor(l||null);
+  $("editLeaseOverview").onclick=()=>go("rental","lifecycle");
   $("addLeaseDocument").onclick=()=>{go("data","documents");setTimeout(()=>{openDocumentCapture();setTimeout(()=>{if($("newDocLabel")&&!$("newDocLabel").value)$("newDocLabel").value="Mietvertrag"},0)},0)};
   renderLeaseDocumentSlot()
 }
@@ -6991,38 +7809,40 @@ function openWaterEditor(x=null){
   })
 }
 function calculationView(){
-  const y=selectedBillingYear(state),yearOptions=billingSelectableYears(state),closure=billingClosureChecklist(state,y),a=closure.analysis,snap=(state.billingSnapshots||[]).find(s=>Number(s.periodYear)===Number(y)),ctx=billingPeriodContext(state,y),v18=v18BillingAssistant(state,y);
+  const y=selectedBillingYear(state),yearOptions=billingSelectableYears(state),baseClosure=billingClosureChecklist(state,y),g=AppRentalLifecycleUi.billingLifecycleContext(state,y,baseClosure,sessionStorage.getItem("billingSelectedLeaseId")||""),closure=g.closure,a=g.analysis,snap=g.snapshot,ctx=billingPeriodContext(state,y),v18=v18BillingAssistant(state,y);
   const routeFor={period:["data","property"],periodComplete:["rental","billing"],costs:["data","positions"],assignment:["data","positions"],water:["rental","water"],advance:["rental","overview"],readiness:["more","smart"]};
-  $("workspaceBody").innerHTML=`<div class="card"><div class="row between"><div><p class="eyebrow">BETRIEBSKOSTENABRECHNUNG</p><h3>${billingPeriodLabel(state,y)}</h3><p class="muted">${esc(ctx.message)}</p><label style="display:block;margin-top:10px"><span class="muted">Abrechnungsperiode</span><select id="billingYearSelect" aria-label="Abrechnungsperiode">${yearOptions.map(yy=>`<option value="${yy}" ${yy===y?"selected":""}>${esc(billingPeriodLabel(state,yy))}</option>`).join("")}</select></label></div><span class="pill ${closure.ok?"good":"warn"}">${closure.ok?"Abschlussbereit":"Noch offen"}</span></div></div>
+  $("workspaceBody").innerHTML=`<div class="card"><div class="row between"><div><p class="eyebrow">BETRIEBSKOSTENABRECHNUNG</p><h3>${billingPeriodLabel(state,y)}</h3><p class="muted">${esc(ctx.message)}</p><label style="display:block;margin-top:10px"><span class="muted">Abrechnungsperiode</span><select id="billingYearSelect" aria-label="Abrechnungsperiode">${yearOptions.map(yy=>`<option value="${yy}" ${yy===y?"selected":""}>${esc(billingPeriodLabel(state,yy))}</option>`).join("")}</select></label>${g.leases.length>1?`<label style="display:block;margin-top:10px"><span class="muted">Mietverhältnis</span><select id="billingLeaseSelect" aria-label="Mietverhältnis">${g.leases.map(l=>`<option value="${esc(l.id)}" ${l.id===g.selectedLeaseId?"selected":""}>${esc(l.tenantName||l.id)} · ${dateDE(l.start)}${l.end?` – ${dateDE(l.end)}`:""}</option>`).join("")}</select></label>`:""}</div><span class="pill ${closure.ok?"good":"warn"}">${closure.ok?"Abschlussbereit":"Noch offen"}</span></div></div>
   ${v18BillingAssistantHTML(state,y,{compact:false})}
   <div class="card"><h3>Abschlussprüfung</h3><p class="muted">Offene Punkte führen direkt zur passenden Eingabe.</p>${closure.points.map((p,i)=>`<${p.ok?"div":"button"} class="closure-step ${p.ok?"done":"open actionable"}" ${p.ok?"":`data-closure="${p.id}"`}><span>${p.ok?"✓":"!"}</span><div><strong>${i+1}. ${esc(p.label)}</strong>${p.ok?"":"<small>Öffnen und beheben</small>"}</div></${p.ok?"div":"button"}>`).join("")}</div>
   <div class="grid cards"><article class="card metric-card"><span>Umlagefähige Kosten</span><strong>${euro(a.tenantCosts)}</strong></article><article class="card metric-card"><span>Vorauszahlungen</span><strong>${euro(a.advances)}</strong></article><article class="card metric-card"><span>Ergebnis</span><strong>${euro(Math.abs(a.result))}</strong><small>${a.result>=0?"Nachzahlung":"Guthaben"}</small></article></div>
   <div class="card"><h3>Abrechnungspositionen</h3>${a.events.length?`<div class="tablewrap"><table class="costtable"><thead><tr><th>Position</th><th>Gesamt</th><th>Verteilung</th><th>Mieteranteil</th><th>Herkunft</th></tr></thead><tbody>${a.events.map(e=>{const p=positionById(state,e.positionId);return`<tr><td>${esc(e.label)}</td><td>${euro(e.amount)}</td><td>${esc(formatRuleForReport(e))}</td><td>${euro(e.tenantAmount)}</td><td><button class="linkbutton" data-bill-trace="${e.positionId}">${esc(provenanceLabel(p))}</button></td></tr>`}).join("")}</tbody></table></div>`:`<div class="empty-state compact-empty"><strong>Noch keine Abrechnungspositionen</strong><p>Bestätigte Kosten der Periode erscheinen hier.</p></div>`}</div>
-  ${snap?`<div class="legal-ok"><strong>Abrechnung eingefroren</strong><br>${esc(snapshotVerification(snap).label)}</div><div class="card action-row"><button id="downloadBillingPDF" class="primary">PDF erstellen</button><button id="printBillingBtn" class="secondary">Druckansicht</button></div>`:`<div class="card"><button id="freezeBilling" class="primary wide" ${closure.ok?"":"disabled"}>Final prüfen & einfrieren</button>${closure.ok?"":"<p class='muted'>Der Abschluss wird automatisch freigeschaltet, sobald alle Pflichtpunkte erfüllt sind.</p>"}</div>`}`;
-  if($("billingYearSelect"))$("billingYearSelect").onchange=e=>{sessionStorage.setItem("billingSelectedYear",String(Number(e.target.value)));calculationView()};
+  ${snap?`<div class="legal-ok"><strong>Abrechnung eingefroren · Version ${Number(snap.version||1)}</strong><br>${esc(snapshotVerification(snap).label)}${snap.correctionReason?`<br><small>Korrekturgrund: ${esc(snap.correctionReason)}</small>`:""}</div><div class="card action-row"><button id="downloadBillingPDF" class="primary">PDF erstellen</button><button id="printBillingBtn" class="secondary">Druckansicht</button><button id="correctBillingBtn" class="secondary">Korrektur erstellen</button></div>`:`<div class="card"><button id="freezeBilling" class="primary wide" ${closure.ok?"":"disabled"}>Final prüfen & einfrieren</button>${closure.ok?"":"<p class='muted'>Der Abschluss wird automatisch freigeschaltet, sobald alle Pflichtpunkte erfüllt sind.</p>"}</div>`}`;
+  if($("billingYearSelect"))$("billingYearSelect").onchange=e=>{sessionStorage.setItem("billingSelectedYear",String(Number(e.target.value)));sessionStorage.removeItem("billingSelectedLeaseId");calculationView()};
+if($("billingLeaseSelect"))$("billingLeaseSelect").onchange=e=>{sessionStorage.setItem("billingSelectedLeaseId",String(e.target.value));calculationView()};
   bindV18AssistantActions();
   document.querySelectorAll("[data-closure]").forEach(b=>b.onclick=()=>{const r=routeFor[b.dataset.closure];if(r)go(r[0],r[1])});
   document.querySelectorAll("[data-bill-trace]").forEach(b=>b.onclick=()=>openPositionTrace(positionById(state,b.dataset.billTrace)));
-  if($("freezeBilling"))$("freezeBilling").onclick=()=>openBillingFinalReview(y);
+  if($("freezeBilling"))$("freezeBilling").onclick=()=>openBillingFinalReview(y,g.selectedLeaseId);
+if($("correctBillingBtn"))$("correctBillingBtn").onclick=()=>openBillingFinalReview(y,g.selectedLeaseId,snap);
   if($("downloadBillingPDF"))$("downloadBillingPDF").onclick=async()=>{try{const pdf=await generateProfessionalBillingPDF(state,y,snap);pdf.save(`Betriebskostenabrechnung_${y}.pdf`);AppFeedback.showToast("Abrechnungs-PDF erstellt",{kind:"success"})}catch(e){recordClientError("billing-pdf",e);AppFeedback.showToast("PDF-Erstellung fehlgeschlagen",{kind:"error"});alert(e.message||e)}};
   if($("printBillingBtn"))$("printBillingBtn").onclick=()=>printBilling(snap||a,y,snap)
 }
-function openBillingFinalReview(y){
-  const closure=billingClosureChecklist(state,y);if(!closure.ok)return alert("Die Abrechnung ist noch nicht vollständig.");
-  const a=closure.analysis;
-  modal("Abrechnung finalisieren",`<div class="legal-warn"><strong>Letzte Prüfung</strong><br>Nach dem Einfrieren wird ein revisionssicherer Snapshot mit Prüfsumme erstellt. Änderungen an Stammdaten wirken nicht rückwirkend auf diesen Snapshot.</div>
-  <div class="card"><p>Umlagefähige Kosten: <strong>${euro(a.tenantCosts)}</strong></p><p>Vorauszahlungen: <strong>${euro(a.advances)}</strong></p><p>Ergebnis: <strong>${euro(a.result)}</strong></p></div>
-  <label class="confirm-row"><input id="billingConfirm" type="checkbox"> Ich habe Zeitraum, Belege, Umlageschlüssel und Vorauszahlungen geprüft.</label>
-  <button id="billingFinalize" class="primary" disabled>Abrechnung einfrieren</button>`,()=>{
-    $("billingConfirm").onchange=e=>$("billingFinalize").disabled=!e.target.checked;
-    $("billingFinalize").onclick=async()=>{
-      const result=await executeCommand("billing.freeze",{periodYear:y},async()=>{
-        const snap=createBillingSnapshot(state,y);await finalizeSnapshotIntegrity(snap);state.billingSnapshots.push(snap);return snap
-      },{auditText:"Abrechnung eingefroren",restorePoint:true});
-      if(!result.ok)return alert(result.message);
-      closeModal(true);calculationView()
-    }
-  })
+function openBillingFinalReview(y,leaseId="",supersedes=null){
+const baseClosure=billingClosureChecklist(state,y),g=AppRentalLifecycleUi.billingLifecycleContext(state,y,baseClosure,leaseId),closure=g.closure;if(!closure.ok)return alert("Die Abrechnung ist noch nicht vollständig.");
+const a=closure.analysis,isCorrection=!!supersedes,nextVersion=isCorrection?Number(supersedes.version||1)+1:1;
+modal(isCorrection?`Abrechnung korrigieren · Version ${nextVersion}`:"Abrechnung finalisieren",`<div class="legal-warn"><strong>${isCorrection?"Revisionssichere Korrektur":"Letzte Prüfung"}</strong><br>${isCorrection?"Die bisherige Abrechnung bleibt unverändert erhalten. Es entsteht eine neue Version mit eigener Prüfsumme.":"Nach dem Einfrieren wird ein revisionssicherer Snapshot mit Prüfsumme erstellt. Änderungen an Stammdaten wirken nicht rückwirkend auf diesen Snapshot."}</div>
+<div class="card"><p>Mietverhältnis: <strong>${esc(a.lease?.tenantName||"Mieter/in")}</strong></p><p>Umlagefähige Kosten: <strong>${euro(a.tenantCosts)}</strong></p><p>Vorauszahlungen: <strong>${euro(a.advances)}</strong></p><p>Ergebnis: <strong>${euro(a.result)}</strong></p></div>
+${isCorrection?`<label class="full">Korrekturgrund<textarea id="billingCorrectionReason" class="big-input" rows="3" placeholder="z. B. nachgereichter Gebührenbescheid"></textarea></label>`:""}
+<label class="confirm-row"><input id="billingConfirm" type="checkbox"> Ich habe Zeitraum, Belege, Umlageschlüssel und Vorauszahlungen geprüft.</label>
+<button id="billingFinalize" class="primary" disabled>${isCorrection?`Version ${nextVersion} einfrieren`:"Abrechnung einfrieren"}</button>`,()=>{
+$("billingConfirm").onchange=e=>$("billingFinalize").disabled=!e.target.checked;
+$("billingFinalize").onclick=async()=>{
+const correctionReason=isCorrection?String($("billingCorrectionReason")?.value||"").trim():"";if(isCorrection&&!correctionReason)return alert("Bitte den Korrekturgrund dokumentieren.");
+const payload={periodYear:y,leaseId:g.selectedLeaseId,correctionReason,supersedesSnapshotId:supersedes?.id||""};
+const result=await executeCommand(isCorrection?"billing.correct":"billing.freeze",payload,async()=>{const snap=createBillingSnapshot(state,y,payload);await finalizeSnapshotIntegrity(snap);state.billingSnapshots.push(snap);return snap},{auditText:isCorrection?"Abrechnung korrigiert":"Abrechnung eingefroren",restorePoint:true});
+if(!result.ok)return alert(result.message);closeModal(true);calculationView()
+}
+})
 }
 function printBilling(a,y,snapshot=null){
   const w=window.open("","_blank");if(!w)return alert("Druckfenster blockiert.");
@@ -7169,7 +7989,7 @@ function openBankImportPreview(parsed,fileName){
 function openPaymentEditor(){
   const sources=(state.sources||[]).map(s=>({value:s.id,label:s.name})),positions=(state.costPositions||[]).filter(p=>p.confirmed).map(p=>({value:p.id,label:`${p.label} · ${euro(p.amount)}`}));
   modal("Zahlung erfassen",`<form id="f" class="form-grid">${formField({name:"date",label:"Datum",type:"date",value:localDateISO()})}${formField({name:"direction",label:"Art",type:"select",value:"outflow",options:[{value:"outflow",label:"Ausgabe"},{value:"income",label:"Einnahme"}]})}${formField({name:"label",label:"Bezeichnung"})}${formField({name:"amount",label:"Betrag €",type:"number",step:"0.01",min:0.01})}${formField({name:"sourceId",label:"Quelle",type:"select",value:"",options:[{value:"",label:"keine Quelle"},...sources]})}${formField({name:"positionId",label:"Kostenposition",type:"select",value:"",options:[{value:"",label:"keine Kostenposition"},...positions]})}<div class="full"><button class="primary">Speichern</button></div></form>`,()=>{
-    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),amount=Number(v.amount);if(!v.date)return alert("Bitte ein Buchungsdatum eintragen.");if(!String(v.label||"").trim())return alert("Bitte eine aussagekräftige Bezeichnung eintragen.");if(!Number.isFinite(amount)||amount<=0)return alert("Der Betrag muss größer als 0,00 € sein.");const payment={id:uid(),date:v.date,direction:v.direction,label:v.label.trim(),amount,sourceId:v.sourceId||"",positionId:v.positionId||""};const result=await executeCommand("payment.create",payment,async()=>state.payments.push(payment),{auditText:"Zahlung erfasst"});if(!result.ok)return alert(result.message);closeModal(true);cashflowView()}
+    $("f").onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(e.target)),amount=Number(v.amount);if(!v.date)return alert("Bitte ein Buchungsdatum eintragen.");if(!String(v.label||"").trim())return alert("Bitte eine aussagekräftige Bezeichnung eintragen.");if(!Number.isFinite(amount)||amount<=0)return alert("Der Betrag muss größer als 0,00 € sein.");const payment={id:uid(),buildingId:activeBuildingId,date:v.date,direction:v.direction,label:v.label.trim(),amount,sourceId:v.sourceId||"",positionId:v.positionId||""};const result=await executeCommand("payment.create",payment,async()=>state.payments.push(payment),{auditText:"Zahlung erfasst"});if(!result.ok)return alert(result.message);closeModal(true);cashflowView()}
   })
 }
 

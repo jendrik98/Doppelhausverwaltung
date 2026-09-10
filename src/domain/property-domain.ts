@@ -16,6 +16,7 @@ type DomainState = AnyRecord & {
 };
 
 declare const DOMAIN_VERSION: number;
+declare const AppLifecycleLedger: any;
 declare function uid(): string;
 declare function category(id: any): any;
 declare function periodStart(year: number): string;
@@ -207,11 +208,16 @@ export function settlementByPeriod(state: DomainState,year: number){return (stat
 export function settlementConsumption(state: DomainState,settlement: AnyRecord | null | undefined){
   if(!settlement)return null;
   const main=meterById(state,settlement.mainMeterId),owner=meterById(state,settlement.ownerMeterId);
+  const bp=Number.isInteger(Number(settlement.periodYear))?billingPeriodInfo(state,Number(settlement.periodYear)):null;
+  const buildingId=String(settlement.buildingId||main?.buildingId||owner?.buildingId||state?.meta?.primaryBuildingId||"");
+  if(bp&&AppLifecycleLedger.replacementsInPeriod(state,bp.start,bp.end,buildingId).length){
+  const chained=AppLifecycleLedger.waterConsumptionBetween(state,bp.start,bp.end,buildingId);
+  return {...chained,periodAligned:true,valid:!!chained.valid}
+  }
   const ms=readingById(main,settlement.mainStartReadingId),me=readingById(main,settlement.mainEndReadingId);
   const os=readingById(owner,settlement.ownerStartReadingId),oe=readingById(owner,settlement.ownerEndReadingId);
   if(!ms||!me||!os||!oe)return null;
   const house=Number(me.value)-Number(ms.value),own=Number(oe.value)-Number(os.value),tenant=house-own;
-  const bp=Number.isInteger(Number(settlement.periodYear))?billingPeriodInfo(state,Number(settlement.periodYear)):null;
   const periodAligned=!bp||(ms.date===bp.start&&os.date===bp.start&&me.date===bp.end&&oe.date===bp.end);
   return {house,owner:own,tenant,share:house>0?tenant/house:0,periodAligned,
     valid:house>=0&&own>=0&&tenant>=0&&periodAligned}
@@ -249,7 +255,7 @@ export function centralBillingAnalysis(s: DomainState,periodYear: number){
   const events=bp.active?(s.costPositions||[]).flatMap(p=>positionToEvents(s,p,periodYear)).map(e=>allocateCostPosition(s,e,periodYear)):[];
   const unresolved=events.filter(e=>e.decision.status==="check"||e.decision.rule==="manual");
   const tenantCosts=events.reduce((sum,e)=>sum+Number(e.tenantAmount||0),0);
-  const lease=s.leases[0],advanceEvidence=actualAdvanceEvidenceInPeriod(s,lease,periodYear),advances=advanceEvidence.amount;
+  const lease=(s.leases||[]).find(l=>(!l.start||l.start<=bp.end)&&(!l.end||l.end>=bp.start))||s.leases[0],advanceEvidence=actualAdvanceEvidenceInPeriod(s,lease,periodYear),advances=advanceEvidence.amount;
   return {events,unresolved,tenantCosts,advances,advanceEvidence,result:tenantCosts-advances,lease,period:bp}
 }
 export function syncSimpleSourcePosition(state: DomainState,source: AnyRecord){

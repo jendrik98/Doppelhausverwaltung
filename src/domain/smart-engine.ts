@@ -16,24 +16,15 @@ export function activeLeaseInMonth(lease,key){
   const {start,end}=smartMonthRange(key);return !!lease&&(!lease.start||lease.start<=end)&&(!lease.end||lease.end>=start)
 }
 export function rentMonthStatus(state,key=smartMonthKey()){
-  const lease=(state.leases||[]).find(l=>activeLeaseInMonth(l,key));if(!lease)return {key,status:"none",expected:0,paid:0,confidence:0,payments:[]};
-  const expected=Number(lease.rent||0)+Number(lease.advance||0),tenant=normalizeLabelText(lease.tenantName||"");
-  const pays=(state.payments||[]).filter(p=>p.direction==="income"&&paymentMonthKey(p.date)===key).filter(p=>{
-    const label=normalizeLabelText(p.label),det=detectRentPayment(state,p);
-    return det?.leaseId===lease.id || /\bmiete\b|betriebskosten|nebenkosten|\bbk\b/.test(label) || (tenant&&label.includes(tenant))
-  });
-  const paid=pays.reduce((s,p)=>s+Number(p.amount||0),0),ratio=expected?paid/expected:0;
-  let status=paid<=0?"missing":ratio>=.995?"paid":"partial";
-  if(ratio>1.08)status="over";
-  let confidence=0;
-  if(pays.length)confidence=Math.max(...pays.map(p=>Number(detectRentPayment(state,p)?.score||(/\bmiete\b/.test(normalizeLabelText(p.label))?70:45))));
-  return {key,lease,expected,paid,difference:paid-expected,status,confidence,payments:pays}
+AppLifecycleLedger.ensureLifecycleState(state);const lease=(state.leases||[]).find(l=>activeLeaseInMonth(l,key));if(!lease)return {key,status:"none",expected:0,paid:0,confidence:0,payments:[]};
+const row=AppLifecycleLedger.ledgerRow(state,lease,key),paymentIds=new Set((row.allocations||[]).map(a=>a.paymentId));
+return {key,lease,expected:row.total,paid:row.paid,difference:row.difference,status:row.status==="overpaid"?"over":row.status,confidence:(row.allocations||[]).length?100:0,payments:(state.payments||[]).filter(p=>paymentIds.has(p.id))}
 }
 export function rentMonitor(state,months=8){return Array.from({length:months},(_,i)=>rentMonthStatus(state,smartMonthOffset(-i)))}
 export function rentStatusLabel(s){return s.status==="paid"?"vollständig erkannt":s.status==="partial"?"teilweise erkannt":s.status==="over"?"über Soll erkannt":s.status==="missing"?"noch nicht erkannt":"kein aktiver Mietvertrag"}
 
 export function latestBillingSnapshot(state){
-  return (state.billingSnapshots||[]).slice().sort((a,b)=>Number(b.periodYear)-Number(a.periodYear))[0]||null
+  return (state.billingSnapshots||[]).slice().sort((a,b)=>Number(b.periodYear)-Number(a.periodYear)||Number(b.version||1)-Number(a.version||1)||String(b.createdAt||"").localeCompare(String(a.createdAt||"")))[0]||null
 }
 export function billingProjection(s,year=currentPeriodYear()){
   const current=billingAnalysis(s,year),cur=periodCategoryTotals(s,year),prior=periodCategoryTotals(s,year-1),pp=billingPeriodInfo(s,year-1),currentCats=new Set(cur.filter(x=>x.total>0).map(x=>x.category)),factor=pp.active&&pp.days>0?pp.nominalDays/pp.days:1;

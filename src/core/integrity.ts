@@ -10,6 +10,10 @@ declare function migrateDomainState(value: any): any;
 declare function ensureDefaultMeters(value: any): void;
 declare function ensureTraceShape(value: any): any;
 declare function uid(): string;
+declare const AppLifecycleLedger: {
+ensureLifecycleState: (value: any) => any;
+validateLifecycleState: (value: any) => { errors: string[]; warnings: string[] };
+};
 declare const AppPortfolioModel: {
   ensurePortfolioModel: (value: any) => any;
   validatePortfolioModel: (value: any) => { errors: string[]; warnings: string[] };
@@ -42,6 +46,9 @@ export function validateDomainState(value: any): { errors: string[]; warnings: s
   const portfolioIssues = AppPortfolioModel.validatePortfolioModel(value);
   issues.errors.push(...portfolioIssues.errors);
   issues.warnings.push(...portfolioIssues.warnings);
+  const lifecycleIssues = AppLifecycleLedger.validateLifecycleState(value);
+  issues.errors.push(...lifecycleIssues.errors);
+  issues.warnings.push(...lifecycleIssues.warnings);
 
   for (const [key, label] of [
     ["units", "Einheiten"],
@@ -54,7 +61,9 @@ export function validateDomainState(value: any): { errors: string[]; warnings: s
     ["tasks", "Aufgaben"],
     ["payments", "Zahlungen"],
     ["billingSnapshots", "Snapshots"],
-  ] as const) {
+    ["rentAllocations", "Mietkonto-Zuordnungen"],
+    ["meterReplacements", "Zählerwechsel"],
+    ] as const) {
     uniqueIds(value[key], label, issues);
   }
 
@@ -110,6 +119,7 @@ export function repairDomainState(value: any): any {
   repaired = migrateDomainState(repaired);
   ensureDefaultMeters(repaired);
   repaired = AppPortfolioModel.ensurePortfolioModel(repaired);
+  repaired = AppLifecycleLedger.ensureLifecycleState(repaired);
   for (const meter of repaired.meters || []) {
     meter.readings = Array.isArray(meter.readings) ? meter.readings : [];
     const seen = new Set<string>();

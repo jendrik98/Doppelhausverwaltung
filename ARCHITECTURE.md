@@ -352,3 +352,12 @@ horizontales Overflow sowie die Desktop-Arbeitsnavigation im echten Browser.
 Schritt F ändert weder App-Version (`18.0.0`), State-Schema (`15`), IndexedDB-Version (`3`) noch
 Backupformate. `app.js?v=1805` bleibt unverändert. Der Stylesheet-Key steigt auf
 `style.css?v=1810p10`, der Production-Cache auf `mietverwaltung-v18-design-system-f-1`.
+
+
+## Schritt G: Vermietungs-Lifecycle & revisionssicheres Mietkonto
+
+Schritt G modelliert Mietverhältnisse als Historie statt als überschreibbare Einzelzeile. Vertragsstände (Kaltmiete/BK) gelten ab einem Stichtag, Ein-/Auszugsübergaben speichern Personen- und Zählerstände, und das Mietkonto führt monatliches Soll gegen explizite Zahlungszuordnungen einschließlich Teilzahlung, Überzahlung und Rücklastschrift.
+
+Zählerwechsel werden als Kette aus ausgebautem und neuem Gerät mit Schluss-/Einbaustand gespeichert. Verbrauch über eine Abrechnungsperiode wird über alle Geräteabschnitte addiert; ein neuer Zähler darf wieder bei 0 beginnen. Bei mehreren Mietverhältnissen in einem Kalenderjahr kann die Abrechnung je Mietverhältnis geschnitten werden. Eingefrorene Abrechnungen bleiben unveränderlich; Korrekturen erzeugen Version 2+ mit Korrekturgrund und Verweis auf die Vorgängerversion.
+
+Die neuen Sammlungen `rentAllocations` und `meterReplacements` sind gebäudeisoliert, werden im bestehenden State persistiert und erfordern weder eine neue IndexedDB-Version noch ein neues Backupformat. Schritt G belässt App-Version `18.0.0`, Schema `15`, IndexedDB-Version `3` und `style.css?v=1810p10`; der App-Key steigt auf `app.js?v=1806`, der Production-Cache auf `mietverwaltung-v18-lifecycle-ledger-g-1`.

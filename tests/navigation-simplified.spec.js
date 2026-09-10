@@ -17,7 +17,7 @@ test('volle Startseite bleibt erhalten, Fachbereiche sind bewusst schmal', async
   await expect(page.getByText('Hausrate nach Kaltmiete')).toBeVisible();
 
   await top(page, 'Vermietung');
-  await expectOptions(page, ['overview','water','billing']);
+  await expectOptions(page, ['overview','lifecycle','water','billing']);
   await expect(page.locator('#workspaceSelect option[value="lease"]')).toHaveCount(0);
   await expect(page.getByText('Mietvertrag / PDF')).toBeVisible();
   await expect(page.getByRole('button', { name: /Mietvertrag anlegen|Vertragsdaten bearbeiten/ })).toBeVisible();

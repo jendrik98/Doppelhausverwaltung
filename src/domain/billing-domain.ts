@@ -24,6 +24,7 @@ declare const ACTIVE_LEGAL_PACK: any;
 declare const LAW_DATE: string;
 declare const DOMAIN_VERSION: number;
 declare const SCHEMA_VERSION: number;
+declare const AppLifecycleLedger: any;
 
 export const euro=(n: any)=>new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(Number(n)||0);
 
@@ -183,8 +184,10 @@ export function paymentAdvanceForLease(payment: AnyRecord | null | undefined,lea
   return {recognized:true,amount:Math.max(0,Math.min(advance,amount-rent))}
 }
 export function actualAdvanceEvidenceInPeriod(s: BillingState,lease: AnyRecord | null | undefined,periodYear: number){
-  if(!lease)return{amount:0,recognizedPayments:0};
-  const bp=billingPeriodInfo(s,periodYear);if(!bp.active)return{amount:0,recognizedPayments:0};
+if(!lease)return{amount:0,recognizedPayments:0};
+const bp=billingPeriodInfo(s,periodYear);if(!bp.active)return{amount:0,recognizedPayments:0};
+const ledger=AppLifecycleLedger.actualAdvanceFromLedger(s,lease,bp.start,bp.end);
+if(Number(ledger.allocationCount||0)>0)return ledger;
   const start=lease.start&&lease.start>bp.start?lease.start:bp.start,end=lease.end&&lease.end<bp.end?lease.end:bp.end;
   let amount=0,recognizedPayments=0;
   for(const payment of s.payments||[]){
@@ -232,19 +235,22 @@ export function actualCashflowByMonth(state: BillingState,months=12){
   }
   return rows
 }
-export function snapshotFor(state: BillingState,periodYear: number){return (state.billingSnapshots||[]).find(s=>Number(s.periodYear)===Number(periodYear))}
-export function createBillingSnapshot(state: BillingState,periodYear: number){
-  const analysis=billingAnalysis(state,periodYear),waterConsumption=settlementConsumption(state,settlementByPeriod(state,periodYear));
-  return {
-    id:uid(),periodYear:Number(periodYear),period:structuredClone(analysis.period),createdAt:new Date().toISOString(),
-    legalPackVersion:ACTIVE_LEGAL_PACK?.version||"Fallback",
-    legalEffectiveDate:ACTIVE_LEGAL_PACK?.effectiveDate||LAW_DATE,domainVersion:DOMAIN_VERSION,schemaVersion:SCHEMA_VERSION,
-    property:structuredClone(state.property),correspondence:structuredClone(state.correspondence||{}),units:structuredClone(state.units),
-    lease:structuredClone(analysis.lease||null),events:structuredClone(analysis.events),
-    waterConsumption:structuredClone(waterConsumption||null),allocationBases:{totalArea:Number(state.property?.totalArea||0),rentalArea:Number(unitByType(state,"rental")?.area||0)},
-    unresolved:structuredClone(analysis.unresolved),tenantCosts:Number(analysis.tenantCosts||0),
-    advances:Number(analysis.advances||0),result:Number(analysis.result||0),frozen:true
-  }
+export function snapshotFor(state: BillingState,periodYear: number,leaseId=""){return AppLifecycleLedger.latestSnapshotFor(state,periodYear,leaseId)}
+export function createBillingSnapshot(state: BillingState,periodYear: number,options: AnyRecord = {}){
+const base=billingAnalysis(state,periodYear),leaseId=String(options.leaseId||"");
+const analysis=leaseId?AppLifecycleLedger.leaseBillingAnalysis(state,base,periodYear,leaseId):base;
+const waterConsumption=analysis.waterConsumption||settlementConsumption(state,settlementByPeriod(state,periodYear));
+const snapshot={
+id:uid(),buildingId:String(analysis.lease?.buildingId||state.meta?.primaryBuildingId||""),leaseId,periodYear:Number(periodYear),period:structuredClone(analysis.period),createdAt:new Date().toISOString(),
+legalPackVersion:ACTIVE_LEGAL_PACK?.version||"Fallback",
+legalEffectiveDate:ACTIVE_LEGAL_PACK?.effectiveDate||LAW_DATE,domainVersion:DOMAIN_VERSION,schemaVersion:SCHEMA_VERSION,
+property:structuredClone(state.property),correspondence:structuredClone(state.correspondence||{}),units:structuredClone(state.units),
+lease:structuredClone(analysis.lease||null),events:structuredClone(analysis.events),
+waterConsumption:structuredClone(waterConsumption||null),allocationBases:{totalArea:Number(state.property?.totalArea||0),rentalArea:Number(unitByType(state,"rental")?.area||0)},
+unresolved:structuredClone(analysis.unresolved),tenantCosts:Number(analysis.tenantCosts||0),
+advances:Number(analysis.advances||0),result:Number(analysis.result||0),frozen:true
+};
+return AppLifecycleLedger.decorateSnapshotRevision(state,snapshot,options)
 }
 
 
