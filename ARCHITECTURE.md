@@ -326,3 +326,29 @@ gebäudeisolierten D-Ansichten gepflegt.
 Schritt E ändert weder App-Version (`18.0.0`) noch State-Schema (`15`), IndexedDB-Name/-Version
 (`mietverwaltung-v6`, Version `3`) oder Backupformate. Der PWA-Asset-Key steigt auf `app.js?v=1805`,
 der Stylesheet-Key auf `style.css?v=1810p9` und der Production-Cache auf `mietverwaltung-v18-portfolio-admin-e-1`.
+## Schritt F: Design System & UX-Konsolidierung
+
+Schritt F ersetzt die historisch gewachsene CSS-Kaskade aus Basisregeln sowie V14-/V15-/V16-/V18-
+Override-Schichten durch genau eine reproduzierbare Design-System-Quelle:
+`src/ui/design-system.css`. `style.css` ist ab F ausschließlich Build-Ausgabe aus dieser Quelle.
+Der Style-Build verweigert unter CI einen veralteten `style.css`-Stand, bevor er die Datei erzeugt.
+Damit schützt der bestehende permanente CI-Build die reproduzierbare CSS-Ausgabe ohne Workflow-Mutation.
+
+Das Design-System ordnet Regeln in semantische CSS-Layer (`reset`, `base`, `components`, `patterns`,
+`features`, `responsive`, `accessibility`) und definiert Light-/Dark-Mode zentral über Design Tokens.
+Historische Versionsmarker und `!important`-Notbremsen sind als Architektur-Ratchet verboten.
+
+Die bereits in C/D/E aufgebaute Fach- und Presentation-Architektur bleibt unverändert. Sichtbar werden
+insbesondere eine konsistente Aufgaben-/Kartenhierarchie, einheitliche Formulare, Status- und
+Leerezustände, robuste Modals, sichere iPhone-Touchflächen sowie eine eigenständige Desktop-
+Arbeitsnavigation. Die Startseite bleibt auf den nächsten sinnvollen Schritt und kontextbezogene
+Schnellaktionen ausgerichtet; der Gebäude-/Workspace-Kontext aus D/E wird nicht neu modelliert.
+
+`scripts/test-design-system.mjs` schützt die eine CSS-Quelle, Tokenvertrag, Layerstruktur,
+Dark-Mode-Zentralisierung, Größenratchet und das Verbot historischer Override-Schichten.
+`tests/design-system.spec.js` prüft zusätzlich 390×844-iPhone-Geometrie, Touch-Hit-Tests,
+horizontales Overflow sowie die Desktop-Arbeitsnavigation im echten Browser.
+
+Schritt F ändert weder App-Version (`18.0.0`), State-Schema (`15`), IndexedDB-Version (`3`) noch
+Backupformate. `app.js?v=1805` bleibt unverändert. Der Stylesheet-Key steigt auf
+`style.css?v=1810p10`, der Production-Cache auf `mietverwaltung-v18-design-system-f-1`.
