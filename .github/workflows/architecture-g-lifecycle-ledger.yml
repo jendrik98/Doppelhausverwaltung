@@ -65,8 +65,24 @@ jobs:
               p=root/path;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,encoding='utf-8')
           def replace_once(path,old,new):
               text=read(path);n=text.count(old)
-              if n!=1: raise SystemExit(f"{path}: erwartete 1 Fundstelle, gefunden {n} für {old[:90]!r}")
-              write(path,text.replace(old,new,1))
+              if n==1:
+                  write(path,text.replace(old,new,1));return
+              # YAML-Blockskalare entfernen die gemeinsame Einrückung auch innerhalb
+              # eingebetteter Triple-Quoted Strings. Für mehrzeilige Anker wird daher
+              # bei Bedarf ausschließlich führender Zeilen-Whitespace tolerant gematcht.
+              if n==0 and "\n" in old:
+                  lines=old.splitlines()
+                  pattern="\n".join(r"[ \t]*"+re.escape(line.strip()) for line in lines)
+                  matches=list(re.finditer(pattern,text,flags=re.M))
+                  if len(matches)==1:
+                      match=matches[0]
+                      matched_first=match.group(0).splitlines()[0]
+                      indent=re.match(r"[ \t]*",matched_first).group(0)
+                      repl_lines=new.splitlines()
+                      replacement="\n".join((indent+line.lstrip()) if line.strip() else "" for line in repl_lines)
+                      write(path,text[:match.start()]+replacement+text[match.end():]);return
+                  raise SystemExit(f"{path}: toleranter Mehrzeilenanker gefunden {len(matches)}x für {old[:90]!r}")
+              raise SystemExit(f"{path}: erwartete 1 Fundstelle, gefunden {n} für {old[:90]!r}")
           def regex_once(path,pattern,repl,flags=re.S):
               text=read(path);new,n=re.subn(pattern,repl,text,count=1,flags=flags)
               if n!=1: raise SystemExit(f"{path}: Regex nicht eindeutig: {pattern[:100]}")
