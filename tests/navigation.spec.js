@@ -42,26 +42,41 @@ test('Dialog warnt bei ungespeicherten Änderungen und stellt Fokus wieder her',
   const quick = page.getByRole('button', { name: 'Schnell hinzufügen' });
   await quick.click();
   await page.locator('#quickOverlay').getByRole('button', { name: /^Zahlung\b/ }).click();
+
   const modal = page.locator('#modal');
   await expect(modal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
   await modal.getByLabel('Bezeichnung').fill('Nicht speichern');
+  await expect(modal.getByLabel('Bezeichnung')).toHaveValue('Nicht speichern');
 
-  const closeButton = modal.getByRole('button', { name: 'Schließen' });
+  const closeButton = modal.locator('#modalClose');
 
-  const dismissDialog = page.waitForEvent('dialog');
-  const dismissClick = closeButton.click();
-  const firstDialog = await dismissDialog;
-  expect(firstDialog.message()).toContain('Ungespeicherte Änderungen verwerfen');
-  await firstDialog.dismiss();
-  await dismissClick;
+  // Native confirm-Events sind auf Remote-/Live-Runnern timing-empfindlich. Wir prüfen
+  // hier deterministisch denselben closeModal-Vertrag: Meldung, Abbruch und Bestätigung.
+  await page.evaluate(() => {
+    window.__testConfirmMessages = [];
+    window.confirm = (message) => {
+      window.__testConfirmMessages.push(String(message));
+      return false;
+    };
+  });
+
+  await closeButton.click();
+  await expect(modal).not.toHaveClass(/hidden/);
+  const dismissMessage = await page.evaluate(() => window.__testConfirmMessages.at(-1) || '');
+  expect(dismissMessage).toContain('Ungespeicherte Änderungen verwerfen');
   await expect(modal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
 
-  const acceptDialog = page.waitForEvent('dialog');
-  const acceptClick = closeButton.click();
-  const secondDialog = await acceptDialog;
-  expect(secondDialog.message()).toContain('Ungespeicherte Änderungen verwerfen');
-  await secondDialog.accept();
-  await acceptClick;
+  await page.evaluate(() => {
+    window.confirm = (message) => {
+      window.__testConfirmMessages.push(String(message));
+      return true;
+    };
+  });
+
+  await closeButton.click();
   await expect(modal).toHaveClass(/hidden/);
+  const confirmMessages = await page.evaluate(() => window.__testConfirmMessages);
+  expect(confirmMessages).toHaveLength(2);
+  expect(confirmMessages[1]).toContain('Ungespeicherte Änderungen verwerfen');
   await expect(quick).toBeFocused();
 });

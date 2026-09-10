@@ -120,10 +120,15 @@ test('D wechselt Gebäude ohne Datenvermischung und persistiert neue Zahlungen i
   await expect(page.locator('#buildingSelect')).toHaveValue('building-b');
   await page.getByRole('button', { name: 'Schnell hinzufügen' }).click();
   await page.locator('#quickOverlay').getByRole('button', { name: /^Zahlung\b/ }).click();
-  await page.getByLabel('Bezeichnung').fill('D Zahlung B');
-  await page.getByLabel('Betrag €').fill('33');
-  await page.getByRole('button', { name: 'Speichern' }).click();
-  await expect(page.locator('#modal')).toHaveClass(/hidden/);
+
+  const paymentModal = page.locator('#modal');
+  await expect(paymentModal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
+  await paymentModal.getByLabel('Bezeichnung').fill('D Zahlung B');
+  await paymentModal.getByLabel('Betrag €').fill('33');
+  await expect(paymentModal.getByLabel('Bezeichnung')).toHaveValue('D Zahlung B');
+  await expect(paymentModal.getByLabel('Betrag €')).toHaveValue('33');
+  await paymentModal.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await expect(paymentModal).toHaveClass(/hidden/);
 
   const saved = await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
