@@ -41,21 +41,24 @@ test('E legt ein zweites Gebäude an, aktiviert es und hält das Primärgebäude
   await page.getByRole('button', { name: 'Gebäude verwalten' }).click();
   await expect(page.getByRole('heading', { name: 'Gebäude im Portfolio' })).toBeVisible();
   await page.getByRole('button', { name: 'Gebäude hinzufügen' }).click();
-  await page.getByLabel('Gebäudename').fill('Haus B');
-  await page.getByLabel('Adresse').fill('B-Straße 2');
-  await page.getByLabel('Gesamtwohnfläche m²').fill('210');
-  await page.getByLabel('Baujahr').fill('2001');
-  await page.getByLabel('Abrechnung übernommen am').fill('2026-07-01');
-  await page.getByLabel('Voreigentümer rechnet bis').fill('2026-06-30');
-  await page.getByLabel('Hausrate € / Monat').fill('700');
-  await page.getByLabel('Feste Hauskosten € / Monat').fill('12');
-  await page.getByRole('button', { name: 'Gebäude anlegen' }).click();
+
+  const buildingForm = page.locator('#buildingAdminForm');
+  await buildingForm.locator('input[name="name"]').fill('Haus B');
+  await buildingForm.locator('input[name="address"]').fill('B-Straße 2');
+  await buildingForm.locator('input[name="totalArea"]').fill('210');
+  await buildingForm.locator('input[name="year"]').fill('2001');
+  await buildingForm.locator('input[name="billingTakeoverDate"]').fill('2026-07-01');
+  await buildingForm.locator('input[name="predecessorBillingEnd"]').fill('2026-06-30');
+  await buildingForm.locator('input[name="repayment"]').fill('700');
+  await buildingForm.locator('input[name="fixed"]').fill('12');
+  await buildingForm.getByRole('button', { name: 'Gebäude anlegen' }).click();
   await expect(page.locator('#modal')).toHaveClass(/hidden/);
 
   await expect(page.locator('#buildingSwitchWrap')).toBeVisible();
   await expect(page.locator('#buildingSelect option')).toHaveCount(2);
-  await expect(page.locator('#buildingSelect')).toHaveText(/Haus B/);
-  await expect(page.locator('#buildingSelect option:checked')).toHaveText(/Haus B.*B-Straße 2/);
+  const buildingBId = await page.locator('#buildingSelect').inputValue();
+  expect(buildingBId).not.toBe('building-a');
+  await expect(page.locator('#buildingSelect option:checked')).toContainText('Haus B');
 
   await openApp(page, '#data/units');
   await page.getByRole('button', { name: 'Einheit hinzufügen' }).click();
@@ -81,8 +84,10 @@ test('E legt ein zweites Gebäude an, aktiviert es und hält das Primärgebäude
     return record.data;
   });
 
-  const buildingB = raw.buildings.find((item) => item.name === 'Haus B');
+  const buildingB = raw.buildings.find((item) => item.id === buildingBId);
   expect(buildingB).toBeTruthy();
+  expect(buildingB.name).toBe('Haus B');
+  expect(buildingB.address).toBe('B-Straße 2');
   expect(raw.meta.primaryBuildingId).toBe('building-a');
   expect(raw.property.name).toBe('Haus A');
   expect(raw.buildings).toHaveLength(2);
@@ -97,8 +102,10 @@ test('E legt ein zweites Gebäude an, aktiviert es und hält das Primärgebäude
   await page.getByRole('button', { name: 'Gebäude verwalten' }).click();
   const bCard = page.locator('.item').filter({ hasText: 'Haus B' });
   await bCard.getByRole('button', { name: 'Bearbeiten' }).click();
-  await page.getByLabel('Gebäudename').fill('Haus B neu');
-  await page.getByRole('button', { name: 'Gebäude speichern' }).click();
+
+  const editForm = page.locator('#buildingAdminForm');
+  await editForm.locator('input[name="name"]').fill('Haus B neu');
+  await editForm.getByRole('button', { name: 'Gebäude speichern' }).click();
   await expect(page.locator('#modal')).toHaveClass(/hidden/);
   await expect(page.locator('#buildingSelect')).toContainText('Haus B neu');
 

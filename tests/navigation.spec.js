@@ -42,10 +42,11 @@ test('Dialog warnt bei ungespeicherten Änderungen und stellt Fokus wieder her',
   const quick = page.getByRole('button', { name: 'Schnell hinzufügen' });
   await quick.click();
   await page.locator('#quickOverlay').getByRole('button', { name: /^Zahlung\b/ }).click();
-  await expect(page.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
-  await page.getByLabel('Bezeichnung').fill('Nicht speichern');
+  const modal = page.locator('#modal');
+  await expect(modal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
+  await modal.getByLabel('Bezeichnung').fill('Nicht speichern');
 
-  const closeButton = page.getByRole('button', { name: 'Schließen' });
+  const closeButton = modal.getByRole('button', { name: 'Schließen' });
 
   const dismissDialog = page.waitForEvent('dialog');
   const dismissClick = closeButton.click();
@@ -53,7 +54,7 @@ test('Dialog warnt bei ungespeicherten Änderungen und stellt Fokus wieder her',
   expect(firstDialog.message()).toContain('Ungespeicherte Änderungen verwerfen');
   await firstDialog.dismiss();
   await dismissClick;
-  await expect(page.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
+  await expect(modal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
 
   const acceptDialog = page.waitForEvent('dialog');
   const acceptClick = closeButton.click();
@@ -61,6 +62,6 @@ test('Dialog warnt bei ungespeicherten Änderungen und stellt Fokus wieder her',
   expect(secondDialog.message()).toContain('Ungespeicherte Änderungen verwerfen');
   await secondDialog.accept();
   await acceptClick;
-  await expect(page.locator('#modal')).toHaveClass(/hidden/);
+  await expect(modal).toHaveClass(/hidden/);
   await expect(quick).toBeFocused();
 });
