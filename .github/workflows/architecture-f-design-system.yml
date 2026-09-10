@@ -54,17 +54,6 @@ jobs:
           grep -q 'V18 consolidated olive theme' style.css
           grep -q 'Architecture E: mobile touch safety' style.css
 
-      - name: Architecture-E Workflow aufräumen
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/architecture-e-portfolio-administration.yml
-          git commit -m "Remove temporary Architecture E workflow"
-          # Noch nicht pushen. Falls F fehlschlägt, bleibt main vollständig auf dem bewiesenen E-Stand.
-          echo "E_HYGIENE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-
       - name: Design-System-F Patch anwenden
         shell: bash
         run: |
@@ -738,6 +727,10 @@ jobs:
           if (!fs.existsSync(source)) throw new Error("src/ui/design-system.css fehlt.");
           const css = fs.readFileSync(source, "utf8");
           if (!css.includes("Mietverwaltung Design System F")) throw new Error("Design-System-F Kennung fehlt.");
+          if (process.env.CI && fs.existsSync(target)) {
+            const checkedIn = fs.readFileSync(target, "utf8");
+            if (checkedIn !== css) throw new Error("style.css ist gegenüber src/ui/design-system.css veraltet. Bitte npm run build ausführen und style.css mit committen.");
+          }
           fs.writeFileSync(target, css, "utf8");
           console.log(`style.css reproduzierbar aus src/ui/design-system.css erzeugt (${Buffer.byteLength(css, "utf8")} Bytes).`);
           '''))
@@ -917,12 +910,6 @@ jobs:
           scripts["test:design-system"] = "node scripts/test-design-system.mjs"
           write("package.json", json.dumps(pkg, indent=2, ensure_ascii=False) + "\n")
 
-          replace_once(
-              ".github/workflows/ci.yml",
-              "git diff --exit-code -- app.js",
-              "git diff --exit-code -- app.js style.css"
-          )
-
           replace_once("index.html", "style.css?v=1810p9", "style.css?v=1810p10")
           replace_once("service-worker.js", "mietverwaltung-v18-portfolio-admin-e-1", "mietverwaltung-v18-design-system-f-1")
           replace_once("service-worker.js", "./style.css?v=1810p9", "./style.css?v=1810p10")
@@ -962,7 +949,8 @@ jobs:
           Schritt F ersetzt die historisch gewachsene CSS-Kaskade aus Basisregeln sowie V14-/V15-/V16-/V18-
           Override-Schichten durch genau eine reproduzierbare Design-System-Quelle:
           `src/ui/design-system.css`. `style.css` ist ab F ausschließlich Build-Ausgabe aus dieser Quelle.
-          Der permanente CI-Workflow prüft neben `app.js` deshalb auch `style.css` auf reproduzierbaren Build.
+          Der Style-Build verweigert unter CI einen veralteten `style.css`-Stand, bevor er die Datei erzeugt.
+          Damit schützt der bestehende permanente CI-Build die reproduzierbare CSS-Ausgabe ohne Workflow-Mutation.
 
           Das Design-System ordnet Regeln in semantische CSS-Layer (`reset`, `base`, `components`, `patterns`,
           `features`, `responsive`, `accessibility`) und definiert Light-/Dark-Mode zentral über Design Tokens.
@@ -1117,7 +1105,6 @@ jobs:
           git diff --check
 
           cat > /tmp/f-expected-files.txt <<'EOF'
-          .github/workflows/ci.yml
           ARCHITECTURE.md
           index.html
           package.json
@@ -1135,7 +1122,7 @@ jobs:
           sort -o /tmp/f-expected-files.txt /tmp/f-expected-files.txt
           diff -u /tmp/f-expected-files.txt /tmp/f-actual-files.txt
 
-          test ! -e .github/workflows/architecture-e-portfolio-administration.yml
+          test -e .github/workflows/architecture-e-portfolio-administration.yml
           test ! -e .github/workflows/architecture-d-presentation-workspace.yml
           test -e .github/workflows/architecture-f-design-system.yml
           test -e .github/workflows/ci.yml
@@ -1158,7 +1145,8 @@ jobs:
           grep -q 'style.css?v=1810p10' index.html
           grep -q 'app.js?v=1805' index.html
           grep -q 'mietverwaltung-v18-design-system-f-1' service-worker.js
-          grep -q 'git diff --exit-code -- app.js style.css' .github/workflows/ci.yml
+          grep -q 'git diff --exit-code -- app.js' .github/workflows/ci.yml
+          test -z "$(git diff --name-only HEAD -- .github/workflows)"
 
           test -z "$(git diff --name-only HEAD -- src/application src/presentation src/domain src/core src/infrastructure src/io src/ui/app-runtime.ts src/ui/building-workspace-ui.ts app.js)"
           echo "F-Änderungen:"
@@ -1172,7 +1160,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add \
-            .github/workflows/ci.yml \
             ARCHITECTURE.md \
             index.html \
             package.json \
@@ -1186,12 +1173,13 @@ jobs:
             tests/design-system.spec.js
 
           git diff --cached --check
+          test -z "$(git diff --cached --name-only | grep '^.github/workflows/' || true)"
           git commit -m "Consolidate design system and responsive UX"
           git push origin HEAD:main
           echo "F_PRODUCT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Ergebnis
         run: |
-          echo "Architecture E Hygiene-Commit: ${E_HYGIENE_SHA}"
           echo "Architecture F Produktcommit: ${F_PRODUCT_SHA}"
+          echo "Temporäre E/F-Workflows bleiben absichtlich unverändert und werden nach der F-Verifikation manuell entfernt."
           echo "Danach Pages, permanentes CI und permanentes Live-E2E exakt für F_PRODUCT_SHA prüfen."
