@@ -483,7 +483,7 @@ jobs:
           tests/navigation-simplified.spec.js
           EOF
           )
-          ACTUAL=$(git diff --name-only HEAD | sort)
+          ACTUAL=$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u)
           test "$ACTUAL" = "$(printf '%s\n' "$EXPECTED" | sort)"
           test -z "$(git diff --name-only HEAD -- '.github/workflows/*')"
           test -z "$(git diff --name-only HEAD -- 'src/presentation/*' 'src/infrastructure/*' 'src/io/*')"
