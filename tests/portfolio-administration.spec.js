@@ -55,7 +55,7 @@ test('E legt ein zweites Gebäude an, aktiviert es und hält das Primärgebäude
   await expect(page.locator('#buildingSwitchWrap')).toBeVisible();
   await expect(page.locator('#buildingSelect option')).toHaveCount(2);
   await expect(page.locator('#buildingSelect')).toHaveText(/Haus B/);
-  await expect(page.locator('#buildingSelect option:checked')).toHaveText('Haus B');
+  await expect(page.locator('#buildingSelect option:checked')).toHaveText(/Haus B.*B-Straße 2/);
 
   await openApp(page, '#data/units');
   await page.getByRole('button', { name: 'Einheit hinzufügen' }).click();
