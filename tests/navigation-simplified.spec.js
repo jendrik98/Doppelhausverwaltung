@@ -34,7 +34,7 @@ test('volle Startseite bleibt erhalten, Fachbereiche sind bewusst schmal', async
   await expect(page.getByRole('button', { name: 'Kalender exportieren' })).toBeVisible();
 
   await top(page, 'Mehr');
-  await expectOptions(page, ['smart','protection','app']);
+  await expectOptions(page, ['smart','archive','protection','app']);
   await expect(page.locator('#workspaceSelect option[value="legal"]')).toHaveCount(0);
   await section(page, 'app');
   await expect(page.getByRole('button', { name: /Recht & Regeln/ })).toBeVisible();

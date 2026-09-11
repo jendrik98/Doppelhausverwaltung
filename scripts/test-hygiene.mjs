@@ -58,6 +58,7 @@ assert.ok(String(pkg.scripts?.["test:quality"] || "").includes("test:hygiene"), 
 assert.ok(read(".github/workflows/ci.yml").includes("npm run test:quality"), "CI ruft den Quality-/Hygiene-Gate nicht auf");
 assert.ok(read(".github/workflows/e2e-live.yml").includes("npm run test:quality"), "Live-E2E ruft den Quality-/Hygiene-Gate nicht auf");
 assert.ok(exists("src/domain/year-archive.ts") && exists("scripts/test-year-archive.mjs"), "Architecture-H1-Archivvertrag fehlt");
+assert.ok(exists("src/ui/year-archive-ui.ts") && exists("scripts/test-year-archive-ui.mjs") && exists("tests/year-archive.spec.js"), "Architecture-H2-Archivoberfläche fehlt");
 assert.ok(read("index.html").includes('id="appVersionBadge"'), "Semantische Versionsbadge-ID fehlt");
 assert.ok(!read("index.html").includes("v17Badge"), "Historische Versionsbadge-ID bleibt bestehen");
 console.log(`Repository-Hygiene bestanden: ${workflows.length} dauerhafte Workflows, semantische Runtime-/Testnamen, Paket ${pkg.name}@${pkg.version}, meta.v17 bewusst geschützt.`);

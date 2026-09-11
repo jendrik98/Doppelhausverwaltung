@@ -47,9 +47,17 @@ Für eine vollständige Kette gelten nur explizite Zahlungsreferenzen (`payment.
 
 Das Jahresarchiv enthält ausschließlich JSON-sichere Metadaten und Referenzen; Dokument-Binärdaten bleiben im Dokumentenspeicher. H1 mutiert weder den State noch erhöht es das State-Schema.
 
-### H2 und folgende
+### H2: Jahresarchiv-Oberfläche
 
-Die spätere Oberfläche für Jahresabschluss-Paket, Archivnavigation und Export baut auf H1 auf. UI-Integration darf die Nachweislogik nicht duplizieren und soll als eigenes Modul erfolgen, statt `app-runtime.ts` erneut zu vergrößern.
+`src/ui/year-archive-ui.ts` baut ausschließlich auf der H1-Domäne auf. Der Bereich **Mehr → Jahresarchiv** zeigt den Status eines Jahres, vollständige und lückenhafte Nachweisketten, nicht zugeordnete Dokumente und Ausgaben sowie direkte Korrekturwege in die bestehenden Fachbereiche. Die globale Gebäudeauswahl bleibt die einzige Gebäudequelle; Dokumente werden über die bereits gebäudeisolierte `listDocuments()`-Runtime-Grenze geladen.
+
+Der H2-Export nutzt `createYearArchiveExport()` und ergänzt nur den sichtbaren Gebäudekontext. Exportiert werden JSON-sichere Metadaten und Referenzen, keine Dokument-Binärdaten. Ein Export im Status `review` ist zulässig und dokumentiert die offenen Lücken ausdrücklich.
+
+Die UI ist ein eigenes gebündeltes TypeScript-Modul (`AppYearArchiveUi`). `app-runtime.ts` enthält nur den Navigationsadapter und darf wegen H2 nicht wieder zum Fachlogik-Monolithen anwachsen.
+
+### H3 und folgende
+
+Ein späteres Jahresabschluss-Paket kann das H2-Manifest mit bewusst ausgewählten Belegdateien bündeln. Dabei bleiben H1-Nachweiskette, Gebäudeisolation, explizite Zahlungsreferenzen und JSON-Manifest der fachliche Kernvertrag.
 
 ## 7. Build und Runtime-Komposition
 

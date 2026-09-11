@@ -6004,6 +6004,308 @@ var AppBuildingWorkspaceUi = (() => {
 })();
 
 
+/* ===== compiled src/ui/year-archive-ui.ts ===== */
+"use strict";
+var AppYearArchiveUi = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/ui/year-archive-ui.ts
+  var year_archive_ui_exports = {};
+  __export(year_archive_ui_exports, {
+    mountYearArchiveWorkspace: () => mountYearArchiveWorkspace
+  });
+
+  // src/domain/year-archive.ts
+  var YEAR_ARCHIVE_VERSION = 1;
+  var YEAR_ARCHIVE_SCHEMA = "doppelhaus-year-archive-v1";
+  var arr = (value) => Array.isArray(value) ? value : [];
+  var idText = (value) => String(value || "");
+  var iso = (value) => String(value || "").slice(0, 10);
+  function sourceForPosition(state, position) {
+    const sourceId = idText(position?.sourceId);
+    return arr(state?.sources).find((source) => idText(source.id) === sourceId) || null;
+  }
+  function documentIdForPosition(state, position) {
+    const source = sourceForPosition(state, position);
+    return idText(position?.provenance?.documentId || position?.documentId || source?.sourceDocumentId);
+  }
+  function positionTouchesYear(position, year) {
+    const start = iso(position?.serviceStart || position?.serviceEnd);
+    const end = iso(position?.serviceEnd || position?.serviceStart);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return false;
+    const yearStart = `${year}-01-01`, yearEnd = `${year}-12-31`;
+    return start <= yearEnd && end >= yearStart;
+  }
+  function documentMeta(document2) {
+    if (!document2) return null;
+    return {
+      id: idText(document2.id),
+      label: String(document2.label || document2.name || "Dokument"),
+      type: String(document2.type || ""),
+      size: Number(document2.size || 0),
+      created: String(document2.created || document2.createdAt || ""),
+      sourceId: idText(document2.sourceId),
+      fingerprint: String(document2.fingerprint || ""),
+      analysisStatus: String(document2.analysis?.status || ""),
+      acceptedAt: String(document2.analysis?.acceptedAt || "")
+    };
+  }
+  function paymentMeta(payment) {
+    return {
+      id: idText(payment.id),
+      date: iso(payment.date),
+      direction: String(payment.direction || ""),
+      amount: Number(payment.amount || 0),
+      label: String(payment.label || ""),
+      sourceId: idText(payment.sourceId),
+      positionId: idText(payment.positionId),
+      leaseId: idText(payment.leaseId)
+    };
+  }
+  function snapshotMeta(snapshot, positionId = "") {
+    const matchingEvents = arr(snapshot?.events).filter((event) => !positionId || idText(event.positionId) === positionId).map((event) => ({
+      id: idText(event.id),
+      positionId: idText(event.positionId),
+      label: String(event.label || ""),
+      amount: Number(event.amount || 0),
+      tenantAmount: Number(event.tenantAmount || 0)
+    }));
+    return {
+      id: idText(snapshot.id),
+      periodYear: Number(snapshot.periodYear),
+      buildingId: idText(snapshot.buildingId),
+      leaseId: idText(snapshot.leaseId),
+      version: Number(snapshot.version || 1),
+      createdAt: String(snapshot.createdAt || ""),
+      integrityHash: String(snapshot.integrityHash || ""),
+      supersedesSnapshotId: idText(snapshot.supersedesSnapshotId),
+      events: matchingEvents
+    };
+  }
+  function buildEvidenceChains(state, documents, year) {
+    const documentMap = new Map(arr(documents).map((document2) => [idText(document2.id), document2]));
+    const payments = arr(state?.payments);
+    const snapshots = arr(state?.billingSnapshots).filter((snapshot) => Number(snapshot.periodYear) === Number(year));
+    const positions = arr(state?.costPositions).filter((position) => position?.confirmed && positionTouchesYear(position, year));
+    return positions.map((position) => {
+      const positionId = idText(position.id);
+      const documentId = documentIdForPosition(state, position);
+      const document2 = documentId ? documentMap.get(documentId) || null : null;
+      const directPayments = payments.filter((payment) => idText(payment.positionId) === positionId);
+      const candidatePayments = directPayments.length || !position?.sourceId ? [] : payments.filter((payment) => !payment.positionId && idText(payment.sourceId) === idText(position.sourceId));
+      const billingSnapshots = snapshots.filter(
+        (snapshot) => arr(snapshot.events).some((event) => idText(event.positionId) === positionId)
+      );
+      const missing = [];
+      if (!document2) missing.push("document");
+      if (!directPayments.length) missing.push("payment");
+      if (!billingSnapshots.length) missing.push("billing");
+      return {
+        position: {
+          id: positionId,
+          label: String(position.label || "Kostenposition"),
+          category: String(position.category || ""),
+          amount: Number(position.amount || 0),
+          serviceStart: iso(position.serviceStart),
+          serviceEnd: iso(position.serviceEnd),
+          sourceId: idText(position.sourceId),
+          documentId
+        },
+        document: documentMeta(document2),
+        payments: directPayments.map(paymentMeta),
+        candidatePayments: candidatePayments.map(paymentMeta),
+        billingSnapshots: billingSnapshots.map((snapshot) => snapshotMeta(snapshot, positionId)),
+        missing,
+        status: missing.length ? "gap" : "complete"
+      };
+    });
+  }
+  function buildYearArchive(state, documents, year) {
+    const chains = buildEvidenceChains(state, documents, year);
+    const linkedDocumentIds = new Set(chains.map((chain) => idText(chain.document?.id)).filter(Boolean));
+    const linkedPaymentIds = new Set(chains.flatMap((chain) => chain.payments.map((payment) => idText(payment.id))).filter(Boolean));
+    const yearDocuments = arr(documents).filter((document2) => iso(document2.created || document2.createdAt).startsWith(`${year}-`));
+    const includedDocuments = arr(documents).filter((document2) => linkedDocumentIds.has(idText(document2.id)) || yearDocuments.includes(document2));
+    const yearPayments = arr(state?.payments).filter((payment) => iso(payment.date).startsWith(`${year}-`));
+    const includedPayments = arr(state?.payments).filter((payment) => linkedPaymentIds.has(idText(payment.id)) || yearPayments.includes(payment));
+    const snapshots = arr(state?.billingSnapshots).filter((snapshot) => Number(snapshot.periodYear) === Number(year));
+    const unlinkedOutflows = yearPayments.filter((payment) => payment.direction === "outflow" && !linkedPaymentIds.has(idText(payment.id))).map(paymentMeta);
+    const unlinkedDocuments = yearDocuments.filter((document2) => !linkedDocumentIds.has(idText(document2.id))).map(documentMeta);
+    const completeChains = chains.filter((chain) => chain.status === "complete").length;
+    return {
+      archiveVersion: YEAR_ARCHIVE_VERSION,
+      year: Number(year),
+      status: chains.length > 0 && completeChains === chains.length && snapshots.length > 0 ? "ready" : "review",
+      summary: {
+        chains: chains.length,
+        completeChains,
+        gaps: chains.length - completeChains,
+        documents: includedDocuments.length,
+        payments: includedPayments.length,
+        snapshots: snapshots.length,
+        unlinkedOutflows: unlinkedOutflows.length,
+        unlinkedDocuments: unlinkedDocuments.length
+      },
+      chains,
+      documents: includedDocuments.map(documentMeta),
+      payments: includedPayments.map(paymentMeta),
+      billingSnapshots: snapshots.map((snapshot) => snapshotMeta(snapshot)),
+      unlinkedOutflows,
+      unlinkedDocuments
+    };
+  }
+  function createYearArchiveExport(state, documents, year, generatedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+    return {
+      schema: YEAR_ARCHIVE_SCHEMA,
+      version: YEAR_ARCHIVE_VERSION,
+      generatedAt,
+      archive: buildYearArchive(state, documents, year)
+    };
+  }
+
+  // src/ui/year-archive-ui.ts
+  var arr2 = (value) => Array.isArray(value) ? value : [];
+  var esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[char] || char);
+  var euro = (value) => Number(value || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+  var date = (value) => {
+    const text = String(value || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return "–";
+    return (/* @__PURE__ */ new Date(`${text}T00:00:00`)).toLocaleDateString("de-DE");
+  };
+  function yearsFromState(state) {
+    const years = /* @__PURE__ */ new Set();
+    for (const position of arr2(state?.costPositions)) {
+      for (const raw of [position.serviceStart, position.serviceEnd]) {
+        const year = Number(String(raw || "").slice(0, 4));
+        if (year >= 2e3 && year <= 2200) years.add(year);
+      }
+    }
+    for (const payment of arr2(state?.payments)) {
+      const year = Number(String(payment.date || "").slice(0, 4));
+      if (year >= 2e3 && year <= 2200) years.add(year);
+    }
+    for (const snapshot of arr2(state?.billingSnapshots)) {
+      const year = Number(snapshot.periodYear);
+      if (year >= 2e3 && year <= 2200) years.add(year);
+    }
+    if (!years.size) years.add((/* @__PURE__ */ new Date()).getFullYear());
+    return [...years].sort((a, b) => b - a);
+  }
+  function missingLabel(kind) {
+    return kind === "document" ? "Dokument" : kind === "payment" ? "Zahlung" : kind === "billing" ? "Abrechnung" : kind;
+  }
+  function safeName(value) {
+    return value.normalize("NFKD").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "gebaeude";
+  }
+  function saveJson(payload, filename) {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+  }
+  function evidencePill(ok, label) {
+    return `<span class="pill ${ok ? "good" : "warn"}">${ok ? "✓" : "!"} ${esc(label)}</span>`;
+  }
+  function chainHtml(chain, onNavigate) {
+    const missing = arr2(chain.missing).map(String);
+    const documentOk = !!chain.document;
+    const paymentOk = arr2(chain.payments).length > 0;
+    const billingOk = arr2(chain.billingSnapshots).length > 0;
+    const candidateCount = arr2(chain.candidatePayments).length;
+    const routeButtons = missing.map((kind) => {
+      const target = kind === "document" ? ["data", "documents"] : kind === "payment" ? ["owner", "payments"] : ["rental", "billing"];
+      return `<button class="secondary compact" data-archive-fix="${esc(kind)}" data-route="${target[0]}" data-sub="${target[1]}">${esc(missingLabel(kind))} ergänzen</button>`;
+    }).join("");
+    return `<article class="card archive-chain" data-archive-chain="${esc(chain.position?.id)}">
+    <div class="card-head"><div><p class="eyebrow">KOSTENPOSITION</p><h3>${esc(chain.position?.label || "Kostenposition")}</h3><p class="muted">${date(chain.position?.serviceStart)} – ${date(chain.position?.serviceEnd)}</p></div><div><strong>${euro(chain.position?.amount)}</strong><br><span class="pill ${chain.status === "complete" ? "good" : "warn"}">${chain.status === "complete" ? "Vollständig" : `${missing.length} Lücke(n)`}</span></div></div>
+    <div class="row" style="flex-wrap:wrap;gap:8px">${evidencePill(documentOk, "Dokument")}${evidencePill(paymentOk, "Zahlung")}${evidencePill(billingOk, "Abrechnung")}</div>
+    ${chain.document ? `<div class="fact-row"><span>Beleg</span><strong>${esc(chain.document.label || chain.document.id)}</strong></div>` : ""}
+    ${paymentOk ? `<div class="fact-row"><span>Direkte Zahlungen</span><strong>${arr2(chain.payments).length} · ${euro(arr2(chain.payments).reduce((sum, p) => sum + Number(p.amount || 0), 0))}</strong></div>` : ""}
+    ${billingOk ? `<div class="fact-row"><span>Abrechnungssnapshot</span><strong>${arr2(chain.billingSnapshots).map((s) => `v${Number(s.version || 1)}`).join(", ")}</strong></div>` : ""}
+    ${candidateCount ? `<div class="info"><strong>${candidateCount} Zahlungskandidat(en)</strong><br><small>Gemeinsame Kostenquelle erkannt, aber keine direkte positionId-Verknüpfung. Die Lücke bleibt bewusst offen.</small></div>` : ""}
+    ${missing.length ? `<div class="legal-warn"><strong>Nachweis noch unvollständig:</strong> ${missing.map(missingLabel).map(esc).join(", ")}<div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">${routeButtons}</div></div>` : `<div class="legal-ok"><strong>Nachweiskette vollständig.</strong> Dokument, direkte Zahlung und Abrechnung sind explizit verknüpft.</div>`}
+  </article>`;
+  }
+  function renderArchive(host, options, documents, selectedYear) {
+    const archive = buildYearArchive(options.state, documents, selectedYear);
+    const years = yearsFromState(options.state);
+    if (!years.includes(selectedYear)) years.unshift(selectedYear);
+    const ready = archive.status === "ready";
+    host.innerHTML = `<section data-year-archive-root>
+    <div class="card"><div class="row between"><div><p class="eyebrow">ARCHITECTURE H2 · JAHRESABSCHLUSS</p><h3>Jahresarchiv ${selectedYear}</h3><p class="muted">${esc(options.buildingLabel || "Aktives Gebäude")} · Nachweise aus dem aktuellen, gebäudeisolierten Arbeitsbereich.</p></div><span class="pill ${ready ? "good" : "warn"}" data-archive-status>${ready ? "Abschlussbereit" : "Prüfen"}</span></div>
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:10px"><label><span class="muted">Jahr</span><select id="yearArchiveYearSelect" aria-label="Archivjahr">${years.map((year) => `<option value="${year}" ${year === selectedYear ? "selected" : ""}>${year}</option>`).join("")}</select></label><button id="yearArchiveExport" class="primary">Archiv-Manifest exportieren</button></div>
+      <p class="muted">Der Export enthält JSON-sichere Metadaten und Referenzen, keine PDF-/Bild-Binärdaten. Ein Export im Prüfstatus dokumentiert offene Lücken, schließt sie aber nicht.</p>
+    </div>
+    <div class="grid cards">
+      <article class="card metric-card"><span>Nachweisketten</span><strong>${archive.summary.chains}</strong><small>${archive.summary.completeChains} vollständig</small></article>
+      <article class="card metric-card"><span>Offene Lücken</span><strong>${archive.summary.gaps}</strong><small>Dokument / Zahlung / Abrechnung</small></article>
+      <article class="card metric-card"><span>Abrechnungssnapshots</span><strong>${archive.summary.snapshots}</strong><small>für ${selectedYear}</small></article>
+      <article class="card metric-card"><span>Nicht zugeordnet</span><strong>${archive.summary.unlinkedDocuments + archive.summary.unlinkedOutflows}</strong><small>${archive.summary.unlinkedDocuments} Dokumente · ${archive.summary.unlinkedOutflows} Ausgaben</small></article>
+    </div>
+    <div class="card"><div class="card-head"><div><p class="eyebrow">NACHWEISKETTEN</p><h3>Dokument → Kosten → Zahlung → Abrechnung</h3></div></div>${archive.chains.length ? archive.chains.map((chain) => chainHtml(chain, options.onNavigate)).join("") : `<div class="empty-state"><strong>Keine bestätigten Kostenpositionen für ${selectedYear}</strong><p>Das Archiv bleibt im Prüfstatus, bis für dieses Jahr abrechnungsrelevante Daten vorliegen.</p></div>`}</div>
+    ${archive.unlinkedDocuments.length || archive.unlinkedOutflows.length ? `<div class="grid two-up">
+      <article class="card"><h3>Nicht zugeordnete Dokumente</h3>${archive.unlinkedDocuments.length ? archive.unlinkedDocuments.map((doc) => `<div class="item"><strong>${esc(doc.label || doc.id)}</strong><p>${date(doc.created)} · ${esc(doc.analysisStatus || "ohne Analysestatus")}</p></div>`).join("") : `<p class="muted">Keine.</p>`}</article>
+      <article class="card"><h3>Nicht zugeordnete Ausgaben</h3>${archive.unlinkedOutflows.length ? archive.unlinkedOutflows.map((payment) => `<div class="item"><strong>${esc(payment.label || payment.id)}</strong><p>${date(payment.date)} · ${euro(payment.amount)}</p></div>`).join("") : `<p class="muted">Keine.</p>`}</article>
+    </div>` : ""}
+  </section>`;
+    const select = host.querySelector("#yearArchiveYearSelect");
+    if (select) select.onchange = () => renderArchive(host, options, documents, Number(select.value));
+    host.querySelectorAll("[data-archive-fix]").forEach((button) => {
+      button.onclick = () => options.onNavigate?.(button.dataset.route || "home", button.dataset.sub || "");
+    });
+    const exportButton = host.querySelector("#yearArchiveExport");
+    if (exportButton) exportButton.onclick = () => {
+      const payload = {
+        ...createYearArchiveExport(options.state, documents, selectedYear),
+        context: { buildingId: String(options.buildingId || ""), buildingLabel: String(options.buildingLabel || "") }
+      };
+      saveJson(payload, `jahresarchiv-${safeName(String(options.buildingLabel || "gebaeude"))}-${selectedYear}.json`);
+    };
+  }
+  async function mountYearArchiveWorkspace(host, options) {
+    if (!host) return;
+    host.innerHTML = `<div class="card"><strong>Jahresarchiv wird geladen …</strong><p class="muted">Dokumente und Nachweisketten werden lokal zusammengeführt.</p></div>`;
+    try {
+      const documents = await options.loadDocuments();
+      if (options.isCurrent && !options.isCurrent()) return;
+      const years = yearsFromState(options.state);
+      const selected = Number(options.initialYear) || years[0];
+      renderArchive(host, options, documents, selected);
+    } catch (error) {
+      host.innerHTML = `<div class="legal-bad"><strong>Jahresarchiv konnte nicht geladen werden.</strong><br>${esc(error?.message || error)}</div>`;
+    }
+  }
+  return __toCommonJS(year_archive_ui_exports);
+})();
+
+
 /* ===== compiled src/ui/rental-lifecycle-ui.ts ===== */
 "use strict";
 var AppRentalLifecycleUi = (() => {
@@ -7907,6 +8209,7 @@ function openSmartTaskSuggestions(items=smartTaskSuggestions(state)){
 function more(){
   const tabs=[
     {id:"smart",label:"Assistent",icon:"✦"},
+    {id:"archive",label:"Jahresarchiv",icon:"▣"},
     {id:"protection",label:"Sicherung",icon:"◇"},
     {id:"app",label:"Erweitert",icon:"•••"}
   ];
@@ -7914,6 +8217,7 @@ function more(){
   $("app").innerHTML=workspaceHeader("MEHR","Mehr","Assistent, Datensicherung und selten benötigte Einstellungen.",tabs,visible);
   bindWorkspaceTabs("more",more);
   if(active==="smart"||active==="overview")smartCenterView();
+  else if(active==="archive")yearArchiveMoreView();
   else if(active==="legal")legalMoreView();
   else if(active==="protection")protectionHubView();
   else if(active==="app")appManagementHubView();
@@ -7924,6 +8228,7 @@ function more(){
   else diagnosticsMoreView()
 }
 
+function yearArchiveMoreView(){const b=activeBuildingId;AppYearArchiveUi.mountYearArchiveWorkspace($("workspaceBody"),{state,loadDocuments:listDocuments,buildingId:b,buildingLabel:state.property?.name||"Gebäude",onNavigate:go,isCurrent:()=>activeBuildingId===b})}
 function auditMoreView(){auditView()}
 function legalMoreView(){legalView()}
 function securityMoreView(){securityView()}

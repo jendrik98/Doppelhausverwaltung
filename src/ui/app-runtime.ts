@@ -1335,6 +1335,7 @@ function openSmartTaskSuggestions(items=smartTaskSuggestions(state)){
 function more(){
   const tabs=[
     {id:"smart",label:"Assistent",icon:"✦"},
+    {id:"archive",label:"Jahresarchiv",icon:"▣"},
     {id:"protection",label:"Sicherung",icon:"◇"},
     {id:"app",label:"Erweitert",icon:"•••"}
   ];
@@ -1342,6 +1343,7 @@ function more(){
   $("app").innerHTML=workspaceHeader("MEHR","Mehr","Assistent, Datensicherung und selten benötigte Einstellungen.",tabs,visible);
   bindWorkspaceTabs("more",more);
   if(active==="smart"||active==="overview")smartCenterView();
+  else if(active==="archive")yearArchiveMoreView();
   else if(active==="legal")legalMoreView();
   else if(active==="protection")protectionHubView();
   else if(active==="app")appManagementHubView();
@@ -1352,6 +1354,7 @@ function more(){
   else diagnosticsMoreView()
 }
 
+function yearArchiveMoreView(){const b=activeBuildingId;AppYearArchiveUi.mountYearArchiveWorkspace($("workspaceBody"),{state,loadDocuments:listDocuments,buildingId:b,buildingLabel:state.property?.name||"Gebäude",onNavigate:go,isCurrent:()=>activeBuildingId===b})}
 function auditMoreView(){auditView()}
 function legalMoreView(){legalView()}
 function securityMoreView(){securityView()}

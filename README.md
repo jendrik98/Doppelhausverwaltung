@@ -6,7 +6,7 @@ Local-first PWA zur privaten Verwaltung eines Doppelhauses und kleiner Mehrgebä
 
 Architecture A–G bildet die produktive Basis: Mehrgebäude-Portfolio, gebäudeisolierte Arbeitsbereiche, Portfolio-/Gebäudeverwaltung, konsolidiertes Design-System sowie Vermietungs-Lifecycle mit Vertragsständen, Übergaben, Mietkonto, Zählerwechseln und revisionssicheren Abrechnungskorrekturen.
 
-Architecture H ist gestartet. H1 ergänzt eine reine Domänenschicht für Dokument-Nachweis-Ketten und das Jahresarchiv. Sie verknüpft vorhandene IDs nachvollziehbar als **Dokument → Kostenposition → Zahlung → Abrechnungssnapshot**, ohne den persistierten State umzuschreiben.
+Architecture H ist bis H2 umgesetzt. H1 liefert die reine Domänenschicht für **Dokument → Kostenposition → Zahlung → Abrechnungssnapshot**. H2 macht diese Nachweise im gebäudeisolierten Jahresarchiv sichtbar, zeigt Lücken und nicht zugeordnete Belege/Ausgaben und exportiert ein JSON-sicheres Jahresabschluss-Manifest – weiterhin ohne den persistierten State umzuschreiben.
 
 ### Technische Verträge
 
@@ -57,4 +57,4 @@ Die dauerhafte CI prüft den reproduzierbaren Build, TypeScript, fachliche/archi
 
 ## Architecture H
 
-H1 liefert die belastbare, read-only Nachweiskette und ein JSON-sicheres Jahresarchiv-Manifest. H2 kann darauf die Archiv-/Jahresabschluss-Oberfläche und den Export aufbauen, ohne die Kernlogik erneut in die Browser-Runtime zu legen.
+H1 liefert die belastbare, read-only Nachweiskette. H2 ergänzt darauf die produktive Archiv-/Jahresabschluss-Oberfläche mit Jahresauswahl, aktivem Gebäudekontext, Lückenführung und JSON-Export. Die UI liegt als eigenes TypeScript-Modul vor; die Browser-Runtime enthält nur einen dünnen Adapter. Ein späteres H3 kann daraus ein vollständiges Jahresabschluss-Paket mit gezielt ausgewählten Belegdateien ableiten, ohne den H1/H2-Nachweisvertrag zu verwässern.

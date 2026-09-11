@@ -62,7 +62,8 @@ const typedRuntime = (
     compileModule("src/io/backup-codec.ts", "AppBackupCodec"),
     compileModule("src/ui/ui-core.ts", "AppUiCore"),
     compileModule("src/ui/building-workspace-ui.ts", "AppBuildingWorkspaceUi"),
-compileModule("src/ui/rental-lifecycle-ui.ts", "AppRentalLifecycleUi")
+    compileModule("src/ui/year-archive-ui.ts", "AppYearArchiveUi"),
+    compileModule("src/ui/rental-lifecycle-ui.ts", "AppRentalLifecycleUi")
   ])
 ).join("");
 
