@@ -83,7 +83,7 @@ jobs:
           test -f tests/year-archive.spec.js
           grep -q 'app.js?v=1808' index.html
           grep -q 'mietverwaltung-v18-document-archive-h2-1' service-worker.js
-          grep -q 'Architecture H2' README.md
+          grep -q 'bis H2 umgesetzt' README.md
           grep -q '### H2: Jahresarchiv-Oberfläche' ARCHITECTURE.md
           git diff --check
 
