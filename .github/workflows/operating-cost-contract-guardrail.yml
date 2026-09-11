@@ -654,23 +654,23 @@ jobs:
           ZW50JywnQkstVW1sYWdlZ3J1bmRsYWdlIGltIE1pZXR2ZXJow6RsdG5pcyddLAogICdzcmMvdWkv
           cmVudGFsLWxpZmVjeWNsZS11aS50cyc6WydCSy1HcnVuZGxhZ2UnLCdWZXJ0cmFnc2Jhc2lzIHNw
           ZWljaGVybicsJ29wZXJhdGluZ0Nvc3RDYXRlZ29yaWVzJ10sCiAgJ3Rlc3RzL29wZXJhdGluZy1j
-          b3N0LWNvbnRyYWN0LnNwZWMuanMnOlsnY29udHJhY3QtdGVzdC1sZWFzZScsJ2luc3VyYW5jZS5z
-          dGF0dXMnXSwKICAnbGVnYWwtcnVsZXMuanNvbic6WycyMDI2LjA5LjExLTEnXSwKfQpmb3IgcGF0
-          aCxuZWVkbGVzIGluIHJlcXVpcmVkLml0ZW1zKCk6CiAgICB0ZXh0PXJlYWQocGF0aCkKICAgIGZv
-          ciBuZWVkbGUgaW4gbmVlZGxlczoKICAgICAgICBpZiBuZWVkbGUgbm90IGluIHRleHQ6CiAgICAg
-          ICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJ7cGF0aH06IG1pc3NpbmcgY29udHJhY3Qge25lZWRs
-          ZSFyfSIpCgpzdGF0ZT1yZWFkKCdzcmMvY29yZS9zdGF0ZS50cycpCmlmICdTQ0hFTUFfVkVSU0lP
-          TiA9IDE1JyBub3QgaW4gc3RhdGUgb3IgJ2FwcFZlcnNpb246ICIxOC4wLjAiJyBub3QgaW4gc3Rh
-          dGU6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdzdGF0ZS9hcHAgdmVyc2lvbiBjb250cmFjdCBjaGFu
-          Z2VkIHVuZXhwZWN0ZWRseScpCmlmICdhcHAuanM/dj0xODEzJyBub3QgaW4gcmVhZCgnaW5kZXgu
-          aHRtbCcpOgogICAgcmFpc2UgU3lzdGVtRXhpdCgnaW5kZXggbWFya2VyIG5vdCB1cGRhdGVkJykK
-          aWYgJ21pZXR2ZXJ3YWx0dW5nLXYxOC1vcGVyYXRpbmctY29zdC1jb250cmFjdC0xJyBub3QgaW4g
-          cmVhZCgnc2VydmljZS13b3JrZXIuanMnKToKICAgIHJhaXNlIFN5c3RlbUV4aXQoJ3NlcnZpY2Ug
-          d29ya2VyIGNhY2hlIG1hcmtlciBub3QgdXBkYXRlZCcpCgpwcmludCgnT3BlcmF0aW5nLWNvc3Qg
-          Y29udHJhY3QgZ3VhcmRyYWlsIHBhdGNoIHByZXBhcmVkLicpCg==
+          b3N0LWNvbnRyYWN0LnNwZWMuanMnOlsnY29udHJhY3QtdGVzdC1sZWFzZScsJ29wZXJhdGluZ0Nv
+          c3RzVmVyaWZpZWRBdCddLAogICdsZWdhbC1ydWxlcy5qc29uJzpbJzIwMjYuMDkuMTEtMSddLAp9
+          CmZvciBwYXRoLG5lZWRsZXMgaW4gcmVxdWlyZWQuaXRlbXMoKToKICAgIHRleHQ9cmVhZChwYXRo
+          KQogICAgZm9yIG5lZWRsZSBpbiBuZWVkbGVzOgogICAgICAgIGlmIG5lZWRsZSBub3QgaW4gdGV4
+          dDoKICAgICAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIntwYXRofTogbWlzc2luZyBjb250cmFj
+          dCB7bmVlZGxlIXJ9IikKCnN0YXRlPXJlYWQoJ3NyYy9jb3JlL3N0YXRlLnRzJykKaWYgJ1NDSEVN
+          QV9WRVJTSU9OID0gMTUnIG5vdCBpbiBzdGF0ZSBvciAnYXBwVmVyc2lvbjogIjE4LjAuMCInIG5v
+          dCBpbiBzdGF0ZToKICAgIHJhaXNlIFN5c3RlbUV4aXQoJ3N0YXRlL2FwcCB2ZXJzaW9uIGNvbnRy
+          YWN0IGNoYW5nZWQgdW5leHBlY3RlZGx5JykKaWYgJ2FwcC5qcz92PTE4MTMnIG5vdCBpbiByZWFk
+          KCdpbmRleC5odG1sJyk6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdpbmRleCBtYXJrZXIgbm90IHVw
+          ZGF0ZWQnKQppZiAnbWlldHZlcndhbHR1bmctdjE4LW9wZXJhdGluZy1jb3N0LWNvbnRyYWN0LTEn
+          IG5vdCBpbiByZWFkKCdzZXJ2aWNlLXdvcmtlci5qcycpOgogICAgcmFpc2UgU3lzdGVtRXhpdCgn
+          c2VydmljZSB3b3JrZXIgY2FjaGUgbWFya2VyIG5vdCB1cGRhdGVkJykKCnByaW50KCdPcGVyYXRp
+          bmctY29zdCBjb250cmFjdCBndWFyZHJhaWwgcGF0Y2ggcHJlcGFyZWQuJykK
           PATCH_B64
           base64 -d /tmp/operating-cost-contract-patch.b64 > /tmp/operating-cost-contract-patch.py
-          test "$(sha256sum /tmp/operating-cost-contract-patch.py | awk '{print $1}')" = "ae94b7aa878f7f693f76a05ed3d01e455ebbb87071edfd5028916cf0ba3d0d8b"
+          test "$(sha256sum /tmp/operating-cost-contract-patch.py | awk '{print $1}')" = "58809ec74e74aa295ab2878ca9d84c1bda096cbffb4fac477b4f0ea918578816"
           python3 -m py_compile /tmp/operating-cost-contract-patch.py
           python3 /tmp/operating-cost-contract-patch.py
           rm -f /tmp/operating-cost-contract-patch.py /tmp/operating-cost-contract-patch.b64
