@@ -12,13 +12,7 @@ must(!!app,"versionierte app.js fehlt in index.html");
 must(!!css,"versionierte style.css fehlt in index.html");
 must(!!manifest,"versioniertes Manifest fehlt in index.html");
 for(const asset of [app,css,manifest].filter(Boolean))must(sw.includes(`"./${asset}"`),`Service-Worker CORE enthält ${asset} nicht exakt`);
-must(sw.includes("mietverwaltung-v18-lifecycle-ledger-g-1"),"Design-System-F Production-Cache fehlt");
-must(!sw.includes("mietverwaltung-v18-design-system-f-1"),"alter Design-System-F Cache ist noch vorhanden");
-must(!sw.includes("mietverwaltung-v18-portfolio-admin-e-1"),"alter Portfolio-E Cache ist noch vorhanden");
-must(!sw.includes("mietverwaltung-v18-presentation-d-1"),"alter Presentation-D Cache ist noch vorhanden");
-must(!sw.includes("mietverwaltung-v18-application-c-1"),"alter Application-C Cache ist noch vorhanden");
-must(!sw.includes("mietverwaltung-v18-prod-hardening-a-1"),"alter Hardening-Cache ist noch vorhanden");
-must(!sw.includes("mietverwaltung-v18-phase2-calendar-validation-4"),"alter Cache-Name ist noch vorhanden");
+must(sw.includes('const CACHE="mietverwaltung-v18-document-archive-h1-1"'),"aktueller Production-Cache fehlt");
 must(sw.includes("function networkFirst"),"network-first Strategie fehlt");
 for(const pathname of ["/app.js","/style.css","/index.html","/manifest.webmanifest","/legal-rules.json"]){must(sw.includes(`"${pathname}"`),`kritischer PWA-Pfad fehlt: ${pathname}`)}
 must(live.includes("sha256sum app.js"),"Live-E2E wartet nicht auf den exakten app.js-Hash");

@@ -18,7 +18,7 @@ const domain2 = read("src/runtime/100-domain-2.js");
 const intelligenceLegacy = read("src/runtime/050-intelligence.js");
 const qualityLegacy = read("src/runtime/060-quality.js");
 const smartLegacy = read("src/runtime/070-smart-engine.js");
-const assistantLegacy = read("src/runtime/080-v18-billing-assistant-preview.js");
+const assistantLegacy = read("src/runtime/080-assistant.js");
 const integrityLegacy = read("src/runtime/030-integrity.js");
 const traceabilityLegacy = read("src/runtime/040-traceability.js");
 const db = read("src/runtime/110-db.js");
@@ -228,7 +228,7 @@ assert(runtimeOrder.includes('src/runtime/900-app-entry.js'), "App-Entry fehlt i
 assert(!runtimeOrder.includes('140-tests.js'), "Laufzeit-Selbsttests wurden nicht in die TypeScript-App migriert.");
 assert(!runtimeOrder.includes('150-ui.js'), "Dialogsteuerung wurde nicht in die TypeScript-App migriert.");
 assert(!runtimeOrder.includes('160-app.js'), "App-/Ansichtsbereich wurde nicht in die TypeScript-App migriert.");
-assert(appRuntime.includes("// @ts-nocheck -- Phase 10 V3:"), "Semantikerhaltende Typing-Grenze der dynamischen App-Runtime ist nicht dokumentiert.");
+assert(appRuntime.includes("// @ts-nocheck -- Browser compatibility shell; keep shrinking via modular TypeScript extraction."), "Semantikerhaltende Typing-Grenze der dynamischen App-Runtime ist nicht dokumentiert.");
 assert(!appRuntime.includes("export async function start(){"), "App-Runtime darf keine zusätzliche Start-Closure einführen.");
 assert(appRuntime.trimEnd().endsWith("export {};"), "app-runtime.ts ist nicht als TypeScript-Modul markiert.");
 assert(!appRuntime.includes("function runSelfTests(){"), "Historische Laufzeit-Selbsttests dürfen nicht in app-runtime.ts zurückkehren.");
@@ -272,7 +272,7 @@ assert(app.includes("compiled src/ui/building-workspace-ui.ts"), "Gebäude-UI-Ty
 assert(app.includes("compiled src/ui/ui-core.ts"), "UI-Core-TypeScript fehlt im Browser-Bundle.");
 assert(app.includes("TypeScript source src/ui/app-runtime.ts · outer-scope injection"), "App-Runtime-TypeScript fehlt im Browser-Bundle.");
 
-console.log("Architekturprüfung bestanden: Phase 10 V3 migriert Laufzeit-Selbsttests, Dialogzustand, Routing und Ansichten nach TypeScript, injiziert sie semantikerhaltend im bisherigen äußeren Runtime-Scope und entfernt src/legacy vollständig. Bewusste Runtime-Kompatibilitätsbindungen, IndexedDB v3 und App-Version 18.0.0 sind der aktuelle Architekturvertrag.");
+console.log("Architekturprüfung bestanden: aktuelle Layer-Grenzen, Runtime-Kompatibilitätsbindungen, IndexedDB v3 und App-Version 18.0.0 sind konsistent.");
 
 // Architecture B1 – Portfolio -> Gebäude -> Einheit -> Mietverhältnis.
 const portfolioModelB1 = read("src/domain/portfolio-model.ts");

@@ -42,9 +42,11 @@ test('Dialog warnt bei ungespeicherten Änderungen und stellt Fokus wieder her',
   const quick = page.getByRole('button', { name: 'Schnell hinzufügen' });
   await quick.click();
   await page.locator('#quickOverlay').getByRole('button', { name: /^Zahlung\b/ }).click();
+  await expect(page).toHaveURL(/#owner\/cashflow$/);
 
   const modal = page.locator('#modal');
   await expect(modal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
+  await expect(modal.locator('input[name="date"]')).toBeFocused();
   await modal.getByLabel('Bezeichnung').fill('Nicht speichern');
   await expect(modal.getByLabel('Bezeichnung')).toHaveValue('Nicht speichern');
 

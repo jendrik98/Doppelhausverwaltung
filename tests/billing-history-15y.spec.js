@@ -72,7 +72,7 @@ function buildRealBillingHistory(base) {
 
   s.property = {
     ...(s.property || {}),
-    name: 'V17 15-Jahre-Abrechnungshaus',
+    name: '15-Jahre-Abrechnungshaus',
     address: 'Langzeitweg 15, 12345 Teststadt',
     totalArea: 200,
     year: '1965',
@@ -81,7 +81,7 @@ function buildRealBillingHistory(base) {
   };
   s.correspondence = {
     ...(s.correspondence || {}),
-    landlordName: 'V17 Test Vermieter',
+    landlordName: 'Test Vermieter',
     landlordAddress: 'Langzeitweg 15',
     iban: 'DE00123456780000000000',
     paymentReference: 'Betriebskosten',
@@ -305,7 +305,7 @@ function buildRealBillingHistory(base) {
   return { state: s, expected };
 }
 
-test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Abschluss → PDF → Backup', async ({ browser }) => {
+test('Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Abschluss → PDF → Backup', async ({ browser }) => {
   test.setTimeout(120_000);
   fs.mkdirSync('test-results', { recursive: true });
 
@@ -316,7 +316,7 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   // Nur Datum/Uhrzeit einfrieren; normale Timer der Anwendung laufen weiter.
   await page.clock.setFixedTime(new Date('2028-06-15T12:00:00+02:00'));
   await openApp(page);
-  // V17-Migration/Hotfix vollständig auslaufen lassen, damit kein paralleler DB-Write die Seed-Daten überschreibt.
+  // Initialisierung vollständig auslaufen lassen, damit kein paralleler DB-Write die Seed-Daten überschreibt.
   await page.waitForTimeout(500);
 
   const base = await readState(page);
@@ -327,7 +327,7 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
 
   // Beweise zunächst, dass der komplette Seed wirklich persistent gespeichert wurde.
   const persistedSeed = await readState(page);
-  expect(persistedSeed.property.name).toBe('V17 15-Jahre-Abrechnungshaus');
+  expect(persistedSeed.property.name).toBe('15-Jahre-Abrechnungshaus');
   expect(persistedSeed.waterSettlements).toHaveLength(15);
   expect(persistedSeed.costPositions).toHaveLength(30);
   expect(persistedSeed.payments).toHaveLength(210);
@@ -406,11 +406,11 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   await top(page, 'Mehr');
   await section(page, 'protection');
   await page.getByRole('button', { name: 'Datensicherung' }).click();
-  await page.locator('#backupPw').fill('V17-Langzeit-Backup-2041!');
+  await page.locator('#backupPw').fill('Langzeit-Backup-2041!');
   const backupPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Sicherung erstellen' }).click();
   const backup = await backupPromise;
-  const backupPath = 'test-results/v17-15y-full-backup.json';
+  const backupPath = 'test-results/billing-15y-full-backup.json';
   await backup.saveAs(backupPath);
   const wrapper = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
   expect(wrapper.schema).toBe('mietverwaltung-encrypted-v1');
@@ -428,7 +428,7 @@ test('V17 Langzeit-Abrechnungsreise: 15 echte Jahre → Wasser → Umlage → Ab
   await top(page2, 'Mehr');
   await section(page2, 'protection');
   await page2.getByRole('button', { name: 'Datensicherung' }).click();
-  await page2.locator('#backupPw').fill('V17-Langzeit-Backup-2041!');
+  await page2.locator('#backupPw').fill('Langzeit-Backup-2041!');
   await page2.locator('#fullImportFile').setInputFiles(backupPath);
   page2.on('dialog', d => d.accept());
   await page2.getByRole('button', { name: 'Wiederherstellen' }).click();

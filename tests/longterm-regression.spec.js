@@ -107,7 +107,7 @@ function build15YearData(base) {
   return s;
 }
 
-test('V17 Langzeitstudie: 15 Jahre / 180 Mieten / 15 Wasserperioden bleiben stabil', async ({ page }) => {
+test('Langzeitstudie: 15 Jahre / 180 Mieten / 15 Wasserperioden bleiben stabil', async ({ page }) => {
   test.setTimeout(60_000);
   const guard = runtimeGuard(page);
   await openApp(page);

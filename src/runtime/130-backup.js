@@ -5,4 +5,4 @@ async function createFullBackup(state,password){
   return AppBackupCodec.createFullBackup(state,password,docs)
 }
 
-const {encodeBlobForBackup,decodeFullBackup}=AppBackupCodec;
+const {decodeFullBackup}=AppBackupCodec;

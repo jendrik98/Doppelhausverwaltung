@@ -1,5 +1,4 @@
 /* ===== intelligence.js ===== */
-/* Phase 8 runtime bridge: Implementierung in src/domain/intelligence.ts */
 const {
   INTELLIGENCE_VERSION,
   normalizeLabelText,

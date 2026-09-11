@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { openApp, top, section } = require('./helpers');
 
-test('V17 verhindert ungültige 0-Euro-Buchungen', async ({ page }) => {
+test('verhindert ungültige 0-Euro-Buchungen', async ({ page }) => {
   await openApp(page);
   await top(page,'Finanzen'); await section(page,'payments');
   await page.getByRole('button',{name:'Zahlungen & Kontoimport'}).click();
@@ -14,10 +14,10 @@ test('V17 verhindert ungültige 0-Euro-Buchungen', async ({ page }) => {
   await expect(modal).toBeVisible();
 });
 
-test('V17 zeigt Mietkonto und Versorgungsverantwortung', async ({ page }) => {
+test('zeigt Mietkonto und Versorgungsverantwortung', async ({ page }) => {
   await openApp(page);
   await top(page,'Vermietung');
-  await expect(page.locator('#v17RentLedger')).toBeVisible();
-  await expect(page.locator('#v17Utilities')).toContainText('Kaltwasser / Kanal');
-  await expect(page.locator('#v17Utilities')).toContainText('eigener Mietervertrag');
+  await expect(page.locator('#rentLedger')).toBeVisible();
+  await expect(page.locator('#utilityResponsibility')).toContainText('Kaltwasser / Kanal');
+  await expect(page.locator('#utilityResponsibility')).toContainText('eigener Mietervertrag');
 });

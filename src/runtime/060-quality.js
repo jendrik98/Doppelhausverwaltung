@@ -1,5 +1,4 @@
 /* ===== quality.js ===== */
-/* Phase 8 runtime bridge: Implementierung in src/domain/quality.ts */
 const {
   QUALITY_VERSION,
   parseGermanNumber,

@@ -1,9 +1,9 @@
-const CACHE="mietverwaltung-v18-lifecycle-ledger-g-1";
+const CACHE="mietverwaltung-v18-document-archive-h1-1";
 const CORE=[
   "./",
   "./index.html",
   "./style.css?v=1810p10",
-  "./app.js?v=1806",
+  "./app.js?v=1807",
   "./manifest.webmanifest?v=1810p2",
   "./legal-rules.json",
   "./icon-192.png",

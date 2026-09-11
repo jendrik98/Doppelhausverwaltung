@@ -1,12 +1,7 @@
-// @ts-nocheck -- Phase 10 V3: semantikerhaltende Abschlussmigration im bisherigen äußeren Browser-Runtime-Scope.
-/* Diese Datei bleibt TypeScript-Quelle, wird aber ohne zusätzliche Funktions-Closure an der bisherigen Laufzeitposition injiziert. */
-/* ===== tests.js ===== */
-
-/* Historische Browser-Selbsttests entfernt: Validierung erfolgt über CI, Architekturtests und Playwright. */
-
-/* ===== ui.js ===== */
-/* Phase 9 runtime bridge: zustandslose UI-Helfer in src/ui/ui-core.ts. */
-/* Dialogzustand und Dialogsteuerung bleiben zusammen, da 160-app.js diese Bindungen direkt nutzt. */
+// @ts-nocheck -- Browser compatibility shell; keep shrinking via modular TypeScript extraction.
+/* Diese TypeScript-Quelle wird ohne zusätzliche Closure in den äußeren Browser-Runtime-Scope injiziert. */
+/* Validierung und Regressionen laufen über CI, Architekturtests und Playwright. */
+/* Zustandslose UI-Helfer liegen in src/ui/ui-core.ts; Dialogzustand und -steuerung bleiben als Live-Bindings zusammen. */
 
 const {
   $,
@@ -1075,18 +1070,13 @@ function rentalWorkspace(){
   else if(active==="water")waterRentalView();
   else calculationView()
 }
-function v17LedgerMonthKeys(count=12){
-  const d=new Date(),out=[];
-  for(let i=0;i<count;i++){const x=new Date(d.getFullYear(),d.getMonth()-i,1);out.push(`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}`)}
-  return out
-}
-function v17RentLedgerCard(s){return AppRentalLifecycleUi.renderCompactLedger(s,{euro,esc})}
+function rentLedgerCard(s){return AppRentalLifecycleUi.renderCompactLedger(s,{euro,esc})}
 function rentalLifecycleView(){
 AppRentalLifecycleUi.renderRentalLifecycle({state,activeBuildingId:String(state?.meta?.presentationBuildingId||state?.meta?.primaryBuildingId||""),host:$("workspaceBody"),esc,euro,dateDE,modal,closeModal,formField,executeCommand,rerender:rentalLifecycleView,go})
 }
-function v17UtilitiesCard(s){
+function utilitiesResponsibilityCard(s){
   const p=s.meta?.v17?.utilityProfile||{};
-  return `<section id="v17Utilities" class="card"><p class="eyebrow">VERSORGUNG</p><h3>Abrechnungsverantwortung</h3>
+  return `<section id="utilityResponsibility" class="card"><p class="eyebrow">VERSORGUNG</p><h3>Abrechnungsverantwortung</h3>
   <div class="fact-row"><span>Kaltwasser / Kanal</span><strong>${p.coldWater==="landlord"?"über Vermieter":"Mietervertrag"}</strong></div>
   <div class="fact-row"><span>Heizung</span><strong>${p.heating==="tenant"?"eigener Mietervertrag":"über Vermieter"}</strong></div>
   <div class="fact-row"><span>Warmwasser</span><strong>${p.hotWater==="tenant"?"eigene Verantwortung":"über Vermieter"}</strong></div>
@@ -1094,11 +1084,11 @@ function v17UtilitiesCard(s){
   <div class="fact-row"><span>Gas</span><strong>${p.gas==="tenant"?"eigener Mietervertrag":"über Vermieter"}</strong></div>
   <p class="muted">Heizung, Warmwasser, Strom und Gas werden in diesem Objekt nicht über die Vermieter-Betriebskostenabrechnung geführt.</p></section>`
 }
-function v17PaymentQualityCard(s){
+function paymentQualityCard(s){
   const payments=s.payments||[],bad=payments.filter(p=>!p.date||!String(p.label||"").trim()||!(Number(p.amount)>0)),seen=new Map();
   for(const p of payments){const k=`${p.date}|${p.direction}|${Number(p.amount||0).toFixed(2)}|${normalizeLabelText(p.label||"")}`;seen.set(k,(seen.get(k)||0)+1)}
   const dups=[...seen.values()].filter(n=>n>1).length,problem=bad.length||dups;
-  return `<div id="v17PaymentQuality" class="${problem?"legal-warn":"legal-ok"}"><strong>Buchungsprüfung</strong><br>${bad.length?`${bad.length} Buchung(en) mit unvollständigen Pflichtdaten. `:""}${dups?`${dups} mögliche Dublette(n).`:"Keine ungültigen oder doppelten Buchungen erkannt."}</div>`
+  return `<div id="paymentQuality" class="${problem?"legal-warn":"legal-ok"}"><strong>Buchungsprüfung</strong><br>${bad.length?`${bad.length} Buchung(en) mit unvollständigen Pflichtdaten. `:""}${dups?`${dups} mögliche Dublette(n).`:"Keine ungültigen oder doppelten Buchungen erkannt."}</div>`
 }
 
 function leaseDocumentCandidate(doc){
@@ -1156,8 +1146,8 @@ function rentalOverview(){
   <div class="${ctx.kind==="takeover"?"info":"legal-ok"}"><strong>${esc(billingPeriodLabel(state,y))}</strong><br>${esc(ctx.message)}<br><small>Endabrechnung intern bis ${periodBillingTarget(y)} · gesetzliche Abrechnungsfrist ${periodDeadline(y)}.</small></div>
   ${p.missingCategories.length?`<details class="card secondary-detail"><summary>Was in der Prognose noch geschätzt wird</summary><div class="detail-content"><p>${p.missingCategories.map(x=>`${esc(categoryLabel(x.category))}${x.annualized?" (aus Teilperiode hochgerechnet)":""}`).join(", ")}</p><span class="confidence confidence-${cb.id}">${esc(cb.label)} · ${p.confidence}%</span></div></details>`:""}
   <div class="card"><div class="fact-row"><span>Mietzahlung ${esc(rent.key)}</span><strong>${rent.status==="none"?"kein aktiver Vertrag":esc(rentStatusLabel(rent))}</strong></div>${rent.status!=="none"?`<small>${euro(rent.paid)} von ${euro(rent.expected)} in erfassten Zahlungen erkannt.</small>`:""}</div>
-  ${v17RentLedgerCard(state)}
-  ${v17UtilitiesCard(state)}`;
+  ${rentLedgerCard(state)}
+  ${utilitiesResponsibilityCard(state)}`;
   $("editLeaseOverview").onclick=()=>go("rental","lifecycle");
   $("addLeaseDocument").onclick=()=>{go("data","documents");setTimeout(()=>{openDocumentCapture();setTimeout(()=>{if($("newDocLabel")&&!$("newDocLabel").value)$("newDocLabel").value="Mietvertrag"},0)},0)};
   renderLeaseDocumentSlot()
@@ -1191,7 +1181,7 @@ function waterView(){
   const y=currentPeriodYear(),sett=settlementByPeriod(state,y),cons=settlementConsumption(state,sett),waterCosts=(state.costPositions||[]).filter(p=>p.confirmed&&p.category==="water"&&positionToEvents(state,p,y).length),waterCostTotal=waterCosts.reduce((sum,p)=>sum+positionToEvents(state,p,y).reduce((a,e)=>a+Number(e.amount||0),0),0),waterTenantCost=cons?.valid?waterCostTotal*cons.share:0,waterRate=cons?.valid&&cons.house>0?waterCostTotal/cons.house:0,{main,owner}=ensureDefaultMeters(state);
   $("workspaceBody").innerHTML=`<div class="card"><div class="row between"><div><button id="editWater" class="primary">${sett?"Abrechnungsperiode bearbeiten":"Abrechnungsperiode erfassen"}</button><button id="openMeters" class="secondary">Zählerstammdaten</button></div><div><button id="photoMain" class="secondary">📷 Hauptzähler</button><button id="photoOwner" class="secondary">📷 Zwischenzähler</button></div></div></div>
   ${cons?`<div class="${cons.valid?"legal-ok":"legal-bad"}"><strong>${billingPeriodLabel(state,y)}</strong><br>Hausverbrauch ${cons.house.toFixed(3)} m³ · Eigennutzung ${cons.owner.toFixed(3)} m³ · Mietwohnung ${cons.tenant.toFixed(3)} m³ · Anteil ${percent(cons.share)}</div>`:`<div class="legal-warn">Für diese Periode fehlen vollständige Zählerstände. Fotoaufnahmen werden als historische Ablesungen gespeichert; die Abrechnungsperiode wählt anschließend die passenden Anfangs- und Endstände aus.</div>`}
-  <section id="v17WaterPlus" class="card"><div class="card-head"><div><p class="eyebrow">KALTWASSER</p><h3>Verbrauch & Kosten auf einen Blick</h3></div><span class="pill ${cons?.valid&&waterCostTotal>0?"good":"warn"}">${cons?.valid&&waterCostTotal>0?"Abrechnungsbereit":"Noch offen"}</span></div><div class="grid cards"><article class="card metric-card"><span>Hausverbrauch</span><strong>${cons?.valid?cons.house.toFixed(3)+" m³":"–"}</strong></article><article class="card metric-card"><span>Mietwohnung</span><strong>${cons?.valid?cons.tenant.toFixed(3)+" m³":"–"}</strong><small>${cons?.valid?percent(cons.share):"Anteil offen"}</small></article><article class="card metric-card"><span>Wasserkosten</span><strong>${euro(waterCostTotal)}</strong><small>${cons?.valid&&waterCostTotal?`${euro(waterRate)} / m³ Hausverbrauch`:"Tarif noch offen"}</small></article><article class="card metric-card"><span>Rechnerischer Mieteranteil</span><strong>${cons?.valid&&waterCostTotal?euro(waterTenantCost):"–"}</strong></article></div><p class="muted">Die Werte stammen direkt aus dem zentralen Zähler- und Kostenmodell; es gibt keine separate V17-Nebenrechnung mehr.</p></section>
+  <section id="waterCostSummary" class="card"><div class="card-head"><div><p class="eyebrow">KALTWASSER</p><h3>Verbrauch & Kosten auf einen Blick</h3></div><span class="pill ${cons?.valid&&waterCostTotal>0?"good":"warn"}">${cons?.valid&&waterCostTotal>0?"Abrechnungsbereit":"Noch offen"}</span></div><div class="grid cards"><article class="card metric-card"><span>Hausverbrauch</span><strong>${cons?.valid?cons.house.toFixed(3)+" m³":"–"}</strong></article><article class="card metric-card"><span>Mietwohnung</span><strong>${cons?.valid?cons.tenant.toFixed(3)+" m³":"–"}</strong><small>${cons?.valid?percent(cons.share):"Anteil offen"}</small></article><article class="card metric-card"><span>Wasserkosten</span><strong>${euro(waterCostTotal)}</strong><small>${cons?.valid&&waterCostTotal?`${euro(waterRate)} / m³ Hausverbrauch`:"Tarif noch offen"}</small></article><article class="card metric-card"><span>Rechnerischer Mieteranteil</span><strong>${cons?.valid&&waterCostTotal?euro(waterTenantCost):"–"}</strong></article></div><p class="muted">Die Werte stammen direkt aus dem zentralen Zähler- und Kostenmodell; es gibt keine separate Nebenrechnung.</p></section>
   <div class="card"><h3>Letzte Ablesungen</h3><p>${esc(main.name)}: <strong>${latestMeterReading(main)?`${latestMeterReading(main).value} ${esc(main.unit||"")} · ${esc(latestMeterReading(main).date)}`:"noch keine"}</strong></p><p>${esc(owner.name)}: <strong>${latestMeterReading(owner)?`${latestMeterReading(owner).value} ${esc(owner.unit||"")} · ${esc(latestMeterReading(owner).date)}`:"noch keine"}</strong></p></div>
   <div class="card"><h3>Wasser-/Kanalkosten</h3>${waterCosts.map(p=>`<p>${esc(p.label)}: <strong>${euro(p.amount)}</strong></p>`).join("")||"<div class='empty-state compact-empty'><strong>Noch keine bestätigten Wasser-/Kanalkosten</strong><p>Bestätigte Kosten erscheinen hier automatisch.</p></div>"}<p class="muted">Kosten und Verbrauch sind getrennt gespeichert. Die Abrechnung verbindet beides erst bei der Umlage.</p></div>`;
   $("editWater").onclick=()=>openWaterEditor(sett);$("openMeters").onclick=()=>{sub.data="infrastructure";go("data")};
@@ -1381,7 +1371,7 @@ function financeView(){
 function cashflowView(){
   const rows=actualCashflowByMonth(state,12),sumIn=rows.reduce((s,r)=>s+r.income,0),sumOut=rows.reduce((s,r)=>s+r.outflow,0),rentHits=(state.payments||[]).filter(p=>detectRentPayment(state,p)?.score>=80);
   $("workspaceBody").innerHTML=`<div class="card"><div class="row between"><div><h3>Tatsächlicher Zahlungsfluss</h3><p class="muted">Echte Kontobewegungen. CSV-Import arbeitet mit Vorschau und Duplikaterkennung.</p></div><div><button id="importBank" class="secondary">Kontoauszug CSV</button><button id="addPayment" class="primary">Buchung hinzufügen</button></div></div><input id="bankCsvInput" type="file" accept=".csv,text/csv,text/plain" hidden></div>
-  ${v17PaymentQualityCard(state)}
+  ${paymentQualityCard(state)}
   <div class="grid cards"><article class="card"><span>Einnahmen 12M</span><strong>${euro(sumIn)}</strong></article><article class="card"><span>Ausgaben 12M</span><strong>${euro(sumOut)}</strong></article><article class="card"><span>Saldo 12M</span><strong class="${sumIn-sumOut<0?"negative":"positive"}">${euro(sumIn-sumOut)}</strong></article><article class="card"><span>erkannte Mietzahlungen</span><strong>${rentHits.length}</strong></article></div>
   <div class="card"><div class="tablewrap"><table class="costtable"><thead><tr><th>Monat</th><th>Einnahmen</th><th>Ausgaben</th><th>Saldo</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.label}</td><td>${euro(r.income)}</td><td>${euro(r.outflow)}</td><td class="${r.net<0?"negative":"positive"}">${euro(r.net)}</td></tr>`).join("")}</tbody></table></div></div>
   <div class="card"><h3>Letzte Buchungen</h3>${(state.payments||[]).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,20).map(p=>{const rm=detectRentPayment(state,p);return`<div class="item"><strong>${esc(p.date)} · ${p.direction==="income"?"+":"−"} ${euro(p.amount)}</strong><p>${esc(p.label)}</p>${rm?(()=>{const cb=confidenceBand(rm.score);return`<small class="positive">Mietzahlung wahrscheinlich · ${esc(rm.kind)} · ${esc(cb.short)}</small>`})():""}</div>`}).join("")||"<div class='empty-state'><strong>Noch keine Zahlungen erfasst</strong><p>Du kannst eine Zahlung manuell hinzufügen oder einen Kontoauszug importieren.</p></div>"}</div>`;

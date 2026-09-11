@@ -271,7 +271,7 @@ function buildAuditState(base, {
 
   s.property = {
     ...(s.property || {}),
-    name: 'V17 Rechtsaudit Doppelhaus',
+    name: 'Rechtsaudit Doppelhaus',
     address: 'Langzeitweg 15, 12345 Teststadt',
     totalArea: 200,
     year: '1965',
@@ -281,7 +281,7 @@ function buildAuditState(base, {
 
   s.correspondence = {
     ...(s.correspondence || {}),
-    landlordName: 'V17 Test Vermieter',
+    landlordName: 'Test Vermieter',
     landlordAddress: 'Vermieterweg 7, 12345 Teststadt',
     iban: 'DE00123456780000000000',
     paymentReference: 'Betriebskosten Langzeitweg 15',
@@ -402,7 +402,7 @@ async function freezeVisibleBilling(page) {
   await expect(body).toContainText('Abrechnung eingefroren');
 }
 
-test('V17 Rechtsaudit 15 Jahre: Testdaten selbst sind zeitlich, rechnerisch und mietrechtlich plausibel', async () => {
+test('Rechtsaudit 15 Jahre: Testdaten selbst sind zeitlich, rechnerisch und mietrechtlich plausibel', async () => {
   const legal = JSON.parse(fs.readFileSync('legal-rules.json', 'utf8'));
 
   expect(legal.jurisdiction).toMatch(/Deutschland/);
@@ -475,7 +475,7 @@ test('V17 Rechtsaudit 15 Jahre: Testdaten selbst sind zeitlich, rechnerisch und 
   }
 });
 
-test('V17 Rechtsschutz: laufende Periode nicht finalisieren, abgeschlossene Periode danach weiter abrechnen', async ({ browser }) => {
+test('Rechtsschutz: laufende Periode nicht finalisieren, abgeschlossene Periode danach weiter abrechnen', async ({ browser }) => {
   const context = await browser.newContext(contextOptions());
   const page = await context.newPage();
   const guard = runtimeGuard(page);
@@ -510,7 +510,7 @@ test('V17 Rechtsschutz: laufende Periode nicht finalisieren, abgeschlossene Peri
   await context.close();
 });
 
-test('V17 Inhaltsrichtigkeit: tatsächlich geleistete BK-Vorauszahlungen bestimmen den Saldo', async ({ browser }) => {
+test('Inhaltsrichtigkeit: tatsächlich geleistete BK-Vorauszahlungen bestimmen den Saldo', async ({ browser }) => {
   const context = await browser.newContext(contextOptions());
   const page = await context.newPage();
   const guard = runtimeGuard(page);
@@ -557,7 +557,7 @@ test('V17 Inhaltsrichtigkeit: tatsächlich geleistete BK-Vorauszahlungen bestimm
   await context.close();
 });
 
-test('V17 Dokumentstandard: finale PDF ist formell vollständig und professionell nachvollziehbar', async ({ browser }) => {
+test('Dokumentstandard: finale PDF ist formell vollständig und professionell nachvollziehbar', async ({ browser }) => {
   test.setTimeout(60_000);
   fs.mkdirSync('test-results', { recursive: true });
 
@@ -606,11 +606,11 @@ test('V17 Dokumentstandard: finale PDF ist formell vollständig und professionel
 
   // BGH-Mindestlogik: Gesamtkosten, Schlüssel, Mieteranteil, Vorauszahlungen.
   expect(text).toContain('Betriebskostenabrechnung');
-  expect(text).toContain('V17 Test Vermieter');
+  expect(text).toContain('Test Vermieter');
   expect(text).toContain('Vermieterweg 7');
   expect(text).toContain('Langzeit Testperson');
   expect(text).toContain('Langzeitweg 15');
-  expect(text).toContain('V17 Rechtsaudit Doppelhaus');
+  expect(text).toContain('Rechtsaudit Doppelhaus');
   expect(text).toMatch(/Abrechnungszeitraum/i);
   expect(text).toMatch(/1\.1\.2041|01\.01\.2041/);
   expect(text).toMatch(/31\.12\.2041/);

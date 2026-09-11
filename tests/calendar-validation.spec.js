@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { runtimeGuard, openApp, top } = require('./helpers');
 
-test('Phase 2: Kalenderjahr, 31.03-Zielfrist, zentrale Validierung und Toast-Feedback', async ({ page }) => {
+test('Kalender & Validierung: Kalenderjahr, 31.03-Zielfrist, zentrale Validierung und Toast-Feedback', async ({ page }) => {
   const guard = runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2026-10-15T12:00:00+02:00'));
   await openApp(page);
@@ -10,7 +10,7 @@ test('Phase 2: Kalenderjahr, 31.03-Zielfrist, zentrale Validierung und Toast-Fee
   await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
 
   const form = page.locator('#propertyForm');
-  await form.getByLabel('Objektname').fill('Phase-2-Testhaus');
+  await form.getByLabel('Objektname').fill('Kalender-Testhaus');
   await form.getByLabel('Adresse', { exact: true }).fill('Kalenderweg 1');
   await form.getByLabel('Gesamtwohnfläche m²').fill('200');
   await form.getByLabel('Baujahr Stammgebäude').fill('1976');

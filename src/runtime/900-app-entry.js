@@ -1,4 +1,3 @@
-/* ===== app-entry.js · Phase 10 V3 ===== */
 
 }catch(error){
   console.error("Mietverwaltung Startfehler:",error);

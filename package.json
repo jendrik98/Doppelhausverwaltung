@@ -1,27 +1,38 @@
 {
-  "name": "mietverwaltung-live-e2e",
+  "name": "doppelhausverwaltung",
   "private": true,
-  "version": "1.0.1",
+  "version": "18.0.0",
   "scripts": {
     "build": "node scripts/build-app.mjs && node scripts/build-styles.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test:validation": "node scripts/test-validation.mjs",
-    "test:architecture": "node scripts/test-architecture.mjs && npm run test:portfolio && npm run test:repository && npm run test:application && npm run test:presentation && npm run test:portfolio-admin && npm run test:design-system && npm run test:lifecycle",
+    "test:architecture": "node scripts/test-architecture.mjs && npm run test:portfolio && npm run test:repository && npm run test:application && npm run test:presentation && npm run test:portfolio-admin && npm run test:design-system && npm run test:lifecycle && npm run test:archive",
     "test:portfolio": "node scripts/test-portfolio-model.mjs",
     "test:e2e": "playwright test",
     "test:report": "playwright show-report",
-    "test:quality": "node scripts/test-quality.mjs",
+    "test:quality": "node scripts/test-quality.mjs && npm run test:hygiene",
     "test:pwa": "node scripts/test-pwa-update.mjs",
     "test:repository": "node scripts/test-portfolio-repository.mjs",
     "test:application": "node scripts/test-application-layer.mjs",
     "test:presentation": "node scripts/test-presentation-layer.mjs",
     "test:portfolio-admin": "node scripts/test-portfolio-administration.mjs",
     "test:design-system": "node scripts/test-design-system.mjs",
-    "test:lifecycle": "node scripts/test-lifecycle-ledger.mjs"
+    "test:lifecycle": "node scripts/test-lifecycle-ledger.mjs",
+    "test:archive": "node scripts/test-year-archive.mjs",
+    "test:hygiene": "node scripts/test-hygiene.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "typescript": "7.0.2",
     "esbuild": "0.28.2"
+  },
+  "description": "Local-first PWA für die private Verwaltung eines Doppelhauses und kleiner Mehrgebäude-Portfolios.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jendrik98/Doppelhausverwaltung.git"
+  },
+  "homepage": "https://jendrik98.github.io/Doppelhausverwaltung/",
+  "engines": {
+    "node": ">=22"
   }
 }

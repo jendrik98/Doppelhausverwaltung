@@ -1,5 +1,4 @@
 /* ===== V18 billing assistant preview ===== */
-/* Phase 8 runtime bridge: Implementierung in src/domain/v18-assistant.ts */
 const {
   V18_ASSISTANT_VERSION,
   V18_EXPECTED_BILLING_CATEGORIES,

@@ -9,7 +9,7 @@
     "src/runtime/050-intelligence.js",
     "src/runtime/060-quality.js",
     "src/runtime/070-smart-engine.js",
-    "src/runtime/080-v18-billing-assistant-preview.js",
+    "src/runtime/080-assistant.js",
     "src/runtime/090-legal-rules.js",
     "src/runtime/100-domain-2.js",
     "src/runtime/110-db.js",

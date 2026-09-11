@@ -12,17 +12,7 @@ const {
   updateDocument:updateDocumentRecord,
   replaceDocuments:replaceAllDocuments
 }=AppPersistence;
-const {
-  readStateRecord,
-  saveState,
-  listPortfolios,
-  listBuildings,
-  listUnitsByBuilding,
-  listTenanciesByBuilding,
-  listTenanciesByUnit,
-  getProjectionMeta,
-  getBuildingGraph
-}=AppPortfolioRepository;
+const {readStateRecord,saveState}=AppPortfolioRepository;
 
 const {loadApplicationState}=AppApplication;
 

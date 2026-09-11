@@ -58,7 +58,7 @@ async function seedBase(page, {
 }={}) {
   await openApp(page);
   const s = await readState(page);
-  s.property = {...s.property, name:'V18 Testhaus', address:'Testweg 18', totalArea:200, billingTakeoverDate:takeover, predecessorBillingEnd:''};
+  s.property = {...s.property, name:'Assistent-Testhaus', address:'Testweg 18', totalArea:200, billingTakeoverDate:takeover, predecessorBillingEnd:''};
   s.correspondence = {landlordName:'Test Vermieter', landlordAddress:'Testweg 18', iban:'DE001234', paymentReference:'BK-Test', contact:'test@example.test'};
   s.units = [
     {id:'owner',name:'Eigennutzung',type:'owner',area:100,occupancy:[{from:takeover,to:'',count:2}]},
@@ -123,7 +123,7 @@ async function reload(page, hash='./') {
   await page.waitForTimeout(350);
 }
 
-test('V18 Assistent: erste Teilperiode zeigt 4 geplante Vorauszahlungen, offene Daten und Backup-Status', async ({ page }) => {
+test('Abrechnungsassistent: erste Teilperiode zeigt 4 geplante Vorauszahlungen, offene Daten und Backup-Status', async ({ page }) => {
   const guard=runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2026-10-15T12:00:00+02:00'));
   await seedBase(page);
@@ -143,7 +143,7 @@ test('V18 Assistent: erste Teilperiode zeigt 4 geplante Vorauszahlungen, offene 
   guard.assertClean();
 });
 
-test('V18 Assistent: historische Gebäudeversicherung wird transparent geschätzt statt erfunden', async ({ page }) => {
+test('Abrechnungsassistent: historische Gebäudeversicherung wird transparent geschätzt statt erfunden', async ({ page }) => {
   const guard=runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2027-10-15T12:00:00+02:00'));
   await seedBase(page,{year:2027,takeover:'2026-01-01',includePriorInsurance:true,validWater:true});
@@ -156,7 +156,7 @@ test('V18 Assistent: historische Gebäudeversicherung wird transparent geschätz
   guard.assertClean();
 });
 
-test('V18 Assistent: aktueller Beleg ersetzt die Schätzung automatisch', async ({ page }) => {
+test('Abrechnungsassistent: aktueller Beleg ersetzt die Schätzung automatisch', async ({ page }) => {
   const guard=runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2027-10-15T12:00:00+02:00'));
   await seedBase(page,{year:2027,takeover:'2026-01-01',includePriorInsurance:true,includeCurrentInsurance:true,validWater:true});
@@ -168,7 +168,7 @@ test('V18 Assistent: aktueller Beleg ersetzt die Schätzung automatisch', async 
   guard.assertClean();
 });
 
-test('V18 Sicherheit: Schätzwerte gelangen niemals in Snapshot oder finale Abrechnung', async ({ page }) => {
+test('Abrechnungssicherheit: Schätzwerte gelangen niemals in Snapshot oder finale Abrechnung', async ({ page }) => {
   test.setTimeout(60_000);
   const guard=runtimeGuard(page);
   await page.clock.setFixedTime(new Date('2028-06-15T12:00:00+02:00'));
