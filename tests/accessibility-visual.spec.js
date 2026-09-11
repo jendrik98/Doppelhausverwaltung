@@ -38,9 +38,7 @@ test('Touch-Ziele, sichtbarer Fokus und Dark Mode', async ({ page }) => {
 });
 
 test('Zählerfoto-Zuschnitt ist auch ohne Dragging bedienbar', async ({ page }) => {
-  await openApp(page);
-  await top(page, 'Haus');
-  await section(page, 'infrastructure');
+  await openApp(page, '#data/infrastructure');
   await page.getByRole('button', { name: 'Foto auswählen' }).click();
   await page.locator('#meterFileInput').setInputFiles(fixtureFile('meter'));
   await expect(page.locator('#meterCropStage')).toBeVisible();

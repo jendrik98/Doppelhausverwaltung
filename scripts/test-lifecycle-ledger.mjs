@@ -86,4 +86,4 @@ assert.ok(runtime.includes('AppRentalLifecycleUi.renderRentalLifecycle'),'Runtim
 assert.ok(runtime.includes('correctBillingBtn'),'Korrekturpfad ist nicht erreichbar');
 assert.ok(context.includes('rentAllocations')&&context.includes('meterReplacements'),'G-Sammlungen sind nicht gebäudeisoliert');
 assert.ok(billing.includes('decorateSnapshotRevision'),'Snapshots sind nicht versioniert');
-assert.ok(fs.readFileSync(path.join(root,'index.html'),'utf8').includes('app.js?v=1810'));
+assert.ok(fs.readFileSync(path.join(root,'index.html'),'utf8').includes('app.js?v=1811'));

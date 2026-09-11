@@ -28,7 +28,7 @@ async function buildCoreData(page) {
   await top(page, 'Vermietung');
   await page.getByRole('button', { name: 'Mietvertrag anlegen' }).click();
   await expect(page).toHaveURL(/#rental\/lifecycle$/);
-  await page.getByRole('button', { name: 'Mietverhältnis', exact: true }).click();
+  await page.locator('#gAddTenancy').click();
   await page.locator('#gTenancyForm input[name="tenantName"]').fill('Testperson');
   await page.locator('#gTenancyForm input[name="tenantAddress"]').fill('Musterweg 10');
   await page.locator('#gTenancyForm select[name="unitId"]').selectOption({ label: 'Mietwohnung Test' });
@@ -43,8 +43,7 @@ async function buildCoreData(page) {
 
   await top(page, 'Haus');
   await section(page, 'costs');
-  await page.getByRole('button', { name: 'Kostenquellen' }).click();
-  await page.getByRole('button', { name: 'Kostenquelle / Vertrag hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Kostenquelle hinzufügen' }).click();
   await page.getByLabel('Bezeichnung / Anbieter').fill('Kommunalabgaben Test');
   await page.getByLabel('Kategorie').selectOption('rainwater');
   await page.getByLabel('Betrag (€)').fill('90');
@@ -58,7 +57,6 @@ async function buildCoreData(page) {
   await expect(page.getByRole('heading', { name: 'Kommunalabgaben Test' })).toBeVisible();
 
   await section(page, 'costs');
-  await page.getByRole('button', { name: 'Kostenpositionen' }).click();
   await expect(page.getByRole('heading', { name: 'Kommunalabgaben Test' })).toBeVisible();
   await expect(page.getByText(/gesamtes Haus · Wohnfläche/)).toBeVisible();
 
@@ -105,7 +103,6 @@ test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung 
 
   await top(page, 'Finanzen');
   await section(page, 'payments');
-  await page.getByRole('button', { name: 'Zahlungen & Kontoimport' }).click();
 
   await addPayment(page, {
     date: `${dates.y}-11-15`,
@@ -162,6 +159,7 @@ test('Erinnerung + ICS-Export nutzt echte gespeicherte Fälligkeiten', async ({ 
   const dates = await buildCoreData(page);
 
   await top(page, 'Finanzen');
+  await section(page, 'planning');
   await expect(page.getByText('Fälligkeit: Kommunalabgaben Test')).toBeVisible();
   await expect(page.getByText(`15.11.${dates.y}`)).toBeVisible();
 

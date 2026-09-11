@@ -14,7 +14,9 @@ for(const symbol of ["buildYearArchive","createYearArchiveExport","mountYearArch
 assert.ok(ui.includes("loadDocuments"),"H2 muss Dokumente über die gebäudeisolierte Runtime-Grenze laden");
 assert.ok(ui.includes("context:{buildingId"),"Export muss den aktiven Gebäudekontext dokumentieren");
 assert.ok(build.includes('compileModule("src/ui/year-archive-ui.ts", "AppYearArchiveUi")'),"H2-UI fehlt im reproduzierbaren Build");
-assert.ok(runtime.includes('{id:"archive",label:"Jahresarchiv"'),"Jahresarchiv-Tab fehlt");
+assert.ok(runtime.includes('id="openBillingArchive"'),"Jahresarchiv-Einstieg aus Abrechnung fehlt");
+assert.ok(runtime.includes('go("more","archive")'),"Jahresarchiv-Detailroute muss aus Abrechnung erreichbar bleiben");
+assert.ok(!runtime.includes('{id:"archive",label:"Jahresarchiv"'),"Jahresarchiv darf in Pass 2 kein eigener Mehr-Tab mehr sein");
 assert.ok(runtime.includes('AppYearArchiveUi.mountYearArchiveWorkspace'),"Dünner H2-Runtime-Adapter fehlt");
 assert.ok(String(pkg.scripts?.["test:architecture"]||"").includes("test:archive-ui"),"H2-Gate ist nicht in test:architecture verdrahtet");
 assert.ok(architecture.includes("### H2: Jahresarchiv-Oberfläche"),"ARCHITECTURE.md dokumentiert H2 nicht");

@@ -4,7 +4,6 @@ const { openApp, top, section } = require('./helpers');
 test('verhindert ungültige 0-Euro-Buchungen', async ({ page }) => {
   await openApp(page);
   await top(page,'Finanzen'); await section(page,'payments');
-  await page.getByRole('button',{name:'Zahlungen & Kontoimport'}).click();
   await page.getByRole('button',{name:'Buchung hinzufügen'}).click();
   const modal=page.locator('#modal');
   await modal.locator('input[name="label"]').fill('Ungültige Testbuchung');

@@ -11,21 +11,50 @@ export type TopRoute = keyof typeof ROUTE_LABELS;
 export const DEFAULT_SUB: Record<Exclude<TopRoute, "home">, string> = {
   data: "overview",
   rental: "overview",
-  owner: "overview",
-  more: "smart"
+  owner: "payments",
+  more: "protection"
 };
 
 export const SUB_PARENT: Record<string, Record<string, string>> = {
-  data: { object: "overview", property: "overview", units: "overview", sources: "costs", positions: "costs", assessment: "costs" },
-  rental: { lease: "overview", calculation: "billing", workflow: "billing" },
-  owner: { tasks: "overview", cashflow: "payments", reconciliation: "payments", finance: "planning", analytics: "planning" },
-  more: { overview: "smart", legal: "app", security: "protection", backup: "protection", recovery: "protection", audit: "app", diagnostics: "app" }
+  data: {
+    object: "overview",
+    property: "overview",
+    units: "overview",
+    infrastructure: "overview",
+    sources: "costs",
+    positions: "costs",
+    assessment: "costs"
+  },
+  rental: {
+    lease: "overview",
+    lifecycle: "overview",
+    water: "billing",
+    calculation: "billing",
+    workflow: "billing"
+  },
+  owner: {
+    overview: "payments",
+    cashflow: "payments",
+    reconciliation: "payments",
+    finance: "planning",
+    analytics: "planning",
+    tasks: "planning"
+  },
+  more: {
+    overview: "app",
+    smart: "app",
+    archive: "app",
+    legal: "app",
+    security: "protection",
+    backup: "protection",
+    recovery: "protection",
+    audit: "app",
+    diagnostics: "app"
+  }
 };
 
 export function normalizeSub(routeName: string, subName: string): string {
   if (!subName) return DEFAULT_SUB[routeName as keyof typeof DEFAULT_SUB] || "";
-  if (routeName === "more" && subName === "overview") return "smart";
-  if (routeName === "rental" && (subName === "calculation" || subName === "workflow")) return subName;
   return subName;
 }
 

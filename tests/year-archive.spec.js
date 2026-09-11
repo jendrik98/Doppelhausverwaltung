@@ -56,7 +56,7 @@ test('H3 zeigt gebäudeisolierte Jahresarchive und exportiert Manifest plus echt
   },{state,documents});
 
   await page.reload(); await openApp(page,'#more/archive');
-  await expect(page.locator('#workspaceSelect')).toHaveValue('archive');
+  await expect(page.locator('#workspaceSelect')).toHaveValue('app');
   await expect(page.locator('#yearArchiveYearSelect')).toHaveValue('2025');
   await expect(page.locator('[data-archive-status]')).toHaveText('Abschlussbereit');
   await expect(page.locator('[data-package-status]')).toHaveText('Paket vollständig');

@@ -103,7 +103,7 @@ function go(r,s=null){
   const target=routeHash(r,r==="home"?null:sub[r]);
   if(location.hash!==target)location.hash=target;else render()
 }
-function goTop(r){go(r,r==="home"?null:rememberedTopSub(r,sub,DEFAULT_SUB))}
+function goTop(r){go(r,r==="home"?null:visibleSub(r,rememberedTopSub(r,sub,DEFAULT_SUB)))}
 function goSub(group,id){sub[group]=normalizeSub(group,id);go(group,sub[group])}
 syncRouteFromHash();
 window.addEventListener("hashchange",()=>{syncRouteFromHash();render();window.scrollTo({top:0,left:0,behavior:"auto"})});
@@ -311,26 +311,11 @@ function appManagementHubView(){
   document.querySelectorAll("[data-hub-action]").forEach(b=>b.onclick=()=>goSub("more",b.dataset.hubAction))
 }
 
+function houseCostsCombinedView(){costPositionsDataView();const h=$("workspaceBody");if(!h)return;h.insertAdjacentHTML("afterbegin",`<div class="card action-row"><button id="addCostSourceQuick" class="primary">Kostenquelle hinzufügen</button><button id="addAssessmentQuick" class="secondary">Grundbesitzabgaben</button><button id="openCostSources" class="secondary">Quellen</button></div>`);$("addCostSourceQuick").onclick=()=>{go("data","sources");setTimeout(()=>openSourceEditor(),0)};$("addAssessmentQuick").onclick=()=>{go("data","assessment");setTimeout(()=>openAssessmentEditor(),0)};$("openCostSources").onclick=()=>go("data","sources")}
 function dataWorkspace(){
-  const tabs=[
-    {id:"overview",label:"Überblick",icon:"⌂"},
-    {id:"costs",label:"Kosten",icon:"€"},
-    {id:"infrastructure",label:"Zähler",icon:"◌"},
-    {id:"documents",label:"Dokumente",icon:"▤"}
-  ];
-  const active=sub.data||"overview",visible=visibleSub("data",active);
-  $("app").innerHTML=workspaceHeader("data","HAUS","Haus","Objekt, Kosten, Zähler und Belege an einem Ort.",tabs,visible,active);
-  bindWorkspaceTabs("data",goSub);
-  if(active==="overview")houseOverviewView();
-  else if(active==="object")houseObjectHubView();
-  else if(active==="costs")houseCostsHubView();
-  else if(active==="property")propertyView();
-  else if(active==="units")unitsDataView();
-  else if(active==="sources")sourcesDataView();
-  else if(active==="positions")costPositionsDataView();
-  else if(active==="assessment")assessmentDataView();
-  else if(active==="infrastructure")infrastructureDataView();
-  else documentsDataView()
+  const tabs=[{id:"overview",label:"Objekt",icon:"⌂"},{id:"costs",label:"Kosten",icon:"€"},{id:"documents",label:"Dokumente",icon:"▤"}],active=sub.data||"overview",visible=visibleSub("data",active);
+  $("app").innerHTML=workspaceHeader("data","HAUS","Haus","Objekt, Kosten und Dokumente.",tabs,visible,active);bindWorkspaceTabs("data",goSub);
+  if(active==="overview")houseOverviewView();else if(active==="object")houseObjectHubView();else if(active==="costs")houseCostsCombinedView();else if(active==="property")propertyView();else if(active==="units")unitsDataView();else if(active==="sources")sourcesDataView();else if(active==="positions")costPositionsDataView();else if(active==="assessment")assessmentDataView();else if(active==="infrastructure")infrastructureDataView();else documentsDataView()
 }
 function propertyView(){
   const takeover=state.property.billingTakeoverDate||state.property.ownershipEffective||"",pred=state.property.predecessorBillingEnd||"";
@@ -1034,23 +1019,11 @@ async function documentsView(autoQueue=true){
   document.querySelectorAll("[data-doc-analysis]").forEach(b=>b.onclick=()=>{const d=docs.find(x=>x.id===b.dataset.docAnalysis);if(d)openDocumentAnalysis(d)});
   document.querySelectorAll("[data-doc-export]").forEach(b=>b.onclick=()=>{const d=docs.find(x=>x.id===b.dataset.docExport);if(d)exportDocumentPDF(d)})
 }
+function billingContextActions(){const h=$("workspaceBody");if(!h)return;h.insertAdjacentHTML("afterbegin",`<div class="card action-row"><button id="openBillingWater" class="secondary">Kaltwasser & Zähler</button><button id="openBillingArchive" class="secondary">Jahresarchiv</button></div>`);$("openBillingWater").onclick=()=>go("rental","water");$("openBillingArchive").onclick=()=>go("more","archive")}
 function rentalWorkspace(){
-  const tabs=[
-    {id:"overview",label:"Überblick",icon:"⌂"},
-    {id:"lifecycle",label:"Mietkonto",icon:"↔"},
-    {id:"water",label:"Kaltwasser",icon:"◌"},
-    {id:"billing",label:"Abrechnung",icon:"€"}
-  ];
-  let active=sub.rental||"overview";
-  if(active==="calculation"||active==="workflow")active="billing";
-  sub.rental=active;
-  $("app").innerHTML=workspaceHeader("rental","VERMIETUNG","Vermietung","Mietverhältnis, Kaltwasser und Betriebskostenabrechnung.",tabs,visibleSub("rental",active),active);
-  bindWorkspaceTabs("rental",goSub);
-  if(active==="overview")rentalOverview();
-  else if(active==="lifecycle")rentalLifecycleView();
-  else if(active==="lease")leaseDataView();
-  else if(active==="water")waterRentalView();
-  else calculationView()
+  const tabs=[{id:"overview",label:"Mietverhältnis",icon:"⌂"},{id:"billing",label:"Abrechnung",icon:"€"}],active=sub.rental||"overview",visible=visibleSub("rental",active);
+  $("app").innerHTML=workspaceHeader("rental","VERMIETUNG","Vermietung","Mietverhältnis und Abrechnung.",tabs,visible,active);bindWorkspaceTabs("rental",goSub);
+  if(active==="overview")rentalOverview();else if(active==="lifecycle")rentalLifecycleView();else if(active==="lease")leaseDataView();else if(active==="water")waterRentalView();else{calculationView();billingContextActions()}
 }
 function rentLedgerCard(s){return AppRentalLifecycleUi.renderCompactLedger(s,{euro,esc})}
 function rentalLifecycleView(){
@@ -1245,23 +1218,12 @@ function printBilling(a,y,snapshot=null){
 
 
 
+function financePaymentsView(){cashflowView();const h=$("workspaceBody"),m=smartPaymentPlan(state);if(!h)return;h.insertAdjacentHTML("afterbegin",`<div class="card"><button id="openReconciliationFromPayments" class="secondary">Zahlungen zuordnen${m.length?` · ${m.length}`:""}</button></div>`);$("openReconciliationFromPayments").onclick=()=>go("owner","reconciliation")}
+function financePlanningView(){ownerOverview();const h=$("workspaceBody");if(!h)return;h.insertAdjacentHTML("afterbegin",`<div class="card action-row"><button id="openFinanceDetail" class="secondary">Hauskosten & Prognose</button><button id="openAnalyticsDetail" class="secondary">Jahresvergleich</button></div>`);$("openFinanceDetail").onclick=()=>go("owner","finance");$("openAnalyticsDetail").onclick=()=>go("owner","analytics")}
 function ownerWorkspace(){
-  const tabs=[
-    {id:"overview",label:"Überblick",icon:"⌂"},
-    {id:"payments",label:"Zahlungen",icon:"€"},
-    {id:"planning",label:"Planung",icon:"↗"}
-  ];
-  const active=sub.owner||"overview",visible=visibleSub("owner",active);
-  $("app").innerHTML=workspaceHeader("owner","FINANZEN","Finanzen","Zahlungen, Planung und Termine – getrennt von der Mieterabrechnung.",tabs,visible,active);
-  bindWorkspaceTabs("owner",goSub);
-  if(active==="overview")ownerOverview();
-  else if(active==="payments")financePaymentsHubView();
-  else if(active==="planning")financePlanningHubView();
-  else if(active==="cashflow")ownerCashflowView();
-  else if(active==="reconciliation")reconciliationView();
-  else if(active==="finance")ownerFinanceView();
-  else if(active==="analytics")ownerAnalyticsView();
-  else ownerTasksView()
+  const tabs=[{id:"payments",label:"Zahlungen",icon:"€"},{id:"planning",label:"Planung",icon:"↗"}],active=sub.owner||"payments",visible=visibleSub("owner",active);
+  $("app").innerHTML=workspaceHeader("owner","FINANZEN","Finanzen","Zahlungen und Planung.",tabs,visible,active);bindWorkspaceTabs("owner",goSub);
+  if(active==="overview"||active==="payments"||active==="cashflow")financePaymentsView();else if(active==="reconciliation")reconciliationView();else if(active==="planning")financePlanningView();else if(active==="finance")ownerFinanceView();else if(active==="analytics")ownerAnalyticsView();else ownerTasksView()
 }
 function ownerOverview(){
   const f=intelligentForecast(state,12),sum=f.reduce((s,x)=>s+x.net,0),rent=state.leases.reduce((s,l)=>s+Number(l.rent||0),0),repay=Number(state.finance.repayment||0),items=taskList(),overdue=items.filter(t=>daysUntil(t.due)<0),upcoming=items.filter(t=>daysUntil(t.due)>=0),shown=[...overdue,...upcoming].slice(0,4);
@@ -1315,27 +1277,10 @@ function openSmartTaskSuggestions(items=smartTaskSuggestions(state)){
 }
 
 function more(){
-  const tabs=[
-    {id:"smart",label:"Assistent",icon:"✦"},
-    {id:"archive",label:"Jahresarchiv",icon:"▣"},
-    {id:"protection",label:"Sicherung",icon:"◇"},
-    {id:"app",label:"Erweitert",icon:"•••"}
-  ];
-  const active=sub.more||"smart",visible=visibleSub("more",active);
-  $("app").innerHTML=workspaceHeader("more","MEHR","Mehr","Assistent, Jahresarchiv, Sicherung und selten benötigte Einstellungen.",tabs,visible,active);
-  bindWorkspaceTabs("more",goSub);
-  if(active==="smart"||active==="overview")smartCenterView();
-  else if(active==="archive")yearArchiveMoreView();
-  else if(active==="legal")legalMoreView();
-  else if(active==="protection")protectionHubView();
-  else if(active==="app")appManagementHubView();
-  else if(active==="security")securityMoreView();
-  else if(active==="backup")backupMoreView();
-  else if(active==="recovery")recoveryView();
-  else if(active==="audit")auditMoreView();
-  else diagnosticsMoreView()
+  const tabs=[{id:"protection",label:"Sicherung",icon:"◇"},{id:"app",label:"Erweitert",icon:"•••"}],active=sub.more||"protection",visible=visibleSub("more",active);
+  $("app").innerHTML=workspaceHeader("more","MEHR","Mehr","Sicherung und Erweitert.",tabs,visible,active);bindWorkspaceTabs("more",goSub);
+  if(active==="smart")smartCenterView();else if(active==="archive")yearArchiveMoreView();else if(active==="protection")protectionHubView();else if(active==="app"||active==="overview")appManagementHubView();else if(active==="legal")legalMoreView();else if(active==="security")securityMoreView();else if(active==="backup")backupMoreView();else if(active==="recovery")recoveryView();else if(active==="audit")auditMoreView();else diagnosticsMoreView()
 }
-
 function yearArchiveMoreView(){const b=activeBuildingId;AppYearArchiveUi.mountYearArchiveWorkspace($("workspaceBody"),{state,loadDocuments:listDocuments,buildingId:b,buildingLabel:state.property?.name||"Gebäude",onNavigate:go,isCurrent:()=>activeBuildingId===b})}
 function auditMoreView(){auditView()}
 function legalMoreView(){legalView()}
