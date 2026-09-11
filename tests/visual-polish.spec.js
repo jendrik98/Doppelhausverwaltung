@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { openApp, top } = require('./helpers');
+const { openApp } = require('./helpers');
 
 test('iPhone-Typografie, Umbrüche und Aktionsbuttons bleiben ruhig und lesbar', async ({ browser }) => {
   const context = await browser.newContext({
@@ -55,19 +55,53 @@ test('iPhone-Typografie, Umbrüche und Aktionsbuttons bleiben ruhig und lesbar',
     expect(action.whiteSpace).toBe('normal');
   }
 
-  await top(page, 'Haus');
-  const metrics = await page.locator('.overview-cards .metric-card').evaluateAll(cards =>
-    cards.map(card => [...card.children].map(el => ({
-      display: getComputedStyle(el).display,
-      width: el.getBoundingClientRect().width,
-      parent: card.getBoundingClientRect().width
-    })))
-  );
-  for (const card of metrics) for (const child of card) {
-    expect(child.display).toBe('block');
-    expect(child.width).toBeLessThanOrEqual(child.parent + 1);
-  }
+  const inspectSummaryCards = async route => {
+    await openApp(page, route);
+    const cards = await page.locator('#workspaceBody > .grid.cards > .card').evaluateAll(cards =>
+      cards.map(card => {
+        const style = getComputedStyle(card);
+        const children = [...card.children]
+          .filter(el => ['SPAN', 'STRONG', 'SMALL'].includes(el.tagName))
+          .map(el => {
+            const rect = el.getBoundingClientRect();
+            return {
+              display: getComputedStyle(el).display,
+              width: rect.width,
+              parent: card.getBoundingClientRect().width,
+              top: rect.top,
+              bottom: rect.bottom
+            };
+          });
+        return {
+          display: style.display,
+          direction: style.flexDirection,
+          gap: Number.parseFloat(style.rowGap || style.gap || '0'),
+          children
+        };
+      })
+    );
 
-  await page.screenshot({ path: 'test-results/visual-polish-iphone.png', fullPage: true });
+    expect(cards.length).toBeGreaterThanOrEqual(3);
+    for (const card of cards) {
+      expect(card.display).toBe('flex');
+      expect(card.direction).toBe('column');
+      expect(card.gap).toBeGreaterThanOrEqual(6);
+      expect(card.children.length).toBeGreaterThanOrEqual(2);
+      for (const child of card.children) {
+        expect(child.display).toBe('block');
+        expect(child.width).toBeLessThanOrEqual(child.parent + 1);
+      }
+      for (let i = 1; i < card.children.length; i++) {
+        expect(card.children[i].top).toBeGreaterThanOrEqual(card.children[i - 1].bottom + 5);
+      }
+    }
+  };
+
+  await inspectSummaryCards('#data/overview');
+  await page.screenshot({ path: 'test-results/visual-polish-house.png', fullPage: true });
+
+  await inspectSummaryCards('#more/protection');
+  await page.screenshot({ path: 'test-results/visual-polish-more.png', fullPage: true });
+
   await context.close();
 });

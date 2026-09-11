@@ -19,7 +19,7 @@ test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, r
   expect(index.ok()).toBeTruthy();
   const indexText = await index.text();
   expect(indexText).toContain('app.js?v=1811');
-  expect(indexText).toContain('style.css?v=1810p12');
+  expect(indexText).toContain('style.css?v=1810p13');
   expect(indexText).toContain('manifest.webmanifest?v=1810p2');
   expect(indexText).not.toContain('<meta name="theme-color" content="#0f172a">');
   const manifestResponse=await request.get('./manifest.webmanifest?v=1810p2');
@@ -30,9 +30,9 @@ test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, r
   expect(manifest.shortcuts.map(x=>x.url)).toEqual(['./#rental/billing','./#more/smart']);
   const swResponse=await request.get('./service-worker.js');
   const swText=await swResponse.text();
-  expect(swText).toContain('mietverwaltung-v18-visual-polish-1');
-  expect(swText).toContain('./style.css?v=1810p12');
-  for (const path of ['./style.css?v=1810p12','./manifest.webmanifest?v=1810p2','./legal-rules.json','./service-worker.js','./icon-192.png','./icon-512.png']) {
+  expect(swText).toContain('mietverwaltung-v18-summary-cards-1');
+  expect(swText).toContain('./style.css?v=1810p13');
+  for (const path of ['./style.css?v=1810p13','./manifest.webmanifest?v=1810p2','./legal-rules.json','./service-worker.js','./icon-192.png','./icon-512.png']) {
     const r=await request.get(path); expect(r.ok(),`${path} muss erreichbar sein`).toBeTruthy();
   }
   await openApp(page);

@@ -12,10 +12,11 @@ must(!!app,"versionierte app.js fehlt in index.html");
 must(!!css,"versionierte style.css fehlt in index.html");
 must(!!manifest,"versioniertes Manifest fehlt in index.html");
 for(const asset of [app,css,manifest].filter(Boolean))must(sw.includes(`"./${asset}"`),`Service-Worker CORE enthält ${asset} nicht exakt`);
-must(sw.includes('const CACHE="mietverwaltung-v18-visual-polish-1"'),"aktueller Production-Cache fehlt");
+must(sw.includes('const CACHE="mietverwaltung-v18-summary-cards-1"'),"aktueller Production-Cache fehlt");
 must(sw.includes("function networkFirst"),"network-first Strategie fehlt");
 for(const pathname of ["/app.js","/style.css","/index.html","/manifest.webmanifest","/legal-rules.json"]){must(sw.includes(`"${pathname}"`),`kritischer PWA-Pfad fehlt: ${pathname}`)}
 must(live.includes("sha256sum app.js"),"Live-E2E wartet nicht auf den exakten app.js-Hash");
+must(live.includes("sha256sum style.css"),"Live-E2E wartet nicht auf den exakten style.css-Hash");
 must(live.includes("src/**")&&live.includes("scripts/**")&&live.includes("tsconfig.json"),"Live-E2E Trigger deckt Quell-/Buildänderungen nicht ab");
 must(!live.includes("EXPECTED_APP_VERSION"),"Live-Deployment darf nicht nur über die unveränderte App-Version erkannt werden");
 if(failures.length){console.error("PWA-Vertrag fehlgeschlagen:\n- "+failures.join("\n- "));process.exit(1)}

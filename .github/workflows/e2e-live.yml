@@ -56,25 +56,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED_SHA="$(sha256sum app.js | awk '{print $1}')"
-          echo "Erwarte app.js SHA-256 ${EXPECTED_SHA} von Commit ${GITHUB_SHA}."
+          EXPECTED_APP_SHA="$(sha256sum app.js | awk '{print $1}')"
+          EXPECTED_STYLE_SHA="$(sha256sum style.css | awk '{print $1}')"
+          echo "Erwarte app.js ${EXPECTED_APP_SHA} und style.css ${EXPECTED_STYLE_SHA} von Commit ${GITHUB_SHA}."
           for i in {1..60}; do
-            TMP="$(mktemp)"
-            if curl -fsSL --max-time 15 "${E2E_BASE_URL}app.js?deploy=${GITHUB_SHA}-${i}" -o "$TMP"; then
-              LIVE_SHA="$(sha256sum "$TMP" | awk '{print $1}')"
-              rm -f "$TMP"
-              if [ "$LIVE_SHA" = "$EXPECTED_SHA" ]; then
+            APP_TMP="$(mktemp)"
+            STYLE_TMP="$(mktemp)"
+            if curl -fsSL --max-time 15 "${E2E_BASE_URL}app.js?deploy=${GITHUB_SHA}-${i}" -o "$APP_TMP" \
+              && curl -fsSL --max-time 15 "${E2E_BASE_URL}style.css?deploy=${GITHUB_SHA}-${i}" -o "$STYLE_TMP"; then
+              LIVE_APP_SHA="$(sha256sum "$APP_TMP" | awk '{print $1}')"
+              LIVE_STYLE_SHA="$(sha256sum "$STYLE_TMP" | awk '{print $1}')"
+              rm -f "$APP_TMP" "$STYLE_TMP"
+              if [ "$LIVE_APP_SHA" = "$EXPECTED_APP_SHA" ] && [ "$LIVE_STYLE_SHA" = "$EXPECTED_STYLE_SHA" ]; then
                 echo "Exaktes Live-Deployment ist verfügbar."
                 exit 0
               fi
-              echo "Noch nicht aktuell ($i/60): live=${LIVE_SHA}, erwartet=${EXPECTED_SHA}"
+              echo "Noch nicht aktuell ($i/60): app=${LIVE_APP_SHA}/${EXPECTED_APP_SHA}, style=${LIVE_STYLE_SHA}/${EXPECTED_STYLE_SHA}"
             else
-              rm -f "$TMP"
-              echo "Live-Datei noch nicht abrufbar ($i/60)."
+              rm -f "$APP_TMP" "$STYLE_TMP"
+              echo "Live-Dateien noch nicht abrufbar ($i/60)."
             fi
             sleep 10
           done
-          echo "Das exakte app.js dieses Commits wurde innerhalb von 10 Minuten nicht gefunden."
+          echo "Die exakten app.js/style.css-Dateien dieses Commits wurden innerhalb von 10 Minuten nicht gefunden."
           exit 1
       - name: Preflight-Verträge prüfen
         run: |

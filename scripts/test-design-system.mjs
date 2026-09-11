@@ -30,8 +30,8 @@ assert(source.includes("@media(min-width:1100px)"), "Desktop-Arbeitsoberfläche 
 assert(source.includes("nav.main-tabs{\n      top:88px") || source.includes("nav.main-tabs{\n                top:88px"), "Desktop-Hauptnavigation hat nicht die nötige Selektor-Spezifität.");
 assert(source.includes("button{min-height:var(--touch)}"), "Globaler 44px-Touch-Ratchet fehlt.");
 assert(source.includes(".overview-cards{grid-template-columns:repeat(2,minmax(0,1fr))}"), "Mobile Kennzahlenübersicht ist nicht explizit auf zwei sichere Spalten begrenzt.");
-assert(source.includes(".cards .metric-card{min-width:0;overflow:hidden}"), "Mobile Kennzahlenkarten verhindern keinen intrinsischen Text-Overflow.");
-assert(source.includes(".cards .metric-card>span,.cards .metric-card>strong,.cards .metric-card>small{display:block;max-width:100%;min-width:0;overflow-wrap:anywhere}"), "Kennzahleninhalte dürfen in Fachbereichen nicht aus ihrer Karte herauslaufen.");
+assert(source.includes(".cards>.card{min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:6px}"), "Mobile Summary-Karten haben keine stabile vertikale Hierarchie.");
+assert(source.includes(".cards>.card>span,.cards>.card>strong,.cards>.card>small{display:block;max-width:100%;min-width:0;overflow-wrap:anywhere}"), "Summary-Karten dürfen in Fachbereichen weder zusammenkleben noch herauslaufen.");
 assert(source.includes(".quality-orb{overflow:hidden}"), "Qualitätsindikator clippt seinen Inhalt nicht sicher innerhalb der Karte.");
 assert(source.includes(".quality-orb small{display:block;max-width:100%;min-width:0;overflow:hidden"), "Datenstatus-Label ist auf iPhone nicht im Qualitätsindikator begrenzt.");
 assert(source.includes(".experience-hero{display:grid;grid-template-columns:minmax(0,1fr) 68px"), "Mobile Hero-Geometrie ist nicht hart auf die Viewportbreite begrenzt.");
@@ -43,7 +43,7 @@ assert(source.includes(".next-best-action"), "Aufgabenorientierte Startseite ist
 assert(source.includes(".field-error"), "Zentrale Formularfehler sind nicht gestaltet.");
 assert(source.includes(".empty-state"), "Leerezustände sind nicht gestaltet.");
 assert(source.includes("h1,h2,h3,h4,p{overflow-wrap:break-word}"), "Natürlicher Textumbruch fehlt.");
-assert(source.includes(".metric-card>*{display:block}"), "Kennzahlen haben keine stabile Typografie-Hierarchie.");
+assert(source.includes(".cards>.card>*{display:block}"), "Summary-Karten haben keine stabile Typografie-Hierarchie.");
 assert(source.includes(".overview-button-group button{flex:1 1 140px;white-space:normal}"), "Mobile Aktionsbuttons werden weiterhin gequetscht.");
 assert(source.includes(".main-tabs button{font-size:11.5px}"), "Mobile Hauptnavigation ist typografisch zu klein.");
 assert(source.length < 44500, `Design-System überschreitet Größenratchet: ${source.length} Zeichen.`);
