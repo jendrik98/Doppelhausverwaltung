@@ -154,7 +154,7 @@ jobs:
           test ! -e "$SELF_PATH"
           test "$(find .github/workflows -maxdepth 1 -type f -name '*.yml' -printf '%f\n' | sort)" = $'ci.yml\ne2e-live.yml'
           grep -q 'style.css?v=1810p12' tests/deployment.spec.js
-          grep -q 'style.css?v=1810p12' scripts/test-pwa-update.mjs
+          grep -q 'mietverwaltung-v18-visual-polish-1' scripts/test-pwa-update.mjs
           cmp -s src/ui/design-system.css style.css
           git diff --check
 
