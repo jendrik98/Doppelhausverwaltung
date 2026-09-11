@@ -1,0 +1,218 @@
+name: E2E Stability Finalizer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/e2e-stability-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_SHA: 4b57f09a31614d21e8c6ee88d34e7e65a1261d03
+  SELF_PATH: .github/workflows/e2e-stability-fix.yml
+  MAINT_TOKEN: ${{ secrets.REPO_MAINTENANCE_TOKEN }}
+  GH_TOKEN: ${{ secrets.REPO_MAINTENANCE_TOKEN }}
+  E2E_BASE_URL: http://127.0.0.1:4173/
+
+jobs:
+  stabilize:
+    name: Stabilize modal E2E races, test, push, verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Wartungs-Token prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${MAINT_TOKEN:-}" ]; then
+            echo "::error::Repository-Secret REPO_MAINTENANCE_TOKEN fehlt."
+            exit 1
+          fi
+
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.REPO_MAINTENANCE_TOKEN }}
+          persist-credentials: true
+
+      - name: Ausgangsstand strikt verifizieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --prune
+          TRIGGER_SHA="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$BASE_SHA" "$TRIGGER_SHA" || {
+            echo "::error::Basis $BASE_SHA ist kein Vorfahr von $TRIGGER_SHA."
+            exit 1
+          }
+          mapfile -t CHANGED < <(git diff --name-only "$BASE_SHA" "$TRIGGER_SHA")
+          if [ "${#CHANGED[@]}" -ne 1 ] || [ "${CHANGED[0]}" != "$SELF_PATH" ]; then
+            printf 'Seit H1 geänderte Dateien:\n%s\n' "${CHANGED[*]}"
+            echo "::error::Seit $BASE_SHA darf vor diesem Lauf ausschließlich $SELF_PATH hinzugekommen sein."
+            exit 1
+          fi
+          test -f .github/workflows/ci.yml
+          test -f .github/workflows/e2e-live.yml
+          test -f "$SELF_PATH"
+          echo "TRIGGER_SHA=$TRIGGER_SHA" >> "$GITHUB_ENV"
+
+      - name: Autofokus-Races in Playwright stabilisieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, got {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'tests/portfolio-administration.spec.js',
+              "  const buildingForm = page.locator('#buildingAdminForm');\n  await buildingForm.locator('input[name=\"name\"]').fill('Haus B');",
+              "  const buildingForm = page.locator('#buildingAdminForm');\n  await expect(buildingForm).toBeVisible();\n  // modal() setzt den Erstfokus bewusst nach 30 ms. Vor Eingaben darauf warten,\n  // damit der Timer nicht mitten in Playwrights fill()-Sequenz den Fokus verschiebt.\n  await expect(buildingForm.locator('input[name=\"name\"]')).toBeFocused();\n  await buildingForm.locator('input[name=\"name\"]').fill('Haus B');"
+          )
+          replace_once(
+              'tests/portfolio-administration.spec.js',
+              "  const editForm = page.locator('#buildingAdminForm');\n  await editForm.locator('input[name=\"name\"]').fill('Haus B neu');",
+              "  const editForm = page.locator('#buildingAdminForm');\n  await expect(editForm).toBeVisible();\n  await expect(editForm.locator('input[name=\"name\"]')).toBeFocused();\n  await editForm.locator('input[name=\"name\"]').fill('Haus B neu');"
+          )
+          replace_once(
+              'tests/presentation-workspace.spec.js',
+              "  await expect(paymentModal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();\n  await paymentModal.getByLabel('Bezeichnung').fill('D Zahlung B');",
+              "  await expect(paymentModal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();\n  // Erst nach abgeschlossenem Modal-Autofokus schreiben; andernfalls kann der\n  // 30-ms-Fokustimer während fill() auf das Datumsfeld springen.\n  await expect(paymentModal.locator('input[name=\"date\"]')).toBeFocused();\n  await paymentModal.getByLabel('Bezeichnung').fill('D Zahlung B');"
+          )
+          PY
+          rm -f "$SELF_PATH"
+          test ! -e "$SELF_PATH"
+          mapfile -t WORKFLOWS < <(find .github/workflows -maxdepth 1 -type f -name '*.yml' -printf '%f\n' | sort)
+          EXPECTED=$'ci.yml\ne2e-live.yml'
+          ACTUAL="$(printf '%s\n' "${WORKFLOWS[@]}")"
+          test "$ACTUAL" = "$EXPECTED"
+          git diff --check
+
+      - name: Node 22 einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten und statische Gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          APP_SHA_1="$(sha256sum app.js | awk '{print $1}')"
+          npm run build
+          APP_SHA_2="$(sha256sum app.js | awk '{print $1}')"
+          test "$APP_SHA_1" = "$APP_SHA_2"
+          npm run typecheck
+          npm run test:validation
+          npm run test:architecture
+          npm run test:quality
+          npm run test:pwa
+          node --check app.js
+          echo "app.js unverändert reproduzierbar: $APP_SHA_2"
+
+      - name: Chromium installieren
+        run: npx playwright install --with-deps chromium
+
+      - name: PDF-Prüfwerkzeuge installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+
+      - name: Lokalen Server starten
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 > /tmp/dhv-http.log 2>&1 &
+          echo $! > /tmp/dhv-http.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/dhv-http.log
+          exit 1
+
+      - name: Betroffene Modal-Reisen wiederholt prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright test tests/portfolio-administration.spec.js tests/presentation-workspace.spec.js --repeat-each=5
+
+      - name: Vollständige E2E-Suite doppelt prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright test --repeat-each=2
+
+      - name: Playwright-Bericht sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-stability-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Fix committen und pushen
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e "$SELF_PATH"
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::error::Keine Änderungen zum Committen."
+            exit 1
+          fi
+          git commit -m "test: stabilize modal autofocus races"
+          FINAL_SHA="$(git rev-parse HEAD)"
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          git push origin HEAD:main
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$FINAL_SHA"
+          echo "Finaler SHA: $FINAL_SHA"
+
+      - name: Permanente CI und Live-E2E abwarten
+        shell: bash
+        run: |
+          set -euo pipefail
+          find_run() {
+            local workflow="$1"
+            for i in {1..60}; do
+              id="$(gh run list --workflow "$workflow" --branch main --limit 30 --json databaseId,headSha,status,conclusion --jq '.[] | select(.headSha == env.FINAL_SHA) | .databaseId' | head -n1)"
+              if [ -n "$id" ]; then echo "$id"; return 0; fi
+              sleep 5
+            done
+            return 1
+          }
+          CI_RUN="$(find_run ci.yml)" || { echo "::error::Kein CI-Lauf für $FINAL_SHA gefunden."; exit 1; }
+          LIVE_RUN="$(find_run e2e-live.yml)" || { echo "::error::Kein Live-E2E-Lauf für $FINAL_SHA gefunden."; exit 1; }
+          echo "CI run: $CI_RUN"
+          echo "Live run: $LIVE_RUN"
+          gh run watch "$CI_RUN" --exit-status
+          gh run watch "$LIVE_RUN" --exit-status
+          test "$(gh run view "$CI_RUN" --json headSha,conclusion --jq '.headSha + " " + .conclusion')" = "$FINAL_SHA success"
+          test "$(gh run view "$LIVE_RUN" --json headSha,conclusion --jq '.headSha + " " + .conclusion')" = "$FINAL_SHA success"
+
+      - name: Abschluss
+        run: |
+          echo "E2E-Autofokus-Races stabilisiert."
+          echo "Finaler SHA: $FINAL_SHA"
+          echo "Permanente CI und Live-E2E sind grün."
