@@ -1,8 +1,8 @@
-const CACHE="mietverwaltung-v18-navigation-ux-2";
+const CACHE="mietverwaltung-v18-visual-polish-1";
 const CORE=[
   "./",
   "./index.html",
-  "./style.css?v=1810p11",
+  "./style.css?v=1810p12",
   "./app.js?v=1811",
   "./manifest.webmanifest?v=1810p2",
   "./legal-rules.json",

@@ -42,6 +42,10 @@ assert(source.includes(".workspace-sidebar"), "Desktop-Workspace-Navigation fehl
 assert(source.includes(".next-best-action"), "Aufgabenorientierte Startseite ist nicht gestaltet.");
 assert(source.includes(".field-error"), "Zentrale Formularfehler sind nicht gestaltet.");
 assert(source.includes(".empty-state"), "Leerezustände sind nicht gestaltet.");
+assert(source.includes("h1,h2,h3,h4,p{overflow-wrap:break-word}"), "Natürlicher Textumbruch fehlt.");
+assert(source.includes(".metric-card>*{display:block}"), "Kennzahlen haben keine stabile Typografie-Hierarchie.");
+assert(source.includes(".overview-button-group button{flex:1 1 140px;white-space:normal}"), "Mobile Aktionsbuttons werden weiterhin gequetscht.");
+assert(source.includes(".main-tabs button{font-size:11.5px}"), "Mobile Hauptnavigation ist typografisch zu klein.");
 assert(source.length < 44500, `Design-System überschreitet Größenratchet: ${source.length} Zeichen.`);
 
 console.log(`Design-System F bestanden: ${source.length} Zeichen, 1 Quelle, 0 historische Override-Schichten.`);
