@@ -1,4 +1,5 @@
 import { buildYearArchive, createYearArchiveExport } from "../domain/year-archive";
+import { analyzeYearClosePackage, createYearClosePackage } from "../io/year-close-package";
 
 type AnyRecord = Record<string, any>;
 type ArchiveOptions = {
@@ -45,13 +46,10 @@ function yearsFromState(state: AnyRecord): number[] {
 function missingLabel(kind: string): string {
   return kind === "document" ? "Dokument" : kind === "payment" ? "Zahlung" : kind === "billing" ? "Abrechnung" : kind;
 }
-
 function safeName(value: string): string {
   return value.normalize("NFKD").replace(/[^a-zA-Z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").toLowerCase() || "gebaeude";
 }
-
-function saveJson(payload: AnyRecord, filename: string): void {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -61,7 +59,9 @@ function saveJson(payload: AnyRecord, filename: string): void {
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-
+function saveJson(payload: AnyRecord, filename: string): void {
+  saveBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" }), filename);
+}
 function evidencePill(ok: boolean, label: string): string {
   return `<span class="pill ${ok ? "good" : "warn"}">${ok ? "✓" : "!"} ${esc(label)}</span>`;
 }
@@ -91,16 +91,25 @@ function renderArchive(host: HTMLElement, options: ArchiveOptions, documents: An
   const archive=buildYearArchive(options.state, documents, selectedYear);
   const years=yearsFromState(options.state);
   if (!years.includes(selectedYear)) years.unshift(selectedYear);
-  const ready=archive.status === "ready";
+  const archiveReady=archive.status === "ready";
+  const exportPayload={
+    ...createYearArchiveExport(options.state, documents, selectedYear),
+    context:{buildingId:String(options.buildingId||""),buildingLabel:String(options.buildingLabel||"")}
+  };
+  const coverage=analyzeYearClosePackage(exportPayload,documents);
+  const packageComplete=coverage.status === "complete";
+  const missingBinary=coverage.missingBinaryDocuments.length;
+
   host.innerHTML=`<section data-year-archive-root>
-    <div class="card"><div class="row between"><div><p class="eyebrow">ARCHITECTURE H2 · JAHRESABSCHLUSS</p><h3>Jahresarchiv ${selectedYear}</h3><p class="muted">${esc(options.buildingLabel || "Aktives Gebäude")} · Nachweise aus dem aktuellen, gebäudeisolierten Arbeitsbereich.</p></div><span class="pill ${ready ? "good" : "warn"}" data-archive-status>${ready ? "Abschlussbereit" : "Prüfen"}</span></div>
-      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:10px"><label><span class="muted">Jahr</span><select id="yearArchiveYearSelect" aria-label="Archivjahr">${years.map(year=>`<option value="${year}" ${year===selectedYear?"selected":""}>${year}</option>`).join("")}</select></label><button id="yearArchiveExport" class="primary">Archiv-Manifest exportieren</button></div>
-      <p class="muted">Der Export enthält JSON-sichere Metadaten und Referenzen, keine PDF-/Bild-Binärdaten. Ein Export im Prüfstatus dokumentiert offene Lücken, schließt sie aber nicht.</p>
+    <div class="card"><div class="row between"><div><p class="eyebrow">ARCHITECTURE H3 · JAHRESABSCHLUSS</p><h3>Jahresarchiv ${selectedYear}</h3><p class="muted">${esc(options.buildingLabel || "Aktives Gebäude")} · Nachweise aus dem aktuellen, gebäudeisolierten Arbeitsbereich.</p></div><div style="text-align:right"><span class="pill ${archiveReady ? "good" : "warn"}" data-archive-status>${archiveReady ? "Abschlussbereit" : "Prüfen"}</span><br><span class="pill ${packageComplete ? "good" : "warn"}" data-package-status style="margin-top:6px">${packageComplete ? "Paket vollständig" : "Paket prüfen"}</span></div></div>
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:10px"><label><span class="muted">Jahr</span><select id="yearArchiveYearSelect" aria-label="Archivjahr">${years.map(year=>`<option value="${year}" ${year===selectedYear?"selected":""}>${year}</option>`).join("")}</select></label><button id="yearClosePackageExport" class="primary">Abschlusspaket (.zip) exportieren</button><button id="yearArchiveExport" class="secondary">Manifest (.json) exportieren</button></div>
+      <p class="muted">Das ZIP enthält das H2-Manifest, Prüfstatus, Zahlungsübersicht, Abrechnungssnapshot-Metadaten und ausschließlich die zum gewählten Jahresarchiv gehörenden Belegdateien. Ein Prüfstatus bleibt im Paket ausdrücklich sichtbar.</p>
+      <div id="yearClosePackageMessage" class="muted" aria-live="polite"></div>
     </div>
     <div class="grid cards">
       <article class="card metric-card"><span>Nachweisketten</span><strong>${archive.summary.chains}</strong><small>${archive.summary.completeChains} vollständig</small></article>
       <article class="card metric-card"><span>Offene Lücken</span><strong>${archive.summary.gaps}</strong><small>Dokument / Zahlung / Abrechnung</small></article>
-      <article class="card metric-card"><span>Abrechnungssnapshots</span><strong>${archive.summary.snapshots}</strong><small>für ${selectedYear}</small></article>
+      <article class="card metric-card"><span>Belegdateien</span><strong>${coverage.documentsWithBinary}/${coverage.documentRecords}</strong><small>${coverage.binaryFiles} Datei(en) · ${missingBinary} ohne Datei</small></article>
       <article class="card metric-card"><span>Nicht zugeordnet</span><strong>${archive.summary.unlinkedDocuments + archive.summary.unlinkedOutflows}</strong><small>${archive.summary.unlinkedDocuments} Dokumente · ${archive.summary.unlinkedOutflows} Ausgaben</small></article>
     </div>
     <div class="card"><div class="card-head"><div><p class="eyebrow">NACHWEISKETTEN</p><h3>Dokument → Kosten → Zahlung → Abrechnung</h3></div></div>${archive.chains.length ? archive.chains.map((chain:AnyRecord)=>chainHtml(chain,options.onNavigate)).join("") : `<div class="empty-state"><strong>Keine bestätigten Kostenpositionen für ${selectedYear}</strong><p>Das Archiv bleibt im Prüfstatus, bis für dieses Jahr abrechnungsrelevante Daten vorliegen.</p></div>`}</div>
@@ -108,6 +117,7 @@ function renderArchive(host: HTMLElement, options: ArchiveOptions, documents: An
       <article class="card"><h3>Nicht zugeordnete Dokumente</h3>${archive.unlinkedDocuments.length ? archive.unlinkedDocuments.map((doc:AnyRecord)=>`<div class="item"><strong>${esc(doc.label||doc.id)}</strong><p>${date(doc.created)} · ${esc(doc.analysisStatus||"ohne Analysestatus")}</p></div>`).join("") : `<p class="muted">Keine.</p>`}</article>
       <article class="card"><h3>Nicht zugeordnete Ausgaben</h3>${archive.unlinkedOutflows.length ? archive.unlinkedOutflows.map((payment:AnyRecord)=>`<div class="item"><strong>${esc(payment.label||payment.id)}</strong><p>${date(payment.date)} · ${euro(payment.amount)}</p></div>`).join("") : `<p class="muted">Keine.</p>`}</article>
     </div>` : ""}
+    ${missingBinary ? `<div class="legal-warn"><strong>${missingBinary} Dokument(e) ohne exportierbare Datei.</strong><br>Die Metadaten bleiben im Manifest enthalten, das ZIP wird aber bewusst als „Paket prüfen“ gekennzeichnet.</div>` : ""}
   </section>`;
 
   const select=host.querySelector<HTMLSelectElement>("#yearArchiveYearSelect");
@@ -115,13 +125,27 @@ function renderArchive(host: HTMLElement, options: ArchiveOptions, documents: An
   host.querySelectorAll<HTMLElement>("[data-archive-fix]").forEach(button=>{
     button.onclick=()=>options.onNavigate?.(button.dataset.route||"home",button.dataset.sub||"");
   });
-  const exportButton=host.querySelector<HTMLButtonElement>("#yearArchiveExport");
-  if (exportButton) exportButton.onclick=()=>{
-    const payload={
-      ...createYearArchiveExport(options.state, documents, selectedYear),
-      context:{buildingId:String(options.buildingId||""),buildingLabel:String(options.buildingLabel||"")}
-    };
-    saveJson(payload,`jahresarchiv-${safeName(String(options.buildingLabel||"gebaeude"))}-${selectedYear}.json`);
+  const manifestButton=host.querySelector<HTMLButtonElement>("#yearArchiveExport");
+  if (manifestButton) manifestButton.onclick=()=>{
+    saveJson(exportPayload,`jahresarchiv-${safeName(String(options.buildingLabel||"gebaeude"))}-${selectedYear}.json`);
+  };
+  const packageButton=host.querySelector<HTMLButtonElement>("#yearClosePackageExport");
+  const message=host.querySelector<HTMLElement>("#yearClosePackageMessage");
+  if (packageButton) packageButton.onclick=async()=>{
+    const original=packageButton.textContent || "Abschlusspaket (.zip) exportieren";
+    packageButton.disabled=true;
+    packageButton.textContent="Paket wird erstellt …";
+    if(message)message.textContent="";
+    try{
+      const result=await createYearClosePackage(exportPayload,documents);
+      saveBlob(result.blob,result.filename);
+      if(message)message.textContent=result.coverage.status==="complete" ? "Abschlusspaket wurde vollständig erstellt." : "Abschlusspaket wurde im Prüfstatus erstellt.";
+    }catch(error:any){
+      if(message)message.textContent=`Abschlusspaket konnte nicht erstellt werden: ${String(error?.message||error)}`;
+    }finally{
+      packageButton.disabled=false;
+      packageButton.textContent=original;
+    }
   };
 }
 

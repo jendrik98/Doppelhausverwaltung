@@ -55,9 +55,21 @@ Der H2-Export nutzt `createYearArchiveExport()` und ergänzt nur den sichtbaren 
 
 Die UI ist ein eigenes gebündeltes TypeScript-Modul (`AppYearArchiveUi`). `app-runtime.ts` enthält nur den Navigationsadapter und darf wegen H2 nicht wieder zum Fachlogik-Monolithen anwachsen.
 
-### H3 und folgende
+### H3: Jahresabschluss-Paket
 
-Ein späteres Jahresabschluss-Paket kann das H2-Manifest mit bewusst ausgewählten Belegdateien bündeln. Dabei bleiben H1-Nachweiskette, Gebäudeisolation, explizite Zahlungsreferenzen und JSON-Manifest der fachliche Kernvertrag.
+`src/io/year-close-package.ts` baut auf dem H2-Export auf und bündelt ausschließlich die Dokument-Binärdaten, deren IDs bereits im Jahresarchiv enthalten sind. Dadurch bleibt die Gebäudeisolation eine Eigenschaft der bestehenden Dokument-/Archivgrenzen; H3 führt keine zweite fachliche Auswahlquelle ein.
+
+Das exportierte ZIP enthält:
+
+- `manifest.json` mit dem unveränderten H1/H2-Jahresarchiv und H3-Paketindex,
+- `STATUS.txt` mit dem menschenlesbaren Abschluss-/Prüfstatus,
+- `zahlungen.csv` als lesbare Zahlungsübersicht,
+- `abrechnungen.json` mit den JSON-sicheren Abrechnungssnapshot-Metadaten,
+- `dokumente/…` mit den tatsächlich gespeicherten Einzeldateien bzw. Seiten der ausgewählten Belege.
+
+H3 verwendet ein standardkonformes, unkomprimiertes ZIP-Format und benötigt deshalb keine externe Cloud- oder Laufzeitabhängigkeit. Dateinamen werden lokal normalisiert und können keine Pfadsegmente aus dem Dokumentenspeicher übernehmen.
+
+Der Paketstatus ist nur `complete`, wenn das H1/H2-Jahresarchiv `ready` ist **und** zu jedem im Archiv geführten Dokument mindestens eine exportierbare Binärdatei vorhanden ist. Andernfalls bleibt der Paketstatus `review`; fehlende Binärdateien werden im Manifest und in `STATUS.txt` explizit aufgeführt. H3 mutiert weder den State noch den Dokumentenspeicher und ersetzt nicht das verschlüsselte Vollbackup.
 
 ## 7. Build und Runtime-Komposition
 
@@ -75,6 +87,8 @@ npm run typecheck
 npm run test:validation
 npm run test:architecture
 npm run test:archive
+npm run test:archive-ui
+npm run test:archive-package
 npm run test:hygiene
 npm run test:quality
 npm run test:pwa

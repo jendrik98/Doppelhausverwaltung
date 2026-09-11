@@ -12,7 +12,7 @@ must(!!app,"versionierte app.js fehlt in index.html");
 must(!!css,"versionierte style.css fehlt in index.html");
 must(!!manifest,"versioniertes Manifest fehlt in index.html");
 for(const asset of [app,css,manifest].filter(Boolean))must(sw.includes(`"./${asset}"`),`Service-Worker CORE enthält ${asset} nicht exakt`);
-must(sw.includes('const CACHE="mietverwaltung-v18-document-archive-h2-1"'),"aktueller Production-Cache fehlt");
+must(sw.includes('const CACHE="mietverwaltung-v18-year-close-package-h3-1"'),"aktueller Production-Cache fehlt");
 must(sw.includes("function networkFirst"),"network-first Strategie fehlt");
 for(const pathname of ["/app.js","/style.css","/index.html","/manifest.webmanifest","/legal-rules.json"]){must(sw.includes(`"${pathname}"`),`kritischer PWA-Pfad fehlt: ${pathname}`)}
 must(live.includes("sha256sum app.js"),"Live-E2E wartet nicht auf den exakten app.js-Hash");

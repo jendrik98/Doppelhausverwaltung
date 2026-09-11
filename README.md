@@ -6,7 +6,7 @@ Local-first PWA zur privaten Verwaltung eines Doppelhauses und kleiner Mehrgebä
 
 Architecture A–G bildet die produktive Basis: Mehrgebäude-Portfolio, gebäudeisolierte Arbeitsbereiche, Portfolio-/Gebäudeverwaltung, konsolidiertes Design-System sowie Vermietungs-Lifecycle mit Vertragsständen, Übergaben, Mietkonto, Zählerwechseln und revisionssicheren Abrechnungskorrekturen.
 
-Architecture H ist bis H2 umgesetzt. H1 liefert die reine Domänenschicht für **Dokument → Kostenposition → Zahlung → Abrechnungssnapshot**. H2 macht diese Nachweise im gebäudeisolierten Jahresarchiv sichtbar, zeigt Lücken und nicht zugeordnete Belege/Ausgaben und exportiert ein JSON-sicheres Jahresabschluss-Manifest – weiterhin ohne den persistierten State umzuschreiben.
+Architecture H ist bis H3 umgesetzt. H1 liefert die reine Domänenschicht für **Dokument → Kostenposition → Zahlung → Abrechnungssnapshot**. H2 macht diese Nachweise im gebäudeisolierten Jahresarchiv sichtbar, zeigt Lücken und nicht zugeordnete Belege/Ausgaben und exportiert ein JSON-sicheres Jahresabschluss-Manifest. H3 ergänzt daraus ein echtes lokales Jahresabschluss-Paket als ZIP mit Manifest, Prüfstatus, Zahlungsübersicht, Abrechnungssnapshot-Metadaten und den tatsächlich zum gewählten Jahresarchiv gehörenden Belegdateien.
 
 ### Technische Verträge
 
@@ -27,7 +27,7 @@ Architecture H ist bis H2 umgesetzt. H1 liefert die reine Domänenschicht für *
 - `src/application/` – Commands, Use-Cases und gebäudeisolierte Queries
 - `src/presentation/` – Workspace- und Navigationsprojektionen
 - `src/ui/` – Browser-UI und Design-System
-- `src/io/` – Import-/Export- und Backup-Codecs
+- `src/io/` – Import-/Export-, Jahresabschluss- und Backup-Codecs
 - `src/runtime/` – kleine Browser-Live-Bindings und Kompatibilitätsadapter
 - `scripts/` – reproduzierbarer Build und dauerhafte Qualitäts-Ratchets
 - `tests/` – Playwright-Regressionen
@@ -43,6 +43,8 @@ npm run typecheck
 npm run test:validation
 npm run test:architecture
 npm run test:archive
+npm run test:archive-ui
+npm run test:archive-package
 npm run test:hygiene
 npm run test:quality
 npm run test:pwa
@@ -57,4 +59,6 @@ Die dauerhafte CI prüft den reproduzierbaren Build, TypeScript, fachliche/archi
 
 ## Architecture H
 
-H1 liefert die belastbare, read-only Nachweiskette. H2 ergänzt darauf die produktive Archiv-/Jahresabschluss-Oberfläche mit Jahresauswahl, aktivem Gebäudekontext, Lückenführung und JSON-Export. Die UI liegt als eigenes TypeScript-Modul vor; die Browser-Runtime enthält nur einen dünnen Adapter. Ein späteres H3 kann daraus ein vollständiges Jahresabschluss-Paket mit gezielt ausgewählten Belegdateien ableiten, ohne den H1/H2-Nachweisvertrag zu verwässern.
+H1 liefert die belastbare, read-only Nachweiskette. H2 ergänzt die produktive Archiv-/Jahresabschluss-Oberfläche mit Jahresauswahl, aktivem Gebäudekontext, Lückenführung und JSON-Export. H3 bündelt darauf nur die für dieses Jahresarchiv ausgewählten Dokument-Binärdaten mit dem unveränderten Nachweis-Manifest zu einem portablen ZIP. Fehlende Originaldateien oder offene H1-Nachweislücken führen ausdrücklich zum Paketstatus **Prüfen**; sie werden nicht automatisch geheilt oder als vollständig ausgegeben.
+
+Das H3-Paket ist kein Vollbackup und verändert den persistierten State nicht. Für eine vollständige Sicherung und Wiederherstellung bleibt der bestehende verschlüsselte Backup-Mechanismus zuständig.

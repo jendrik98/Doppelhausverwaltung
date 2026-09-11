@@ -6179,8 +6179,312 @@ var AppYearArchiveUi = (() => {
     };
   }
 
-  // src/ui/year-archive-ui.ts
+  // src/io/year-close-package.ts
+  var YEAR_CLOSE_PACKAGE_VERSION = 1;
+  var YEAR_CLOSE_PACKAGE_SCHEMA = "doppelhaus-year-close-package-v1";
   var arr2 = (value) => Array.isArray(value) ? value : [];
+  var idText2 = (value) => String(value || "");
+  var encoder = new TextEncoder();
+  var CRC_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+  function crc32(bytes) {
+    let crc = 4294967295;
+    for (const byte of bytes) crc = CRC_TABLE[(crc ^ byte) & 255] ^ crc >>> 8;
+    return (crc ^ 4294967295) >>> 0;
+  }
+  function hex32(value) {
+    return (value >>> 0).toString(16).padStart(8, "0");
+  }
+  function safeSegment(value, fallback = "datei") {
+    const text = String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[\\/]+/g, "-").replace(/[^a-zA-Z0-9._ -]+/g, "-").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^\.+/, "").replace(/[.-]+$/, "").toLowerCase();
+    return text || fallback;
+  }
+  function extensionForMime(type) {
+    const mime = String(type || "").toLowerCase();
+    if (mime === "application/pdf") return ".pdf";
+    if (mime === "image/jpeg") return ".jpg";
+    if (mime === "image/png") return ".png";
+    if (mime === "image/webp") return ".webp";
+    if (mime === "text/plain") return ".txt";
+    if (mime === "application/json") return ".json";
+    return "";
+  }
+  function safeFilename(name, type, fallback = "datei") {
+    const cleaned = safeSegment(name, fallback);
+    if (/\.[a-z0-9]{1,8}$/i.test(cleaned)) return cleaned;
+    return `${cleaned}${extensionForMime(type)}`;
+  }
+  function isBlobLike(value) {
+    return !!value && typeof value.arrayBuffer === "function" && typeof value.size === "number";
+  }
+  function binaryParts(document2) {
+    const pages = arr2(document2?.pages).filter((page) => isBlobLike(page?.blob));
+    if (pages.length) {
+      return pages.map((page, index) => ({
+        blob: page.blob,
+        name: safeFilename(page.name || `seite-${String(index + 1).padStart(2, "0")}`, page.type || page.blob?.type, `seite-${index + 1}`),
+        type: String(page.type || page.blob?.type || "application/octet-stream"),
+        pageId: idText2(page.id)
+      }));
+    }
+    if (isBlobLike(document2?.blob)) {
+      return [{
+        blob: document2.blob,
+        name: safeFilename(document2.name || document2.label || document2.id, document2.type || document2.blob?.type, idText2(document2.id) || "beleg"),
+        type: String(document2.type || document2.blob?.type || "application/octet-stream")
+      }];
+    }
+    return [];
+  }
+  function analyzeYearClosePackage(archiveExport, documents) {
+    const archiveDocuments = arr2(archiveExport?.archive?.documents);
+    const documentMap = new Map(arr2(documents).map((document2) => [idText2(document2.id), document2]));
+    const missingBinaryDocuments = [];
+    let documentsWithBinary = 0;
+    let binaryFiles = 0;
+    for (const meta of archiveDocuments) {
+      const id = idText2(meta.id);
+      const document2 = documentMap.get(id);
+      const parts = document2 ? binaryParts(document2) : [];
+      if (!parts.length) {
+        missingBinaryDocuments.push({ id, label: String(meta.label || document2?.label || document2?.name || id || "Dokument") });
+        continue;
+      }
+      documentsWithBinary += 1;
+      binaryFiles += parts.length;
+    }
+    const archiveReady = String(archiveExport?.archive?.status || "") === "ready";
+    return {
+      status: archiveReady && missingBinaryDocuments.length === 0 ? "complete" : "review",
+      documentRecords: archiveDocuments.length,
+      documentsWithBinary,
+      binaryFiles,
+      missingBinaryDocuments
+    };
+  }
+  function writeU16(view, offset, value) {
+    view.setUint16(offset, value & 65535, true);
+  }
+  function writeU32(view, offset, value) {
+    view.setUint32(offset, value >>> 0, true);
+  }
+  function localHeader(entry, nameBytes) {
+    const header = new Uint8Array(30 + nameBytes.length);
+    const view = new DataView(header.buffer);
+    writeU32(view, 0, 67324752);
+    writeU16(view, 4, 20);
+    writeU16(view, 6, 2048);
+    writeU16(view, 8, 0);
+    writeU16(view, 10, 0);
+    writeU16(view, 12, 33);
+    writeU32(view, 14, entry.crc32);
+    writeU32(view, 18, entry.size);
+    writeU32(view, 22, entry.size);
+    writeU16(view, 26, nameBytes.length);
+    writeU16(view, 28, 0);
+    header.set(nameBytes, 30);
+    return header;
+  }
+  function centralHeader(entry, nameBytes, localOffset) {
+    const header = new Uint8Array(46 + nameBytes.length);
+    const view = new DataView(header.buffer);
+    writeU32(view, 0, 33639248);
+    writeU16(view, 4, 20);
+    writeU16(view, 6, 20);
+    writeU16(view, 8, 2048);
+    writeU16(view, 10, 0);
+    writeU16(view, 12, 0);
+    writeU16(view, 14, 33);
+    writeU32(view, 16, entry.crc32);
+    writeU32(view, 20, entry.size);
+    writeU32(view, 24, entry.size);
+    writeU16(view, 28, nameBytes.length);
+    writeU16(view, 30, 0);
+    writeU16(view, 32, 0);
+    writeU16(view, 34, 0);
+    writeU16(view, 36, 0);
+    writeU32(view, 38, 0);
+    writeU32(view, 42, localOffset);
+    header.set(nameBytes, 46);
+    return header;
+  }
+  function endOfCentralDirectory(entries, centralSize, centralOffset) {
+    const footer = new Uint8Array(22);
+    const view = new DataView(footer.buffer);
+    writeU32(view, 0, 101010256);
+    writeU16(view, 4, 0);
+    writeU16(view, 6, 0);
+    writeU16(view, 8, entries);
+    writeU16(view, 10, entries);
+    writeU32(view, 12, centralSize);
+    writeU32(view, 16, centralOffset);
+    writeU16(view, 20, 0);
+    return footer;
+  }
+  async function prepareEntry(path, data, mime, metadata = {}) {
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(await data.arrayBuffer());
+    return {
+      path,
+      data,
+      size: bytes.byteLength,
+      crc32: crc32(bytes),
+      mime,
+      documentId: metadata.documentId,
+      pageId: metadata.pageId
+    };
+  }
+  function zipStore(entries) {
+    if (entries.length > 65535) throw new Error("Zu viele Dateien für ein ZIP-Paket.");
+    const parts = [];
+    const central = [];
+    let offset = 0;
+    for (const entry of entries) {
+      const nameBytes = encoder.encode(entry.path);
+      const local = localHeader(entry, nameBytes);
+      parts.push(local, entry.data);
+      central.push(centralHeader(entry, nameBytes, offset));
+      offset += local.byteLength + entry.size;
+    }
+    const centralOffset = offset;
+    let centralSize = 0;
+    for (const header of central) {
+      parts.push(header);
+      centralSize += header.byteLength;
+    }
+    parts.push(endOfCentralDirectory(entries.length, centralSize, centralOffset));
+    return new Blob(parts, { type: "application/zip" });
+  }
+  function uniquePath(path, used) {
+    if (!used.has(path)) {
+      used.add(path);
+      return path;
+    }
+    const dot = path.lastIndexOf(".");
+    const slash = path.lastIndexOf("/");
+    const stem = dot > slash ? path.slice(0, dot) : path;
+    const ext = dot > slash ? path.slice(dot) : "";
+    let counter = 2;
+    while (used.has(`${stem}-${counter}${ext}`)) counter += 1;
+    const unique = `${stem}-${counter}${ext}`;
+    used.add(unique);
+    return unique;
+  }
+  function csvCell(value) {
+    return `"${String(value ?? "").replace(/"/g, '""')}"`;
+  }
+  function paymentsCsv(archiveExport) {
+    const lines = [["id", "datum", "richtung", "betrag", "bezeichnung", "kostenposition", "quelle", "mietverhaeltnis"].map(csvCell).join(";")];
+    for (const payment of arr2(archiveExport?.archive?.payments)) {
+      lines.push([payment.id, payment.date, payment.direction, Number(payment.amount || 0).toFixed(2).replace(".", ","), payment.label, payment.positionId, payment.sourceId, payment.leaseId].map(csvCell).join(";"));
+    }
+    return `${lines.join("\n")}
+`;
+  }
+  function statusText(archiveExport, coverage) {
+    const summary = archiveExport?.archive?.summary || {};
+    const building = String(archiveExport?.context?.buildingLabel || "Aktives Gebäude");
+    const year = Number(archiveExport?.archive?.year || 0);
+    const lines = [
+      `Jahresabschluss-Paket ${year}`,
+      `Gebäude: ${building}`,
+      `Paketstatus: ${coverage.status === "complete" ? "VOLLSTÄNDIG" : "PRÜFEN"}`,
+      "",
+      `Nachweisketten: ${Number(summary.chains || 0)}`,
+      `Vollständige Nachweisketten: ${Number(summary.completeChains || 0)}`,
+      `Offene Nachweislücken: ${Number(summary.gaps || 0)}`,
+      `Dokumenteinträge: ${coverage.documentRecords}`,
+      `Dokumente mit exportierbarer Datei: ${coverage.documentsWithBinary}`,
+      `Exportierte Belegdateien: ${coverage.binaryFiles}`,
+      `Abrechnungssnapshots: ${Number(summary.snapshots || 0)}`,
+      ""
+    ];
+    if (coverage.missingBinaryDocuments.length) {
+      lines.push("Dokumente ohne exportierbare Binärdatei:");
+      for (const document2 of coverage.missingBinaryDocuments) lines.push(`- ${document2.label} (${document2.id})`);
+      lines.push("");
+    }
+    lines.push(
+      coverage.status === "complete" ? "Das Paket ist auf Basis des Jahresarchivs vollständig exportiert." : "Das Paket dokumentiert einen Prüfstatus. Offene Nachweise oder fehlende Binärdateien werden nicht als vollständig behandelt.",
+      "",
+      "Enthalten: manifest.json, STATUS.txt, zahlungen.csv, abrechnungen.json und die ausgewählten Belegdateien unter dokumente/.",
+      "Das Paket ist eine lokale Exportkopie; der persistierte App-State wird dadurch nicht verändert."
+    );
+    return `${lines.join("\n")}
+`;
+  }
+  async function createYearClosePackage(archiveExport, documents) {
+    const coverage = analyzeYearClosePackage(archiveExport, documents);
+    const documentMap = new Map(arr2(documents).map((document2) => [idText2(document2.id), document2]));
+    const used = /* @__PURE__ */ new Set();
+    const preparedDocuments = [];
+    for (const meta of arr2(archiveExport?.archive?.documents)) {
+      const documentId = idText2(meta.id);
+      const document2 = documentMap.get(documentId);
+      if (!document2) continue;
+      const parts = binaryParts(document2);
+      if (!parts.length) continue;
+      const folder = `dokumente/${safeSegment(meta.label || document2.label || document2.name || documentId, "beleg")}-${safeSegment(documentId, "id").slice(0, 18)}`;
+      for (let index = 0; index < parts.length; index++) {
+        const part = parts[index];
+        const prefix = parts.length > 1 ? `${String(index + 1).padStart(2, "0")}-` : "";
+        const path = uniquePath(`${folder}/${prefix}${part.name}`, used);
+        preparedDocuments.push(await prepareEntry(path, part.blob, part.type, { documentId, pageId: part.pageId }));
+      }
+    }
+    const statusEntry = await prepareEntry("STATUS.txt", encoder.encode(statusText(archiveExport, coverage)), "text/plain;charset=utf-8");
+    const paymentsEntry = await prepareEntry("zahlungen.csv", encoder.encode(paymentsCsv(archiveExport)), "text/csv;charset=utf-8");
+    const snapshotsEntry = await prepareEntry(
+      "abrechnungen.json",
+      encoder.encode(JSON.stringify({
+        schema: "doppelhaus-year-close-billing-snapshots-v1",
+        year: Number(archiveExport?.archive?.year || 0),
+        context: archiveExport?.context || {},
+        billingSnapshots: arr2(archiveExport?.archive?.billingSnapshots)
+      }, null, 2)),
+      "application/json;charset=utf-8"
+    );
+    const indexedEntries = [statusEntry, paymentsEntry, snapshotsEntry, ...preparedDocuments];
+    const manifest = {
+      schema: YEAR_CLOSE_PACKAGE_SCHEMA,
+      version: YEAR_CLOSE_PACKAGE_VERSION,
+      generatedAt: String(archiveExport?.generatedAt || (/* @__PURE__ */ new Date()).toISOString()),
+      context: archiveExport?.context || {},
+      year: Number(archiveExport?.archive?.year || 0),
+      status: coverage.status,
+      archive: archiveExport,
+      package: {
+        status: coverage.status,
+        documentRecords: coverage.documentRecords,
+        documentsWithBinary: coverage.documentsWithBinary,
+        binaryFiles: coverage.binaryFiles,
+        missingBinaryDocuments: coverage.missingBinaryDocuments,
+        files: indexedEntries.map((entry) => ({
+          path: entry.path,
+          mime: entry.mime,
+          size: entry.size,
+          crc32: hex32(entry.crc32),
+          documentId: entry.documentId || "",
+          pageId: entry.pageId || ""
+        }))
+      }
+    };
+    const manifestEntry = await prepareEntry("manifest.json", encoder.encode(JSON.stringify(manifest, null, 2)), "application/json;charset=utf-8");
+    const blob = zipStore([manifestEntry, ...indexedEntries]);
+    const label = safeSegment(archiveExport?.context?.buildingLabel || "gebaeude", "gebaeude");
+    const suffix = coverage.status === "complete" ? "vollstaendig" : "pruefen";
+    const filename = `jahresabschluss-${label}-${Number(archiveExport?.archive?.year || 0)}-${suffix}.zip`;
+    return { blob, filename, manifest, coverage };
+  }
+
+  // src/ui/year-archive-ui.ts
+  var arr3 = (value) => Array.isArray(value) ? value : [];
   var esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",
@@ -6196,17 +6500,17 @@ var AppYearArchiveUi = (() => {
   };
   function yearsFromState(state) {
     const years = /* @__PURE__ */ new Set();
-    for (const position of arr2(state?.costPositions)) {
+    for (const position of arr3(state?.costPositions)) {
       for (const raw of [position.serviceStart, position.serviceEnd]) {
         const year = Number(String(raw || "").slice(0, 4));
         if (year >= 2e3 && year <= 2200) years.add(year);
       }
     }
-    for (const payment of arr2(state?.payments)) {
+    for (const payment of arr3(state?.payments)) {
       const year = Number(String(payment.date || "").slice(0, 4));
       if (year >= 2e3 && year <= 2200) years.add(year);
     }
-    for (const snapshot of arr2(state?.billingSnapshots)) {
+    for (const snapshot of arr3(state?.billingSnapshots)) {
       const year = Number(snapshot.periodYear);
       if (year >= 2e3 && year <= 2200) years.add(year);
     }
@@ -6219,8 +6523,7 @@ var AppYearArchiveUi = (() => {
   function safeName(value) {
     return value.normalize("NFKD").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "gebaeude";
   }
-  function saveJson(payload, filename) {
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  function saveBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -6230,15 +6533,18 @@ var AppYearArchiveUi = (() => {
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1e3);
   }
+  function saveJson(payload, filename) {
+    saveBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" }), filename);
+  }
   function evidencePill(ok, label) {
     return `<span class="pill ${ok ? "good" : "warn"}">${ok ? "✓" : "!"} ${esc(label)}</span>`;
   }
   function chainHtml(chain, onNavigate) {
-    const missing = arr2(chain.missing).map(String);
+    const missing = arr3(chain.missing).map(String);
     const documentOk = !!chain.document;
-    const paymentOk = arr2(chain.payments).length > 0;
-    const billingOk = arr2(chain.billingSnapshots).length > 0;
-    const candidateCount = arr2(chain.candidatePayments).length;
+    const paymentOk = arr3(chain.payments).length > 0;
+    const billingOk = arr3(chain.billingSnapshots).length > 0;
+    const candidateCount = arr3(chain.candidatePayments).length;
     const routeButtons = missing.map((kind) => {
       const target = kind === "document" ? ["data", "documents"] : kind === "payment" ? ["owner", "payments"] : ["rental", "billing"];
       return `<button class="secondary compact" data-archive-fix="${esc(kind)}" data-route="${target[0]}" data-sub="${target[1]}">${esc(missingLabel(kind))} ergänzen</button>`;
@@ -6247,8 +6553,8 @@ var AppYearArchiveUi = (() => {
     <div class="card-head"><div><p class="eyebrow">KOSTENPOSITION</p><h3>${esc(chain.position?.label || "Kostenposition")}</h3><p class="muted">${date(chain.position?.serviceStart)} – ${date(chain.position?.serviceEnd)}</p></div><div><strong>${euro(chain.position?.amount)}</strong><br><span class="pill ${chain.status === "complete" ? "good" : "warn"}">${chain.status === "complete" ? "Vollständig" : `${missing.length} Lücke(n)`}</span></div></div>
     <div class="row" style="flex-wrap:wrap;gap:8px">${evidencePill(documentOk, "Dokument")}${evidencePill(paymentOk, "Zahlung")}${evidencePill(billingOk, "Abrechnung")}</div>
     ${chain.document ? `<div class="fact-row"><span>Beleg</span><strong>${esc(chain.document.label || chain.document.id)}</strong></div>` : ""}
-    ${paymentOk ? `<div class="fact-row"><span>Direkte Zahlungen</span><strong>${arr2(chain.payments).length} · ${euro(arr2(chain.payments).reduce((sum, p) => sum + Number(p.amount || 0), 0))}</strong></div>` : ""}
-    ${billingOk ? `<div class="fact-row"><span>Abrechnungssnapshot</span><strong>${arr2(chain.billingSnapshots).map((s) => `v${Number(s.version || 1)}`).join(", ")}</strong></div>` : ""}
+    ${paymentOk ? `<div class="fact-row"><span>Direkte Zahlungen</span><strong>${arr3(chain.payments).length} · ${euro(arr3(chain.payments).reduce((sum, p) => sum + Number(p.amount || 0), 0))}</strong></div>` : ""}
+    ${billingOk ? `<div class="fact-row"><span>Abrechnungssnapshot</span><strong>${arr3(chain.billingSnapshots).map((s) => `v${Number(s.version || 1)}`).join(", ")}</strong></div>` : ""}
     ${candidateCount ? `<div class="info"><strong>${candidateCount} Zahlungskandidat(en)</strong><br><small>Gemeinsame Kostenquelle erkannt, aber keine direkte positionId-Verknüpfung. Die Lücke bleibt bewusst offen.</small></div>` : ""}
     ${missing.length ? `<div class="legal-warn"><strong>Nachweis noch unvollständig:</strong> ${missing.map(missingLabel).map(esc).join(", ")}<div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px">${routeButtons}</div></div>` : `<div class="legal-ok"><strong>Nachweiskette vollständig.</strong> Dokument, direkte Zahlung und Abrechnung sind explizit verknüpft.</div>`}
   </article>`;
@@ -6257,16 +6563,24 @@ var AppYearArchiveUi = (() => {
     const archive = buildYearArchive(options.state, documents, selectedYear);
     const years = yearsFromState(options.state);
     if (!years.includes(selectedYear)) years.unshift(selectedYear);
-    const ready = archive.status === "ready";
+    const archiveReady = archive.status === "ready";
+    const exportPayload = {
+      ...createYearArchiveExport(options.state, documents, selectedYear),
+      context: { buildingId: String(options.buildingId || ""), buildingLabel: String(options.buildingLabel || "") }
+    };
+    const coverage = analyzeYearClosePackage(exportPayload, documents);
+    const packageComplete = coverage.status === "complete";
+    const missingBinary = coverage.missingBinaryDocuments.length;
     host.innerHTML = `<section data-year-archive-root>
-    <div class="card"><div class="row between"><div><p class="eyebrow">ARCHITECTURE H2 · JAHRESABSCHLUSS</p><h3>Jahresarchiv ${selectedYear}</h3><p class="muted">${esc(options.buildingLabel || "Aktives Gebäude")} · Nachweise aus dem aktuellen, gebäudeisolierten Arbeitsbereich.</p></div><span class="pill ${ready ? "good" : "warn"}" data-archive-status>${ready ? "Abschlussbereit" : "Prüfen"}</span></div>
-      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:10px"><label><span class="muted">Jahr</span><select id="yearArchiveYearSelect" aria-label="Archivjahr">${years.map((year) => `<option value="${year}" ${year === selectedYear ? "selected" : ""}>${year}</option>`).join("")}</select></label><button id="yearArchiveExport" class="primary">Archiv-Manifest exportieren</button></div>
-      <p class="muted">Der Export enthält JSON-sichere Metadaten und Referenzen, keine PDF-/Bild-Binärdaten. Ein Export im Prüfstatus dokumentiert offene Lücken, schließt sie aber nicht.</p>
+    <div class="card"><div class="row between"><div><p class="eyebrow">ARCHITECTURE H3 · JAHRESABSCHLUSS</p><h3>Jahresarchiv ${selectedYear}</h3><p class="muted">${esc(options.buildingLabel || "Aktives Gebäude")} · Nachweise aus dem aktuellen, gebäudeisolierten Arbeitsbereich.</p></div><div style="text-align:right"><span class="pill ${archiveReady ? "good" : "warn"}" data-archive-status>${archiveReady ? "Abschlussbereit" : "Prüfen"}</span><br><span class="pill ${packageComplete ? "good" : "warn"}" data-package-status style="margin-top:6px">${packageComplete ? "Paket vollständig" : "Paket prüfen"}</span></div></div>
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:10px"><label><span class="muted">Jahr</span><select id="yearArchiveYearSelect" aria-label="Archivjahr">${years.map((year) => `<option value="${year}" ${year === selectedYear ? "selected" : ""}>${year}</option>`).join("")}</select></label><button id="yearClosePackageExport" class="primary">Abschlusspaket (.zip) exportieren</button><button id="yearArchiveExport" class="secondary">Manifest (.json) exportieren</button></div>
+      <p class="muted">Das ZIP enthält das H2-Manifest, Prüfstatus, Zahlungsübersicht, Abrechnungssnapshot-Metadaten und ausschließlich die zum gewählten Jahresarchiv gehörenden Belegdateien. Ein Prüfstatus bleibt im Paket ausdrücklich sichtbar.</p>
+      <div id="yearClosePackageMessage" class="muted" aria-live="polite"></div>
     </div>
     <div class="grid cards">
       <article class="card metric-card"><span>Nachweisketten</span><strong>${archive.summary.chains}</strong><small>${archive.summary.completeChains} vollständig</small></article>
       <article class="card metric-card"><span>Offene Lücken</span><strong>${archive.summary.gaps}</strong><small>Dokument / Zahlung / Abrechnung</small></article>
-      <article class="card metric-card"><span>Abrechnungssnapshots</span><strong>${archive.summary.snapshots}</strong><small>für ${selectedYear}</small></article>
+      <article class="card metric-card"><span>Belegdateien</span><strong>${coverage.documentsWithBinary}/${coverage.documentRecords}</strong><small>${coverage.binaryFiles} Datei(en) · ${missingBinary} ohne Datei</small></article>
       <article class="card metric-card"><span>Nicht zugeordnet</span><strong>${archive.summary.unlinkedDocuments + archive.summary.unlinkedOutflows}</strong><small>${archive.summary.unlinkedDocuments} Dokumente · ${archive.summary.unlinkedOutflows} Ausgaben</small></article>
     </div>
     <div class="card"><div class="card-head"><div><p class="eyebrow">NACHWEISKETTEN</p><h3>Dokument → Kosten → Zahlung → Abrechnung</h3></div></div>${archive.chains.length ? archive.chains.map((chain) => chainHtml(chain, options.onNavigate)).join("") : `<div class="empty-state"><strong>Keine bestätigten Kostenpositionen für ${selectedYear}</strong><p>Das Archiv bleibt im Prüfstatus, bis für dieses Jahr abrechnungsrelevante Daten vorliegen.</p></div>`}</div>
@@ -6274,19 +6588,34 @@ var AppYearArchiveUi = (() => {
       <article class="card"><h3>Nicht zugeordnete Dokumente</h3>${archive.unlinkedDocuments.length ? archive.unlinkedDocuments.map((doc) => `<div class="item"><strong>${esc(doc.label || doc.id)}</strong><p>${date(doc.created)} · ${esc(doc.analysisStatus || "ohne Analysestatus")}</p></div>`).join("") : `<p class="muted">Keine.</p>`}</article>
       <article class="card"><h3>Nicht zugeordnete Ausgaben</h3>${archive.unlinkedOutflows.length ? archive.unlinkedOutflows.map((payment) => `<div class="item"><strong>${esc(payment.label || payment.id)}</strong><p>${date(payment.date)} · ${euro(payment.amount)}</p></div>`).join("") : `<p class="muted">Keine.</p>`}</article>
     </div>` : ""}
+    ${missingBinary ? `<div class="legal-warn"><strong>${missingBinary} Dokument(e) ohne exportierbare Datei.</strong><br>Die Metadaten bleiben im Manifest enthalten, das ZIP wird aber bewusst als „Paket prüfen“ gekennzeichnet.</div>` : ""}
   </section>`;
     const select = host.querySelector("#yearArchiveYearSelect");
     if (select) select.onchange = () => renderArchive(host, options, documents, Number(select.value));
     host.querySelectorAll("[data-archive-fix]").forEach((button) => {
       button.onclick = () => options.onNavigate?.(button.dataset.route || "home", button.dataset.sub || "");
     });
-    const exportButton = host.querySelector("#yearArchiveExport");
-    if (exportButton) exportButton.onclick = () => {
-      const payload = {
-        ...createYearArchiveExport(options.state, documents, selectedYear),
-        context: { buildingId: String(options.buildingId || ""), buildingLabel: String(options.buildingLabel || "") }
-      };
-      saveJson(payload, `jahresarchiv-${safeName(String(options.buildingLabel || "gebaeude"))}-${selectedYear}.json`);
+    const manifestButton = host.querySelector("#yearArchiveExport");
+    if (manifestButton) manifestButton.onclick = () => {
+      saveJson(exportPayload, `jahresarchiv-${safeName(String(options.buildingLabel || "gebaeude"))}-${selectedYear}.json`);
+    };
+    const packageButton = host.querySelector("#yearClosePackageExport");
+    const message = host.querySelector("#yearClosePackageMessage");
+    if (packageButton) packageButton.onclick = async () => {
+      const original = packageButton.textContent || "Abschlusspaket (.zip) exportieren";
+      packageButton.disabled = true;
+      packageButton.textContent = "Paket wird erstellt …";
+      if (message) message.textContent = "";
+      try {
+        const result = await createYearClosePackage(exportPayload, documents);
+        saveBlob(result.blob, result.filename);
+        if (message) message.textContent = result.coverage.status === "complete" ? "Abschlusspaket wurde vollständig erstellt." : "Abschlusspaket wurde im Prüfstatus erstellt.";
+      } catch (error) {
+        if (message) message.textContent = `Abschlusspaket konnte nicht erstellt werden: ${String(error?.message || error)}`;
+      } finally {
+        packageButton.disabled = false;
+        packageButton.textContent = original;
+      }
     };
   }
   async function mountYearArchiveWorkspace(host, options) {

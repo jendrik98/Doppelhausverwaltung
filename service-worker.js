@@ -1,9 +1,9 @@
-const CACHE="mietverwaltung-v18-document-archive-h2-1";
+const CACHE="mietverwaltung-v18-year-close-package-h3-1";
 const CORE=[
   "./",
   "./index.html",
   "./style.css?v=1810p10",
-  "./app.js?v=1808",
+  "./app.js?v=1809",
   "./manifest.webmanifest?v=1810p2",
   "./legal-rules.json",
   "./icon-192.png",
