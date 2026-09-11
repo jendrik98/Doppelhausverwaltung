@@ -123,6 +123,9 @@ test('D wechselt Gebäude ohne Datenvermischung und persistiert neue Zahlungen i
 
   const paymentModal = page.locator('#modal');
   await expect(paymentModal.getByRole('heading', { name: 'Zahlung erfassen' })).toBeVisible();
+  // Erst nach abgeschlossenem Modal-Autofokus schreiben; andernfalls kann der
+  // 30-ms-Fokustimer während fill() auf das Datumsfeld springen.
+  await expect(paymentModal.locator('input[name="date"]')).toBeFocused();
   await paymentModal.getByLabel('Bezeichnung').fill('D Zahlung B');
   await paymentModal.getByLabel('Betrag €').fill('33');
   await expect(paymentModal.getByLabel('Bezeichnung')).toHaveValue('D Zahlung B');

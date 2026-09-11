@@ -43,6 +43,10 @@ test('E legt ein zweites Gebäude an, aktiviert es und hält das Primärgebäude
   await page.getByRole('button', { name: 'Gebäude hinzufügen' }).click();
 
   const buildingForm = page.locator('#buildingAdminForm');
+  await expect(buildingForm).toBeVisible();
+  // modal() setzt den Erstfokus bewusst nach 30 ms. Vor Eingaben darauf warten,
+  // damit der Timer nicht mitten in Playwrights fill()-Sequenz den Fokus verschiebt.
+  await expect(buildingForm.locator('input[name="name"]')).toBeFocused();
   await buildingForm.locator('input[name="name"]').fill('Haus B');
   await buildingForm.locator('input[name="address"]').fill('B-Straße 2');
   await buildingForm.locator('input[name="totalArea"]').fill('210');
@@ -104,6 +108,8 @@ test('E legt ein zweites Gebäude an, aktiviert es und hält das Primärgebäude
   await bCard.getByRole('button', { name: 'Bearbeiten' }).click();
 
   const editForm = page.locator('#buildingAdminForm');
+  await expect(editForm).toBeVisible();
+  await expect(editForm.locator('input[name="name"]')).toBeFocused();
   await editForm.locator('input[name="name"]').fill('Haus B neu');
   await editForm.getByRole('button', { name: 'Gebäude speichern' }).click();
   await expect(page.locator('#modal')).toHaveClass(/hidden/);
