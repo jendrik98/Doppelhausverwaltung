@@ -1,0 +1,200 @@
+name: Roadmap – Runtime Headroom
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/runtime-headroom.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASE_SHA: 7006cd4b7d2457677b6244dfd5906cb757be4a9f
+  SELF_PATH: .github/workflows/runtime-headroom.yml
+  MAINT_TOKEN: ${{ secrets.REPO_MAINTENANCE_TOKEN }}
+  GH_TOKEN: ${{ secrets.REPO_MAINTENANCE_TOKEN }}
+  E2E_BASE_URL: http://127.0.0.1:4173/
+
+jobs:
+  cleanup:
+    name: Toten Runtime-Code entfernen und Headroom schaffen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+
+    steps:
+      - name: Wartungs-Token prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${MAINT_TOKEN:-}" || { echo "::error::REPO_MAINTENANCE_TOKEN fehlt."; exit 1; }
+
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.REPO_MAINTENANCE_TOKEN }}
+          persist-credentials: true
+
+      - name: Ausgangsstand strikt verifizieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --prune
+          TRIGGER_SHA="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$BASE_SHA" "$TRIGGER_SHA"
+          mapfile -t CHANGED < <(git diff --name-only "$BASE_SHA" "$TRIGGER_SHA")
+          if [ "${#CHANGED[@]}" -ne 1 ] || [ "${CHANGED[0]}" != "$SELF_PATH" ]; then
+            echo "Seit Basis geändert: ${CHANGED[*]}"
+            echo "::error::Vor dem Headroom-Pass darf seit $BASE_SHA ausschließlich $SELF_PATH hinzugekommen sein."
+            exit 1
+          fi
+          test -f .github/workflows/ci.yml
+          test -f .github/workflows/e2e-live.yml
+          test -f "$SELF_PATH"
+
+      - name: Runtime-Headroom-Patch anwenden
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCBzdWJwcm9jZXNzCgpST09UID0gUGF0aCgiLiIpCgpkZWYgcmVhZChwYXRoKToKICAgIHJldHVybiAoUk9PVCAvIHBhdGgpLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQoKZGVmIHdyaXRlKHBhdGgsIHRleHQpOgogICAgcCA9IFJPT1QgLyBwYXRoCiAgICBwLnBhcmVudC5ta2RpcihwYXJlbnRzPVRydWUsIGV4aXN0X29rPVRydWUpCiAgICBwLndyaXRlX3RleHQodGV4dCwgZW5jb2Rpbmc9InV0Zi04IikKCnJ1bnRpbWVfcGF0aCA9ICJzcmMvdWkvYXBwLXJ1bnRpbWUudHMiCnJ1bnRpbWUgPSByZWFkKHJ1bnRpbWVfcGF0aCkKCmRlYWQgPSBbCiAgICAiaG91c2VDb3N0c0h1YlZpZXciLAogICAgImZpbmFuY2VQYXltZW50c0h1YlZpZXciLAogICAgImZpbmFuY2VQbGFubmluZ0h1YlZpZXciLApdCmZvciBuYW1lIGluIGRlYWQ6CiAgICBjb3VudCA9IHJ1bnRpbWUuY291bnQoZiJmdW5jdGlvbiB7bmFtZX0oIikKICAgIGlmIGNvdW50ICE9IDE6CiAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIntuYW1lfTogZXhwZWN0ZWQgZXhhY3RseSBvbmUgZGVjbGFyYXRpb24sIGZvdW5kIHtjb3VudH0iKQogICAgdG9rZW5fY291bnQgPSBydW50aW1lLmNvdW50KGYie25hbWV9KCIpCiAgICBpZiB0b2tlbl9jb3VudCAhPSAxOgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJ7bmFtZX06IHN0aWxsIHJlZmVyZW5jZWQgKHt0b2tlbl9jb3VudH0gb2NjdXJyZW5jZXMpIikKCnN0YXJ0X21hcmtlciA9ICJmdW5jdGlvbiBob3VzZUNvc3RzSHViVmlldygpeyIKZW5kX21hcmtlciA9ICJmdW5jdGlvbiBwcm90ZWN0aW9uSHViVmlldygpeyIKc3RhcnQgPSBydW50aW1lLmZpbmQoc3RhcnRfbWFya2VyKQplbmQgPSBydW50aW1lLmZpbmQoZW5kX21hcmtlcikKaWYgc3RhcnQgPCAwIG9yIGVuZCA8IDAgb3IgZW5kIDw9IHN0YXJ0OgogICAgcmFpc2UgU3lzdGVtRXhpdCgiRGVhZCBodWIgYmxvY2sgYm91bmRhcmllcyBub3QgZm91bmQiKQoKcmVtb3ZlZCA9IHJ1bnRpbWVbc3RhcnQ6ZW5kXQpmb3IgbmFtZSBpbiBkZWFkOgogICAgaWYgZiJmdW5jdGlvbiB7bmFtZX0oIiBub3QgaW4gcmVtb3ZlZDoKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KGYie25hbWV9OiBub3QgaW5zaWRlIHJlbW92YWwgYmxvY2siKQoKcnVudGltZSA9IHJ1bnRpbWVbOnN0YXJ0XSArIHJ1bnRpbWVbZW5kOl0Kd2hpbGUgIlxuXG5cblxuIiBpbiBydW50aW1lOgogICAgcnVudGltZSA9IHJ1bnRpbWUucmVwbGFjZSgiXG5cblxuXG4iLCAiXG5cblxuIikKCmZvciBuYW1lIGluIGRlYWQ6CiAgICBpZiBmIntuYW1lfSgiIGluIHJ1bnRpbWU6CiAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIntuYW1lfTogc3Vydml2ZWQgY2xlYW51cCIpCgpydW50aW1lX2J5dGVzID0gbGVuKHJ1bnRpbWUuZW5jb2RlKCJ1dGYtOCIpKQppZiBydW50aW1lX2J5dGVzID49IDE2OTUwMDoKICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJOb3QgZW5vdWdoIHJ1bnRpbWUgaGVhZHJvb206IHtydW50aW1lX2J5dGVzfSBieXRlcyA+PSAxNjk1MDAiKQoKd3JpdGUocnVudGltZV9wYXRoLCBydW50aW1lKQoKcXVhbGl0eV9wYXRoID0gInNjcmlwdHMvdGVzdC1xdWFsaXR5Lm1qcyIKcXVhbGl0eSA9IHJlYWQocXVhbGl0eV9wYXRoKQphbmNob3IgPSAnaWYoYXBwUnVudGltZS5pbmNsdWRlcygiZnVuY3Rpb24gcnVuU2VsZlRlc3RzIikpZmFpbHVyZXMucHVzaCgiSGlzdG9yaXNjaGUgQnJvd3Nlci1TZWxic3R0ZXN0cyBkw7xyZmVuIG5pY2h0IHp1csO8Y2trZWhyZW4iKTtcbicKZ3VhcmQgPSAoCiAgICAnZm9yKGNvbnN0IGRlYWQgb2YgWyJob3VzZUNvc3RzSHViVmlldyIsImZpbmFuY2VQYXltZW50c0h1YlZpZXciLCJmaW5hbmNlUGxhbm5pbmdIdWJWaWV3Il0pe1xuJwogICAgJyAgaWYoYXBwUnVudGltZS5pbmNsdWRlcyhgZnVuY3Rpb24gJHtkZWFkfWApKWZhaWx1cmVzLnB1c2goYFRvdGVyIE5hdmlnYXRpb24tSHViIGRhcmYgbmljaHQgenVyw7xja2tlaHJlbjogJHtkZWFkfWApO1xuJwogICAgJ31cbicKKQppZiBndWFyZCBub3QgaW4gcXVhbGl0eToKICAgIGlmIGFuY2hvciBub3QgaW4gcXVhbGl0eToKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KCJRdWFsaXR5IGd1YXJkIGFuY2hvciBtaXNzaW5nIikKICAgIHF1YWxpdHkgPSBxdWFsaXR5LnJlcGxhY2UoYW5jaG9yLCBhbmNob3IgKyBndWFyZCwgMSkKd3JpdGUocXVhbGl0eV9wYXRoLCBxdWFsaXR5KQoKdHJhY2tlZCA9IHN1YnByb2Nlc3MuY2hlY2tfb3V0cHV0KFsiZ2l0IiwgImxzLWZpbGVzIl0sIHRleHQ9VHJ1ZSkuc3BsaXRsaW5lcygpCm9sZF9hcHAgPSAiYXBwLmpzP3Y9MTgxMSIKbmV3X2FwcCA9ICJhcHAuanM/dj0xODEyIgpvbGRfY2FjaGUgPSAibWlldHZlcndhbHR1bmctdjE4LXN1bW1hcnktY2FyZHMtMSIKbmV3X2NhY2hlID0gIm1pZXR2ZXJ3YWx0dW5nLXYxOC1ydW50aW1lLWhlYWRyb29tLTEiCmFwcF9yZXBsYWNlbWVudHMgPSAwCmNhY2hlX3JlcGxhY2VtZW50cyA9IDAKCmZvciByZWwgaW4gdHJhY2tlZDoKICAgIHAgPSBST09UIC8gcmVsCiAgICBpZiBub3QgcC5pc19maWxlKCk6CiAgICAgICAgY29udGludWUKICAgIHRyeToKICAgICAgICB0ZXh0ID0gcC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikKICAgIGV4Y2VwdCBVbmljb2RlRGVjb2RlRXJyb3I6CiAgICAgICAgY29udGludWUKICAgIGEgPSB0ZXh0LmNvdW50KG9sZF9hcHApCiAgICBjID0gdGV4dC5jb3VudChvbGRfY2FjaGUpCiAgICBpZiBhOgogICAgICAgIHRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkX2FwcCwgbmV3X2FwcCkKICAgICAgICBhcHBfcmVwbGFjZW1lbnRzICs9IGEKICAgIGlmIGM6CiAgICAgICAgdGV4dCA9IHRleHQucmVwbGFjZShvbGRfY2FjaGUsIG5ld19jYWNoZSkKICAgICAgICBjYWNoZV9yZXBsYWNlbWVudHMgKz0gYwogICAgaWYgYSBvciBjOgogICAgICAgIHAud3JpdGVfdGV4dCh0ZXh0LCBlbmNvZGluZz0idXRmLTgiKQoKaWYgYXBwX3JlcGxhY2VtZW50cyA8IDM6CiAgICByYWlzZSBTeXN0ZW1FeGl0KGYiVG9vIGZldyBhcHAgbWFya2VyIHJlcGxhY2VtZW50czoge2FwcF9yZXBsYWNlbWVudHN9IikKaWYgY2FjaGVfcmVwbGFjZW1lbnRzIDwgMjoKICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJUb28gZmV3IGNhY2hlIG1hcmtlciByZXBsYWNlbWVudHM6IHtjYWNoZV9yZXBsYWNlbWVudHN9IikKCnN0YXRlID0gcmVhZCgic3JjL2NvcmUvc3RhdGUudHMiKQppZiAiZXhwb3J0IGNvbnN0IFNDSEVNQV9WRVJTSU9OID0gMTU7IiBub3QgaW4gc3RhdGUgb3IgJ2FwcFZlcnNpb246ICIxOC4wLjAiJyBub3QgaW4gc3RhdGU6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJSdW50aW1lIGNsZWFudXAgbXVzdCBub3QgY2hhbmdlIHNjaGVtYS9hcHAgdmVyc2lvbiIpCgpwcmludChmIlJ1bnRpbWUgaGVhZHJvb20gcHJlcGFyZWQ6IHtydW50aW1lX2J5dGVzfSBieXRlczsgcmVtb3ZlZCB7bGVuKHJlbW92ZWQuZW5jb2RlKCd1dGYtOCcpKX0gYnl0ZXMgb2YgZGVhZCBodWIgY29kZS4iKQpwcmludChmIkFzc2V0IG1hcmtlciByZXBsYWNlbWVudHM6IGFwcD17YXBwX3JlcGxhY2VtZW50c30sIGNhY2hlPXtjYWNoZV9yZXBsYWNlbWVudHN9IikK' | base64 -d > /tmp/runtime_headroom_patch.py
+          test "$(sha256sum /tmp/runtime_headroom_patch.py | awk '{print $1}')" = "098bd51a2e6172a4b76c2722827a7f31ce528d48b192b27073045c93184eb4d9"
+          python3 -m py_compile /tmp/runtime_headroom_patch.py
+          python3 /tmp/runtime_headroom_patch.py
+          rm -f /tmp/runtime_headroom_patch.py
+          rm -f "$SELF_PATH"
+          test ! -e "$SELF_PATH"
+          git diff --check
+
+      - name: Node 22 einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Reproduzierbaren Build prüfen
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build
+          APP_SHA_1="$(sha256sum app.js | awk '{print $1}')"
+          npm run build
+          APP_SHA_2="$(sha256sum app.js | awk '{print $1}')"
+          test "$APP_SHA_1" = "$APP_SHA_2"
+          grep -q 'app.js?v=1812' index.html
+          grep -q 'app.js?v=1812' service-worker.js
+          grep -q 'mietverwaltung-v18-runtime-headroom-1' service-worker.js
+          RUNTIME_BYTES="$(wc -c < src/ui/app-runtime.ts | tr -d ' ')"
+          test "$RUNTIME_BYTES" -lt 169500
+          echo "APP_SHA=$APP_SHA_2" >> "$GITHUB_ENV"
+          echo "RUNTIME_BYTES=$RUNTIME_BYTES" >> "$GITHUB_ENV"
+
+      - name: TypeScript und Qualitäts-Gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm run test:validation
+          npm run test:architecture
+          npm run test:quality
+          npm run test:pwa
+          node --check app.js
+
+      - name: Browser und PDF-Prüfwerkzeuge installieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+
+      - name: Lokalen Server starten
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 > /tmp/dhv-http.log 2>&1 &
+          for i in {1..30}; do
+            curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/dhv-http.log
+          exit 1
+
+      - name: Navigation gezielt prüfen
+        run: npx playwright test tests/navigation-natural.spec.js tests/navigation-simplified.spec.js tests/navigation.spec.js
+
+      - name: Vollständige E2E-Suite prüfen
+        run: npm run test:e2e
+
+      - name: Playwright-Bericht sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-headroom-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Finalen Tree verifizieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e "$SELF_PATH"
+          test "$(find .github/workflows -maxdepth 1 -type f -name '*.yml' -printf '%f\n' | sort)" = $'ci.yml\ne2e-live.yml'
+          ! grep -q 'function houseCostsHubView' src/ui/app-runtime.ts
+          ! grep -q 'function financePaymentsHubView' src/ui/app-runtime.ts
+          ! grep -q 'function financePlanningHubView' src/ui/app-runtime.ts
+          grep -q 'function protectionHubView' src/ui/app-runtime.ts
+          grep -q 'function houseCostsCombinedView' src/ui/app-runtime.ts
+          grep -q 'function financePaymentsView' src/ui/app-runtime.ts
+          grep -q 'function financePlanningView' src/ui/app-runtime.ts
+          git diff --check
+
+      - name: Produktcommit erstellen und pushen
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "::error::Keine Produktänderungen."; exit 1; }
+          git commit -m "refactor: reclaim runtime headroom"
+          FINAL_SHA="$(git rev-parse HEAD)"
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          git push origin HEAD:main
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$FINAL_SHA"
+
+      - name: Permanente CI und Live-E2E abwarten
+        shell: bash
+        run: |
+          set -euo pipefail
+          find_run() {
+            local workflow="$1"
+            for i in {1..72}; do
+              id="$(gh run list --workflow "$workflow" --branch main --limit 40 --json databaseId,headSha,status,conclusion --jq '.[] | select(.headSha == env.FINAL_SHA) | .databaseId' | head -n1)"
+              if [ -n "$id" ]; then echo "$id"; return 0; fi
+              sleep 5
+            done
+            return 1
+          }
+          CI_RUN="$(find_run ci.yml)" || { echo "::error::Kein CI-Lauf für $FINAL_SHA."; exit 1; }
+          LIVE_RUN="$(find_run e2e-live.yml)" || { echo "::error::Kein Live-E2E-Lauf für $FINAL_SHA."; exit 1; }
+          gh run watch "$CI_RUN" --exit-status
+          gh run watch "$LIVE_RUN" --exit-status
+          test "$(gh run view "$CI_RUN" --json headSha,conclusion --jq '.headSha + " " + .conclusion')" = "$FINAL_SHA success"
+          test "$(gh run view "$LIVE_RUN" --json headSha,conclusion --jq '.headSha + " " + .conclusion')" = "$FINAL_SHA success"
+
+      - name: Abschluss
+        run: |
+          echo "Runtime-Headroom-Pass vollständig."
+          echo "Finaler SHA: $FINAL_SHA"
+          echo "app.js SHA-256: $APP_SHA"
+          echo "app-runtime.ts: $RUNTIME_BYTES Bytes"
