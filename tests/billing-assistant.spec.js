@@ -64,7 +64,7 @@ async function seedBase(page, {
     {id:'owner',name:'Eigennutzung',type:'owner',area:100,occupancy:[{from:takeover,to:'',count:2}]},
     {id:'rental',name:'Mietwohnung',type:'rental',area:100,occupancy:[{from:takeover,to:'',count:2}]}
   ];
-  s.leases = [{id:'lease',tenantName:'Testmieter',tenantAddress:'Testweg 18',start:takeover,end:'',rent,advance,note:''}];
+  s.leases = [{id:'lease',tenantName:'Testmieter',tenantAddress:'Testweg 18',start:takeover,end:'',rent,advance,operatingCostsMode:'advance',operatingCostsAgreed:true,operatingCostsReference:'Betriebskosten gemäß BetrKV',operatingCostCategories:[],operatingCostOtherLabels:[],note:''}];
   s.sources=[]; s.costPositions=[]; s.waterSettlements=[]; s.payments=[]; s.billingWorkflows=[]; s.billingSnapshots=[]; s.tasks=[];
   s.meta = {...s.meta, lastBackupAt:backupAt};
 

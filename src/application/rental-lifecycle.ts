@@ -24,6 +24,7 @@ export function createTenancyCommand(state:AnyRecord,payload:AnyRecord,context:C
   return AppLifecycleLedger.createTenancy(state,{...payload,unitId});
 }
 export function addLeaseTermCommand(state:AnyRecord,payload:AnyRecord){return AppLifecycleLedger.addLeaseTerm(state,String(payload.leaseId||payload.id||""),payload)}
+export function updateOperatingCostAgreementCommand(state:AnyRecord,payload:AnyRecord){return AppLifecycleLedger.updateOperatingCostAgreement(state,String(payload.leaseId||payload.id||""),payload)}
 export function closeTenancyCommand(state:AnyRecord,payload:AnyRecord){return AppLifecycleLedger.updateTenancyEnd(state,String(payload.leaseId||payload.id||""),String(payload.end||""),String(payload.note||""))}
 export function recordHandoverCommand(state:AnyRecord,payload:AnyRecord){return AppLifecycleLedger.recordHandover(state,String(payload.leaseId||""),payload)}
 export function allocateRentPaymentCommand(state:AnyRecord,payload:AnyRecord){return AppLifecycleLedger.replacePaymentAllocations(state,String(payload.paymentId||""),payload.allocations||[])}

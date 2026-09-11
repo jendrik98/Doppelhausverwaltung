@@ -1,7 +1,7 @@
 {
   "schema": "mietverwaltung-legal-pack-v1",
-  "version": "2026.09.05-3",
-  "effectiveDate": "2026-09-05",
+  "version": "2026.09.11-1",
+  "effectiveDate": "2026-09-11",
   "jurisdiction": "Deutschland / NRW",
   "sources": [
     {
@@ -122,6 +122,6 @@
       "defaultRule": "owner"
     }
   },
-  "verifiedAt": "2026-09-05",
-  "verificationNote": "Smart-Engine-Prüfstand: §§ 556, 556a, 556b, 560 BGB sowie BetrKV über gesetze-im-internet.de"
+  "verifiedAt": "2026-09-11",
+  "verificationNote": "Prüfstand 11.09.2026: §§ 556, 556a BGB sowie BetrKV über gesetze-im-internet.de; Vertragsbasis wird je Mietverhältnis dokumentiert und in der Abrechnung berücksichtigt."
 }

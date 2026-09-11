@@ -21,8 +21,11 @@ const state={
 
 const l1=G.createTenancy(state,{unitId:'rental-1',tenantName:'Alt',start:'2026-01-01',end:'2026-06-30',rent:500,advance:100});
 assert.equal(l1.terms.length,1);
+assert.equal(l1.operatingCostsMode,'unknown','Neue Mietverhältnisse starten ohne stillschweigende Umlageannahme');
+G.updateOperatingCostAgreement(state,l1.id,{mode:'advance',reference:'Betriebskosten gemäß BetrKV',categories:['water','insurance']});
 assert.throws(()=>G.createTenancy(state,{unitId:'rental-1',tenantName:'Overlap',start:'2026-06-15',rent:400,advance:90}),/überschneiden/);
 const l2=G.createTenancy(state,{unitId:'rental-1',tenantName:'Neu',start:'2026-07-01',end:'2026-12-31',rent:550,advance:110});
+G.updateOperatingCostAgreement(state,l2.id,{mode:'advance',reference:'Betriebskosten gemäß BetrKV',categories:['water','insurance']});
 G.addLeaseTerm(state,l2.id,{effectiveFrom:'2026-10-01',rent:575,advance:115,reason:'Anpassung'});
 assert.equal(G.leaseTermAt(l2,'2026-09-01').rent,550);
 assert.equal(G.leaseTermAt(l2,'2026-10-01').rent,575);
@@ -63,12 +66,32 @@ assert.equal(water.ownerSegments.length,2);
 for(const [month,total] of [['2026-08',660],['2026-09',660],['2026-10',690],['2026-11',690],['2026-12',690]]){
   const pid='p-'+month;state.payments.push({id:pid,buildingId:'building-1',direction:'income',date:month+'-03',amount:total,label:'Miete Neu',leaseId:l2.id});G.replacePaymentAllocations(state,pid,[{leaseId:l2.id,month,total}]);
 }
-const base={period:{start:'2026-01-01',end:'2026-12-31'},events:[{id:'area',tenantAmount:1200,serviceStart:'2026-01-01',serviceEnd:'2026-12-31',decision:{rule:'area'}},{id:'water',tenantAmount:950,serviceStart:'2026-01-01',serviceEnd:'2026-12-31',decision:{rule:'consumption'}}],unresolved:[],tenantCosts:2150,advances:0};
+const base={period:{start:'2026-01-01',end:'2026-12-31'},events:[{id:'area',positionId:'insurance-pos',label:'Gebäudeversicherung',category:'insurance',tenantAmount:1200,serviceStart:'2026-01-01',serviceEnd:'2026-12-31',decision:{rule:'area',billable:true}},{id:'water',positionId:'water-pos',label:'Kaltwasser / Kanal',category:'water',tenantAmount:950,serviceStart:'2026-01-01',serviceEnd:'2026-12-31',decision:{rule:'consumption',billable:true}}],unresolved:[],tenantCosts:2150,advances:0};
 const a1=G.leaseBillingAnalysis(state,base,2026,l1.id),a2=G.leaseBillingAnalysis(state,base,2026,l2.id);
 assert.equal(a1.leaseId,l1.id);assert.equal(a2.leaseId,l2.id);
 assert.ok(a1.tenantCosts>0&&a2.tenantCosts>0);
 assert.ok(Math.abs((a1.events[0].tenantAmount+a2.events[0].tenantAmount)-1200)<0.01,'Flächenkosten werden nach Mietzeitraum vollständig auf beide Mietverhältnisse gesplittet');
 assert.ok(a2.advances>0,'Explizite BK-Anteile aus dem Mietkonto fließen in die Mieterabrechnung');
+const guarded=G.applyOperatingCostAgreementToAnalysis(base,l2);
+assert.equal(guarded.events.find(x=>x.category==='water').contractDecision.status,'ok');
+assert.equal(guarded.events.find(x=>x.category==='insurance').contractDecision.status,'ok');
+const restricted={...structuredClone(l2),operatingCostCategories:['water'],operatingCostsReference:''};
+const restrictedAnalysis=G.applyOperatingCostAgreementToAnalysis(base,restricted);
+assert.equal(restrictedAnalysis.events.find(x=>x.category==='insurance').tenantAmount,0,'Nicht vereinbarte Kostenart wird nicht berechnet');
+assert.equal(restrictedAnalysis.events.find(x=>x.category==='insurance').contractDecision.status,'excluded');
+const otherBase={...base,events:[{id:'other',positionId:'other-pos',label:'Dachrinnenreinigung',category:'other',tenantAmount:80,decision:{rule:'area',billable:true}}],tenantCosts:80};
+const otherBlocked=G.applyOperatingCostAgreementToAnalysis(otherBase,{...structuredClone(l2),operatingCostCategories:['other'],operatingCostOtherLabels:[]});
+assert.ok(otherBlocked.unresolved.some(x=>x.contract),'Sonstige Betriebskosten ohne konkrete Vertragsbezeichnung bleiben offen');
+const otherAllowed=G.applyOperatingCostAgreementToAnalysis(otherBase,{...structuredClone(l2),operatingCostCategories:['other'],operatingCostOtherLabels:['Dachrinnenreinigung']});
+assert.equal(otherAllowed.tenantCosts,80);
+const flatBlocked=G.applyOperatingCostAgreementToAnalysis(base,{...structuredClone(l2),operatingCostsMode:'flat'});
+assert.equal(flatBlocked.tenantCosts,0,'Pauschale erzeugt keine Jahresabrechnung nach Ist-Kosten');
+assert.ok(flatBlocked.unresolved.some(x=>x.contract));
+const legacy={...structuredClone(l2)};delete legacy.operatingCostsMode;delete legacy.operatingCostsAgreed;delete legacy.operatingCostsReference;delete legacy.operatingCostCategories;delete legacy.operatingCostOtherLabels;
+const legacyAnalysis=G.applyOperatingCostAgreementToAnalysis(base,legacy);
+assert.equal(legacyAnalysis.tenantCosts,0,'Bestandsvertrag ohne bestätigte Umlagegrundlage wird nicht stillschweigend abgerechnet');
+assert.ok(legacyAnalysis.unresolved.some(x=>x.contract),'Bestandsvertrag blockiert den Abschluss bis zur Prüfung');
+assert.ok(legacyAnalysis.contractWarnings.length,'Bestandsvertrag wird sichtbar zur Prüfung markiert');
 
 const s1=G.decorateSnapshotRevision(state,{id:'s1',buildingId:'building-1',periodYear:2026,lease:l2},{leaseId:l2.id});state.billingSnapshots.push(s1);
 const s2=G.decorateSnapshotRevision(state,{id:'s2',buildingId:'building-1',periodYear:2026,lease:l2},{leaseId:l2.id,correctionReason:'Nachgereichter Beleg',supersedesSnapshotId:s1.id});state.billingSnapshots.push(s2);
@@ -86,4 +109,5 @@ assert.ok(runtime.includes('AppRentalLifecycleUi.renderRentalLifecycle'),'Runtim
 assert.ok(runtime.includes('correctBillingBtn'),'Korrekturpfad ist nicht erreichbar');
 assert.ok(context.includes('rentAllocations')&&context.includes('meterReplacements'),'G-Sammlungen sind nicht gebäudeisoliert');
 assert.ok(billing.includes('decorateSnapshotRevision'),'Snapshots sind nicht versioniert');
-assert.ok(fs.readFileSync(path.join(root,'index.html'),'utf8').includes('app.js?v=1812'));
+assert.ok(fs.readFileSync(path.join(root,'index.html'),'utf8').includes('app.js?v=1813'));
+assert.ok(fs.readFileSync(path.join(root,'src/ui/rental-lifecycle-ui.ts'),'utf8').includes('BK-Umlagegrundlage'));

@@ -208,7 +208,7 @@ export function billingReadiness(s: BillingState,periodYear: number){
   const analysis=billingAnalysis(s,periodYear),bp=billingPeriodInfo(s,periodYear);
   const relevant=(s.costPositions||[]).some(p=>p.confirmed&&positionToEvents(s,p,periodYear).length>0);
   const waterPositions=(s.costPositions||[]).some(p=>p.confirmed&&p.category==="water"&&positionToEvents(s,p,periodYear).length>0);
-  const settlement=settlementByPeriod(s,periodYear),cons=settlementConsumption(s,settlement);
+  const settlement=settlementByPeriod(s,periodYear),cons=settlementConsumption(s,settlement),contractOk=!analysis.unresolved.some((x:AnyRecord)=>x?.contract);
   return [
     {id:"period",ok:bp.active,label:"Abrechnungsperiode liegt vor der Verwaltungsübernahme",route:"data",sub:"property"},
     {id:"objectName",ok:!!s.property.name,label:"Objektname fehlt",route:"data",sub:"property"},
@@ -216,6 +216,7 @@ export function billingReadiness(s: BillingState,periodYear: number){
     {id:"ownerUnit",ok:!!unitByType(s,"owner"),label:"Eigennutzungs-Einheit fehlt",route:"data",sub:"units"},
     {id:"rentalUnit",ok:!!unitByType(s,"rental"),label:"Mietwohnung fehlt",route:"data",sub:"units"},
     {id:"lease",ok:!!s.leases.length,label:"Mietvertrag fehlt",route:"rental",sub:"overview"},
+    {id:"contract",ok:contractOk,label:"BK-Umlagegrundlage im Mietverhältnis ist nicht geklärt",route:"rental",sub:"overview"},
     {id:"positions",ok:relevant,label:"Keine bestätigte Kostenposition für diese Abrechnungsperiode",route:"data",sub:"positions"},
     {id:"water",ok:!waterPositions||!!cons?.valid,label:"Wasserzähler / Verbrauchsdaten fehlen",route:"rental",sub:"water"},
     {id:"allocation",ok:analysis.unresolved.length===0,label:"Ungeklärte Umlageentscheidungen",route:"data",sub:"positions"}
@@ -247,7 +248,7 @@ legalEffectiveDate:ACTIVE_LEGAL_PACK?.effectiveDate||LAW_DATE,domainVersion:DOMA
 property:structuredClone(state.property),correspondence:structuredClone(state.correspondence||{}),units:structuredClone(state.units),
 lease:structuredClone(analysis.lease||null),events:structuredClone(analysis.events),
 waterConsumption:structuredClone(waterConsumption||null),allocationBases:{totalArea:Number(state.property?.totalArea||0),rentalArea:Number(unitByType(state,"rental")?.area||0)},
-unresolved:structuredClone(analysis.unresolved),tenantCosts:Number(analysis.tenantCosts||0),
+unresolved:structuredClone(analysis.unresolved),contractAgreement:structuredClone(analysis.contractAgreement||null),contractWarnings:structuredClone(analysis.contractWarnings||[]),tenantCosts:Number(analysis.tenantCosts||0),
 advances:Number(analysis.advances||0),result:Number(analysis.result||0),frozen:true
 };
 return AppLifecycleLedger.decorateSnapshotRevision(state,snapshot,options)

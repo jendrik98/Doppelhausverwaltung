@@ -709,6 +709,7 @@ var AppLifecycleLedger = (() => {
     actualAdvanceFromLedger: () => actualAdvanceFromLedger,
     addLeaseTerm: () => addLeaseTerm,
     allocationsForLeaseMonth: () => allocationsForLeaseMonth,
+    applyOperatingCostAgreementToAnalysis: () => applyOperatingCostAgreementToAnalysis,
     autoAllocationProposal: () => autoAllocationProposal,
     billingRevisionHistory: () => billingRevisionHistory,
     createTenancy: () => createTenancy,
@@ -733,6 +734,8 @@ var AppLifecycleLedger = (() => {
     monthRange: () => monthRange,
     monthStart: () => monthStart,
     nextSnapshotVersion: () => nextSnapshotVersion,
+    operatingCostAgreement: () => operatingCostAgreement,
+    operatingCostContractDecision: () => operatingCostContractDecision,
     paymentAllocations: () => paymentAllocations,
     periodOverlap: () => periodOverlap,
     recordHandover: () => recordHandover,
@@ -742,6 +745,7 @@ var AppLifecycleLedger = (() => {
     replacementsInPeriod: () => replacementsInPeriod,
     roleConsumptionBetween: () => roleConsumptionBetween,
     splitAllocation: () => splitAllocation,
+    updateOperatingCostAgreement: () => updateOperatingCostAgreement,
     updateTenancyEnd: () => updateTenancyEnd,
     validateLifecycleState: () => validateLifecycleState,
     waterConsumptionBetween: () => waterConsumptionBetween
@@ -796,6 +800,85 @@ var AppLifecycleLedger = (() => {
     }
     lease.handover = lease.handover && typeof lease.handover === "object" ? lease.handover : {};
     return lease;
+  }
+  var OPERATING_COST_MODES = /* @__PURE__ */ new Set(["unknown", "advance", "flat", "included", "none"]);
+  var standardOperatingCostCategories = /* @__PURE__ */ new Set(["propertyTax", "rainwater", "street", "waste", "insurance", "chimney", "water", "garden", "cleaning"]);
+  function operatingCostAgreement(lease) {
+    const configured = !!lease && ["operatingCostsMode", "operatingCostsAgreed", "operatingCostsReference", "operatingCostCategories", "operatingCostOtherLabels"].some((key) => Object.prototype.hasOwnProperty.call(lease, key));
+    const raw = String(lease?.operatingCostsMode || "").trim();
+    const mode = OPERATING_COST_MODES.has(raw) ? raw : "unknown";
+    const categories = [...new Set(arr(lease?.operatingCostCategories).map((x) => String(x || "").trim()).filter(Boolean))];
+    const otherLabels = [...new Set(arr(lease?.operatingCostOtherLabels).map((x) => String(x || "").trim()).filter(Boolean))];
+    const reference = String(lease?.operatingCostsReference || "").trim();
+    const agreed = mode === "advance" || mode === "flat" ? true : mode === "included" || mode === "none" ? false : lease?.operatingCostsAgreed === true ? true : lease?.operatingCostsAgreed === false ? false : null;
+    return { mode, agreed, reference, categories, otherLabels, verifiedAt: String(lease?.operatingCostsVerifiedAt || ""), legacy: !configured };
+  }
+  function updateOperatingCostAgreement(state, leaseId, payload) {
+    ensureLifecycleState(state);
+    const lease = state.leases.find((l) => String(l.id || "") === String(leaseId || ""));
+    if (!lease) throw new Error("Mietverhältnis fehlt.");
+    const raw = String(payload.mode || payload.operatingCostsMode || "unknown").trim();
+    if (!OPERATING_COST_MODES.has(raw)) throw new Error("Betriebskosten-Modus ist ungültig.");
+    const reference = String(payload.reference ?? payload.operatingCostsReference ?? "").trim();
+    const categories = [...new Set(arr(payload.categories ?? payload.operatingCostCategories).map((x) => String(x || "").trim()).filter(Boolean))];
+    const rawOther = payload.otherLabels ?? payload.operatingCostOtherLabels ?? [];
+    const otherLabels = [...new Set((Array.isArray(rawOther) ? rawOther : String(rawOther || "").split(/[,;\n]+/)).map((x) => String(x || "").trim()).filter(Boolean))];
+    if (raw === "advance" && !reference && !categories.length) throw new Error("Für eine Betriebskostenabrechnung bitte Vertragsverweis oder vereinbarte Kostenarten dokumentieren.");
+    if (raw === "advance" && categories.includes("other") && !otherLabels.length) throw new Error("Sonstige Betriebskosten müssen mit ihrer konkreten Vertragsbezeichnung dokumentiert werden.");
+    lease.operatingCostsMode = raw;
+    lease.operatingCostsAgreed = raw === "advance" || raw === "flat" ? true : raw === "included" || raw === "none" ? false : null;
+    lease.operatingCostsReference = reference;
+    lease.operatingCostCategories = categories;
+    lease.operatingCostOtherLabels = otherLabels;
+    lease.operatingCostsVerifiedAt = (/* @__PURE__ */ new Date()).toISOString();
+    return operatingCostAgreement(lease);
+  }
+  function operatingCostContractDecision(lease, event) {
+    const agreement = operatingCostAgreement(lease), category = String(event?.category || "").trim(), label = String(event?.label || "").trim();
+    if (event?.decision?.rule === "owner" || event?.decision?.billable === false) return { status: "not-applicable", allowed: true, blocking: false, reason: "Diese Position ist bereits der Vermieterseite zugeordnet.", agreement };
+    if (agreement.mode === "unknown") {
+      const reason = agreement.legacy ? "Bestandsvertrag: Betriebskosten-Umlagegrundlage ist noch nicht bestätigt; vor einer Jahresabrechnung muss die Vertragsbasis geprüft werden." : "Betriebskosten-Umlagegrundlage dieses Mietverhältnisses ist noch nicht geprüft.";
+      return { status: agreement.legacy ? "legacy-unverified" : "check", allowed: false, blocking: true, reason, agreement };
+    }
+    if (agreement.mode === "flat") return { status: "blocked", allowed: false, blocking: true, reason: "Für dieses Mietverhältnis ist eine Betriebskostenpauschale hinterlegt; eine verbrauchs-/kostenbezogene Jahresabrechnung darf daraus nicht erzeugt werden.", agreement };
+    if (agreement.mode === "included") return { status: "blocked", allowed: false, blocking: true, reason: "Betriebskosten sind als in der Miete enthalten hinterlegt; eine gesonderte Jahresabrechnung ist nicht freigegeben.", agreement };
+    if (agreement.mode === "none") return { status: "blocked", allowed: false, blocking: true, reason: "Für dieses Mietverhältnis ist keine Betriebskostenumlage hinterlegt.", agreement };
+    const broadReference = /\bbetrkv\b|betriebskostenverordnung/i.test(agreement.reference);
+    const explicit = agreement.categories;
+    if (category === "other") {
+      if (explicit.length && !explicit.includes("other")) return { status: "excluded", allowed: false, blocking: false, reason: "Diese Kostenart ist im hinterlegten Vertrag nicht ausgewählt.", agreement };
+      const normalizedLabel = normalize(label);
+      const named = agreement.otherLabels.some((x) => {
+        const n = normalize(x);
+        return !!n && (normalizedLabel === n || normalizedLabel.includes(n) || n.includes(normalizedLabel));
+      });
+      if (!named) return { status: "check", allowed: false, blocking: true, reason: "Sonstige Betriebskosten müssen im Vertrag konkret bezeichnet sein; für diese Position fehlt eine passende Bezeichnung.", agreement };
+      return { status: "ok", allowed: true, blocking: false, reason: "Die sonstige Betriebskostenart ist im Vertrag konkret hinterlegt.", agreement };
+    }
+    if (explicit.length) {
+      if (explicit.includes(category)) return { status: "ok", allowed: true, blocking: false, reason: "Kostenart ist für dieses Mietverhältnis ausdrücklich hinterlegt.", agreement };
+      return { status: "excluded", allowed: false, blocking: false, reason: "Kostenart ist in der hinterlegten Vertragsauswahl nicht enthalten.", agreement };
+    }
+    if (broadReference && standardOperatingCostCategories.has(category)) return { status: "ok", allowed: true, blocking: false, reason: "Vertragsverweis auf die BetrKV deckt diese Standard-Betriebskostenart ab.", agreement };
+    return { status: "check", allowed: false, blocking: true, reason: "Für diese Kostenart ist keine belastbare Umlagegrundlage im Mietverhältnis dokumentiert.", agreement };
+  }
+  function applyOperatingCostAgreementToAnalysis(base, lease) {
+    if (!lease) return base;
+    const agreement = operatingCostAgreement(lease), events = arr(base?.events).map((e) => {
+      const contractDecision = operatingCostContractDecision(lease, e);
+      return contractDecision.allowed ? { ...e, contractDecision } : { ...e, tenantAmount: 0, contractDecision };
+    });
+    const unresolved = arr(base?.unresolved).slice(), known = new Set(unresolved.map((x) => String(x?.id || "")));
+    for (const e of events) {
+      if (!e.contractDecision?.blocking) continue;
+      const key = `contract-${e.positionId || e.id || e.category || "cost"}`;
+      if (known.has(key)) continue;
+      known.add(key);
+      unresolved.push({ id: key, reason: e.contractDecision.reason, category: e.category, label: e.label, contract: true });
+    }
+    const tenantCosts = events.reduce((sum, e) => sum + num(e.tenantAmount), 0), advances = num(base?.advances);
+    const warnings = agreement.mode === "unknown" && agreement.legacy ? [{ id: `contract-legacy-${lease.id || "lease"}`, reason: "Bestandsvertrag: Betriebskosten-Umlagegrundlage noch nicht bestätigt." }] : [];
+    return { ...base, events, unresolved, tenantCosts, result: tenantCosts - advances, contractAgreement: agreement, contractWarnings: warnings };
   }
   function ensureLifecycleState(state) {
     state.meta = state.meta && typeof state.meta === "object" ? state.meta : {};
@@ -965,7 +1048,7 @@ var AppLifecycleLedger = (() => {
       const overlap = periodOverlap(payload.start, end, other.start || "0001-01-01", other.end || "9999-12-31");
       if (overlap) throw new Error(`Mietverhältnisse überschneiden sich ab ${overlap.start}.`);
     }
-    const lease = { id: payload.id || id("lease"), buildingId: unit.buildingId, unitId: unit.id, tenantName: String(payload.tenantName || "").trim(), tenantAddress: String(payload.tenantAddress || "").trim(), start: payload.start, end: payload.end || "", rent: Math.max(0, num(payload.rent)), advance: Math.max(0, num(payload.advance)), note: String(payload.note || "").trim(), terms: [], handover: {} };
+    const lease = { id: payload.id || id("lease"), buildingId: unit.buildingId, unitId: unit.id, tenantName: String(payload.tenantName || "").trim(), tenantAddress: String(payload.tenantAddress || "").trim(), start: payload.start, end: payload.end || "", rent: Math.max(0, num(payload.rent)), advance: Math.max(0, num(payload.advance)), note: String(payload.note || "").trim(), operatingCostsMode: String(payload.operatingCostsMode || "unknown"), operatingCostsAgreed: payload.operatingCostsAgreed ?? null, operatingCostsReference: String(payload.operatingCostsReference || "").trim(), operatingCostCategories: arr(payload.operatingCostCategories), operatingCostOtherLabels: arr(payload.operatingCostOtherLabels), terms: [], handover: {} };
     ensureLeaseTerms(lease);
     state.leases.push(lease);
     return lease;
@@ -1123,8 +1206,8 @@ var AppLifecycleLedger = (() => {
     if (arr(base?.events).some((e) => e.decision?.rule === "consumption") && !water.valid) unresolved.push({ id: "lease-water", reason: "Übergabe-/Zählerstände für den Mietzeitraum sind nicht vollständig.", missing: water.missing });
     const ledger = actualAdvanceFromLedger(state, lease, leasePeriod.start, leasePeriod.end), legacyFallback = !ledger.allocationCount && yearLeases.length === 1 ? num(base?.advances) : 0, advances = ledger.allocationCount ? ledger.amount : legacyFallback;
     if (!ledger.allocationCount && yearLeases.length > 1) unresolved.push({ id: "lease-ledger", reason: "Bei mehreren Mietverhältnissen müssen die Vorauszahlungen im Mietkonto zugeordnet sein." });
-    const tenantCosts = events.reduce((s, e) => s + num(e.tenantAmount), 0);
-    return { ...base, lease, leaseId: lease.id, leasePeriod, events, unresolved, tenantCosts, advances, advanceEvidence: ledger, result: tenantCosts - advances, waterConsumption: water };
+    const tenantCosts = events.reduce((s, e) => s + num(e.tenantAmount), 0), analysis = { ...base, lease, leaseId: lease.id, leasePeriod, events, unresolved, tenantCosts, advances, advanceEvidence: ledger, result: tenantCosts - advances, waterConsumption: water };
+    return applyOperatingCostAgreementToAnalysis(analysis, lease);
   }
   function latestSnapshotFor(state, periodYear, leaseId = "") {
     return arr(state.billingSnapshots).filter((s) => Number(s.periodYear) === Number(periodYear) && (!leaseId || String(s.leaseId || s.lease?.id || "") === String(leaseId))).sort((a, b) => Number(b.version || 1) - Number(a.version || 1) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
@@ -1145,6 +1228,10 @@ var AppLifecycleLedger = (() => {
     for (const lease of leases) {
       if (lease.start <= today && (!lease.end || lease.end >= today) && !lease.handover?.moveIn) out.push({ id: `handover-in-${lease.id}`, severity: "warn", title: "Einzugsübergabe fehlt", detail: `${lease.tenantName || "Mietverhältnis"}: Übergabestand zum ${lease.start} erfassen.`, route: "rental", sub: "lifecycle", leaseId: lease.id });
       if (lease.end && lease.end <= today && !lease.handover?.moveOut) out.push({ id: `handover-out-${lease.id}`, severity: "warn", title: "Auszugsübergabe fehlt", detail: `${lease.tenantName || "Mietverhältnis"}: Schlussablesung zum ${lease.end} erfassen.`, route: "rental", sub: "lifecycle", leaseId: lease.id });
+    }
+    for (const lease of leases) {
+      const agreement = operatingCostAgreement(lease);
+      if (agreement.mode === "unknown") out.push({ id: `contract-${lease.id}`, severity: "warn", title: "BK-Umlagegrundlage prüfen", detail: `${lease.tenantName || "Mietverhältnis"}: Vertragsbasis für Betriebskosten dokumentieren.`, route: "rental", sub: "lifecycle", leaseId: lease.id });
     }
     const ledger = rentLedger(state, { buildingId });
     for (const row of ledger.rows.filter((r) => ["missing", "partial"].includes(r.status) && monthEnd(r.month) < today).slice(-6)) out.push({ id: `rent-${row.leaseId}-${row.month}`, severity: "warn", title: `Mietkonto ${row.month} offen`, detail: `${row.tenantName || "Mietverhältnis"}: ${Math.abs(row.difference).toFixed(2)} € offen.`, route: "rental", sub: "lifecycle", leaseId: row.leaseId });
@@ -1485,7 +1572,8 @@ var AppApplication = (() => {
     recordMeterReplacementCommand: () => recordMeterReplacementCommand,
     resolveApplicationContext: () => resolveApplicationContext,
     safeCommandSummary: () => safeCommandSummary,
-    updateBuildingInPortfolio: () => updateBuildingInPortfolio
+    updateBuildingInPortfolio: () => updateBuildingInPortfolio,
+    updateOperatingCostAgreementCommand: () => updateOperatingCostAgreementCommand
   });
 
   // src/application/contracts.ts
@@ -2267,6 +2355,9 @@ var AppApplication = (() => {
   }
   function addLeaseTermCommand(state, payload) {
     return AppLifecycleLedger.addLeaseTerm(state, String(payload.leaseId || payload.id || ""), payload);
+  }
+  function updateOperatingCostAgreementCommand(state, payload) {
+    return AppLifecycleLedger.updateOperatingCostAgreement(state, String(payload.leaseId || payload.id || ""), payload);
   }
   function closeTenancyCommand(state, payload) {
     return AppLifecycleLedger.updateTenancyEnd(state, String(payload.leaseId || payload.id || ""), String(payload.end || ""), String(payload.note || ""));
@@ -3976,8 +4067,9 @@ var AppPropertyDomain = (() => {
     const events = bp.active ? (s.costPositions || []).flatMap((p) => positionToEvents(s, p, periodYear)).map((e) => allocateCostPosition(s, e, periodYear)) : [];
     const unresolved = events.filter((e) => e.decision.status === "check" || e.decision.rule === "manual");
     const tenantCosts = events.reduce((sum, e) => sum + Number(e.tenantAmount || 0), 0);
-    const lease = (s.leases || []).find((l) => (!l.start || l.start <= bp.end) && (!l.end || l.end >= bp.start)) || s.leases[0], advanceEvidence = actualAdvanceEvidenceInPeriod(s, lease, periodYear), advances = advanceEvidence.amount;
-    return { events, unresolved, tenantCosts, advances, advanceEvidence, result: tenantCosts - advances, lease, period: bp };
+    const leases = (s.leases || []).filter((l) => (!l.start || l.start <= bp.end) && (!l.end || l.end >= bp.start)), lease = leases[0] || s.leases[0], advanceEvidence = actualAdvanceEvidenceInPeriod(s, lease, periodYear), advances = advanceEvidence.amount;
+    const analysis = { events, unresolved, tenantCosts, advances, advanceEvidence, result: tenantCosts - advances, lease, period: bp };
+    return leases.length === 1 && lease ? AppLifecycleLedger.applyOperatingCostAgreementToAnalysis(analysis, lease) : analysis;
   }
   function syncSimpleSourcePosition(state, source) {
     if (!source || source.kind === "assessment") return;
@@ -4372,7 +4464,7 @@ var AppBillingDomain = (() => {
     const analysis = billingAnalysis(s, periodYear), bp = billingPeriodInfo(s, periodYear);
     const relevant = (s.costPositions || []).some((p) => p.confirmed && positionToEvents(s, p, periodYear).length > 0);
     const waterPositions = (s.costPositions || []).some((p) => p.confirmed && p.category === "water" && positionToEvents(s, p, periodYear).length > 0);
-    const settlement = settlementByPeriod(s, periodYear), cons = settlementConsumption(s, settlement);
+    const settlement = settlementByPeriod(s, periodYear), cons = settlementConsumption(s, settlement), contractOk = !analysis.unresolved.some((x) => x?.contract);
     return [
       { id: "period", ok: bp.active, label: "Abrechnungsperiode liegt vor der Verwaltungsübernahme", route: "data", sub: "property" },
       { id: "objectName", ok: !!s.property.name, label: "Objektname fehlt", route: "data", sub: "property" },
@@ -4380,6 +4472,7 @@ var AppBillingDomain = (() => {
       { id: "ownerUnit", ok: !!unitByType(s, "owner"), label: "Eigennutzungs-Einheit fehlt", route: "data", sub: "units" },
       { id: "rentalUnit", ok: !!unitByType(s, "rental"), label: "Mietwohnung fehlt", route: "data", sub: "units" },
       { id: "lease", ok: !!s.leases.length, label: "Mietvertrag fehlt", route: "rental", sub: "overview" },
+      { id: "contract", ok: contractOk, label: "BK-Umlagegrundlage im Mietverhältnis ist nicht geklärt", route: "rental", sub: "overview" },
       { id: "positions", ok: relevant, label: "Keine bestätigte Kostenposition für diese Abrechnungsperiode", route: "data", sub: "positions" },
       { id: "water", ok: !waterPositions || !!cons?.valid, label: "Wasserzähler / Verbrauchsdaten fehlen", route: "rental", sub: "water" },
       { id: "allocation", ok: analysis.unresolved.length === 0, label: "Ungeklärte Umlageentscheidungen", route: "data", sub: "positions" }
@@ -4424,6 +4517,8 @@ var AppBillingDomain = (() => {
       waterConsumption: structuredClone(waterConsumption || null),
       allocationBases: { totalArea: Number(state2.property?.totalArea || 0), rentalArea: Number(unitByType(state2, "rental")?.area || 0) },
       unresolved: structuredClone(analysis.unresolved),
+      contractAgreement: structuredClone(analysis.contractAgreement || null),
+      contractWarnings: structuredClone(analysis.contractWarnings || []),
       tenantCosts: Number(analysis.tenantCosts || 0),
       advances: Number(analysis.advances || 0),
       result: Number(analysis.result || 0),
@@ -6841,6 +6936,19 @@ var AppRentalLifecycleUi = (() => {
   var money = (v) => Math.max(0, Number(v) || 0);
   var statusLabel = (s) => s === "paid" ? "Bezahlt" : s === "partial" ? "Teilzahlung" : s === "missing" ? "Offen" : s === "overpaid" ? "Überzahlt" : "–";
   var statusClass = (s) => s === "paid" ? "good" : s === "overpaid" ? "good" : s === "partial" ? "warn" : "bad";
+  var OPERATING_COST_CATEGORIES = [
+    ["propertyTax", "Grundsteuer B"],
+    ["rainwater", "Niederschlagswasser"],
+    ["street", "Straßenreinigung / Winterdienst"],
+    ["waste", "Abfall"],
+    ["insurance", "Gebäudeversicherung"],
+    ["chimney", "Schornsteinfeger"],
+    ["water", "Kaltwasser / Kanal"],
+    ["garden", "Gartenpflege"],
+    ["cleaning", "Gebäudereinigung"],
+    ["other", "Sonstige Betriebskosten"]
+  ];
+  var operatingCostModeLabel = (mode) => mode === "advance" ? "Vorauszahlung" : mode === "flat" ? "Pauschale" : mode === "included" ? "In Miete enthalten" : mode === "none" ? "Keine Umlage" : "Prüfen";
   function fmtMonth(month) {
     const [y, m] = month.split("-").map(Number);
     return new Date(y, m - 1, 1).toLocaleDateString("de-DE", { month: "short", year: "numeric" });
@@ -6858,13 +6966,14 @@ var AppRentalLifecycleUi = (() => {
     const buildingId = String(state?.meta?.presentationBuildingId || state?.meta?.primaryBuildingId || "");
     const leases = AppLifecycleLedger.leasesForBillingYear(state, year, buildingId);
     const selectedLease = leases.find((l) => String(l.id) === String(requestedLeaseId)) || leases[0] || baseClosure?.analysis?.lease || null;
-    let analysis = baseClosure?.analysis || {}, points = [...baseClosure?.points || []], ok = !!baseClosure?.ok, lifecycleIssues = [];
+    let analysis = baseClosure?.analysis || {}, points = [...baseClosure?.points || []], lifecycleIssues = [];
     if (selectedLease && leases.length > 1) {
       analysis = AppLifecycleLedger.leaseBillingAnalysis(state, analysis, year, String(selectedLease.id));
       points = points.map((x) => x.id === "advance" ? { ...x, ok: Number(analysis.advanceEvidence?.recognizedPayments || 0) > 0, label: "Vorauszahlungen dieses Mietverhältnisses sind im Mietkonto zugeordnet" } : x);
-      lifecycleIssues = (analysis.unresolved || []).filter((x) => ![...baseClosure?.analysis?.unresolved || []].some((b) => b === x || b.id && b.id === x.id));
-      ok = points.every((x) => x.ok) && !(analysis.unresolved || []).length;
     }
+    if (selectedLease) analysis = AppLifecycleLedger.applyOperatingCostAgreementToAnalysis(analysis, selectedLease);
+    lifecycleIssues = (analysis.unresolved || []).filter((x) => ![...baseClosure?.analysis?.unresolved || []].some((b) => b === x || b.id && b.id === x.id));
+    const ok = points.every((x) => x.ok) && !(analysis.unresolved || []).length;
     const selectedLeaseId = String(selectedLease?.id || ""), snapshot = AppLifecycleLedger.latestSnapshotFor(state, year, selectedLeaseId);
     return { year, buildingId, leases, selectedLease, selectedLeaseId, analysis, closure: { ...baseClosure, analysis, points, ok }, snapshot, lifecycleIssues, history: AppLifecycleLedger.billingRevisionHistory(state, year, selectedLeaseId) };
   }
@@ -6876,11 +6985,12 @@ var AppRentalLifecycleUi = (() => {
   <div class="tablewrap"><table class="costtable"><thead><tr><th>Monat</th><th>Soll</th><th>Zugeordnet</th><th>Differenz</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${fmtMonth(r.month)}</td><td>${h.euro(r.total)}</td><td>${h.euro(r.paid)}</td><td>${h.euro(r.difference)}</td><td><span class="pill ${statusClass(r.status)}">${statusLabel(r.status)}</span></td></tr>`).join("")}</tbody></table></div><p class="muted">Das Mietkonto basiert auf zeitanteiligem Soll und expliziten Zahlungszuordnungen. Historische Vertragsdaten bleiben erhalten.</p></section>`;
   }
   function tenancyCard(p, lease) {
-    const { esc, euro, dateDE } = p, terms = (lease.terms || []).slice().sort((a, b) => String(b.effectiveFrom).localeCompare(String(a.effectiveFrom))), latest = terms[0] || lease, moveIn = lease.handover?.moveIn, moveOut = lease.handover?.moveOut;
+    const { esc, euro, dateDE } = p, terms = (lease.terms || []).slice().sort((a, b) => String(b.effectiveFrom).localeCompare(String(a.effectiveFrom))), latest = terms[0] || lease, moveIn = lease.handover?.moveIn, moveOut = lease.handover?.moveOut, contract = AppLifecycleLedger.operatingCostAgreement(lease);
     return `<article class="card" data-tenancy-card="${esc(lease.id)}"><div class="card-head"><div><p class="eyebrow">${lease.end ? "MIETVERHÄLTNIS" : "AKTIVES MIETVERHÄLTNIS"}</p><h3>${esc(lease.tenantName || "Mieter/in")}</h3></div><span class="pill ${lease.end ? "" : "good"}">${dateDE(lease.start)}${lease.end ? ` – ${dateDE(lease.end)}` : " – laufend"}</span></div>
-    <div class="fact-row"><span>Kaltmiete aktuell</span><strong>${euro(latest.rent)} / Monat</strong></div><div class="fact-row"><span>BK-Vorauszahlung aktuell</span><strong>${euro(latest.advance)} / Monat</strong></div><div class="fact-row"><span>Vertragsstände</span><strong>${terms.length}</strong></div>
+    <div class="fact-row"><span>Kaltmiete aktuell</span><strong>${euro(latest.rent)} / Monat</strong></div><div class="fact-row"><span>BK-Vorauszahlung aktuell</span><strong>${euro(latest.advance)} / Monat</strong></div><div class="fact-row"><span>BK-Vertragsbasis</span><strong><span class="pill ${contract.mode === "unknown" ? "warn" : "good"}">${esc(operatingCostModeLabel(contract.mode))}</span></strong></div><div class="fact-row"><span>Vertragsstände</span><strong>${terms.length}</strong></div>
     <div class="fact-row"><span>Einzugsübergabe</span><strong>${moveIn ? `✓ ${dateDE(moveIn.date)}` : "fehlt"}</strong></div><div class="fact-row"><span>Auszugsübergabe</span><strong>${lease.end ? moveOut ? `✓ ${dateDE(moveOut.date)}` : "fehlt" : "–"}</strong></div>
-    <div class="row"><button class="secondary compact" data-term="${esc(lease.id)}">Miete/BK ändern</button><button class="secondary compact" data-handover="${esc(lease.id)}">Übergabe</button>${!lease.end ? `<button class="secondary compact" data-close-tenancy="${esc(lease.id)}">Auszug</button>` : ""}</div>
+    <div class="row"><button class="secondary compact" data-operating-costs="${esc(lease.id)}">BK-Grundlage</button><button class="secondary compact" data-term="${esc(lease.id)}">Miete/BK ändern</button><button class="secondary compact" data-handover="${esc(lease.id)}">Übergabe</button>${!lease.end ? `<button class="secondary compact" data-close-tenancy="${esc(lease.id)}">Auszug</button>` : ""}</div>
+    ${contract.reference ? `<p class="muted">Vertragsverweis: ${esc(contract.reference)}</p>` : ""}
     ${terms.length > 1 ? `<details class="secondary-detail"><summary>Vertragshistorie</summary><div class="detail-content">${terms.map((t) => `<div class="fact-row"><span>${dateDE(t.effectiveFrom)}</span><strong>${euro(t.rent)} + ${euro(t.advance)} BK</strong></div>`).join("")}</div></details>` : ""}</article>`;
   }
   function openTenancy(p) {
@@ -6892,6 +7002,28 @@ var AppRentalLifecycleUi = (() => {
         e.preventDefault();
         const v = Object.fromEntries(new FormData(form));
         const result = await p.executeCommand("tenancy.create", v, () => AppApplication.createTenancyCommand(p.state, v, { buildingId: p.activeBuildingId, unitId: String(v.unitId || "") }), { auditText: "Mietverhältnis angelegt", restorePoint: true });
+        if (!result.ok) return alert(result.message);
+        p.closeModal(true);
+        p.rerender();
+      };
+    });
+  }
+  function openOperatingCosts(p, lease) {
+    const agreement = AppLifecycleLedger.operatingCostAgreement(lease), selected = new Set(agreement.categories || []);
+    const choices = OPERATING_COST_CATEGORIES.map(([value, label]) => `<label class="check"><input type="checkbox" name="operatingCostCategories" value="${p.esc(value)}" ${selected.has(value) ? "checked" : ""}> <span>${p.esc(label)}</span></label>`).join("");
+    p.modal("BK-Umlagegrundlage", `<form id="gOperatingCostsForm" class="form-grid">
+    ${p.formField({ name: "operatingCostsMode", label: "Vertragliche Regelung", type: "select", value: agreement.mode, options: [{ value: "unknown", label: "Noch nicht geprüft" }, { value: "advance", label: "Vorauszahlung + Jahresabrechnung" }, { value: "flat", label: "Betriebskostenpauschale" }, { value: "included", label: "In der Miete enthalten" }, { value: "none", label: "Keine Betriebskostenumlage" }] })}
+    ${p.formField({ name: "operatingCostsReference", label: "Vertragsverweis", value: agreement.reference || "", full: true, placeholder: "z. B. Betriebskosten gemäß BetrKV" })}
+    <fieldset class="full card"><legend>Vereinbarte Kostenarten</legend><p class="muted">Bei einer ausdrücklichen Einzelaufzählung nur die tatsächlich vereinbarten Arten markieren. Ein allgemeiner BetrKV-Verweis kann stattdessen im Vertragsverweis dokumentiert werden.</p><div class="form-grid">${choices}</div></fieldset>
+    ${p.formField({ name: "operatingCostOtherLabels", label: "Sonstige Betriebskosten – genaue Vertragsbezeichnung", value: (agreement.otherLabels || []).join(", "), full: true, placeholder: "nur konkret benannte sonstige Betriebskosten" })}
+    <div class="full legal-warn"><strong>Prüfbare Vertragsbasis statt Rechtszusage.</strong><br>Die App lässt bei einer Jahresabrechnung nur die hier dokumentierte Umlagegrundlage zu. Sie ersetzt keine individuelle Rechtsberatung.</div>
+    <div class="full form-actions"><button class="primary">Vertragsbasis speichern</button></div>
+  </form>`, () => {
+      const form = q("gOperatingCostsForm");
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const fd = new FormData(form), payload = { leaseId: lease.id, mode: String(fd.get("operatingCostsMode") || "unknown"), reference: String(fd.get("operatingCostsReference") || ""), categories: fd.getAll("operatingCostCategories").map(String), otherLabels: String(fd.get("operatingCostOtherLabels") || "").split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean) };
+        const result = await p.executeCommand("tenancy.operating-costs.update", payload, () => AppApplication.updateOperatingCostAgreementCommand(p.state, payload), { auditText: "BK-Umlagegrundlage aktualisiert", restorePoint: true });
         if (!result.ok) return alert(result.message);
         p.closeModal(true);
         p.rerender();
@@ -7005,6 +7137,10 @@ var AppRentalLifecycleUi = (() => {
     q("gReverse").onclick = () => openReversal(p);
     q("gReplaceMeter").onclick = () => openReplacement(p);
     q("gOpenBilling").onclick = () => p.go("rental", "billing");
+    document.querySelectorAll("[data-operating-costs]").forEach((b) => b.onclick = () => {
+      const l = p.state.leases.find((x) => x.id === b.dataset.operatingCosts);
+      if (l) openOperatingCosts(p, l);
+    });
     document.querySelectorAll("[data-term]").forEach((b) => b.onclick = () => {
       const l = p.state.leases.find((x) => x.id === b.dataset.term);
       if (l) openTerm(p, l);

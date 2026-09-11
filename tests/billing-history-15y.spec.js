@@ -115,6 +115,11 @@ function buildRealBillingHistory(base) {
     end: '',
     rent: 500,
     advance: 150,
+    operatingCostsMode: 'advance',
+    operatingCostsAgreed: true,
+    operatingCostsReference: 'Betriebskosten gemäß BetrKV',
+    operatingCostCategories: ['water', 'insurance'],
+    operatingCostOtherLabels: [],
     note: '15-Jahre-E2E'
   }];
 

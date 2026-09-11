@@ -102,3 +102,18 @@ Der Live-E2E-Test akzeptiert ein Deployment erst, wenn die live geladene `app.js
 ## 9. Repository-Regeln
 
 Temporäre Architektur-Workflows bleiben nicht im Endzustand. Historische Migrations-Tagebücher, versionsgebundene Alt-Namen und veraltete Preview-Dateien gehören nicht in den aktuellen Tree. Generierte Artefakte werden nie von Hand editiert. Jede Ausnahme muss einen aktiven Persistenz- oder Kompatibilitätsvertrag schützen und im Hygiene-Test ausdrücklich sichtbar sein.
+## Betriebskosten-Vertragsbasis (10/10 Guardrail)
+
+Die Umlagegrundlage wird je Mietverhältnis additiv dokumentiert (`operatingCostsMode`,
+`operatingCostsReference`, `operatingCostCategories`, optional konkret benannte
+`operatingCostOtherLabels`). Die Abrechnung darf Kosten nur im Rahmen dieser
+Vertragsbasis berücksichtigen. Nicht ausgewählte Kostenarten werden auf 0 gesetzt;
+unklare oder nicht konkret bezeichnete sonstige Betriebskosten verhindern den
+Abschluss. Historische Mietverhältnisse ohne diese Felder bleiben lesbar, werden aber als
+noch zu prüfende Bestandsdaten markiert und vor einer finalen Jahresabrechnung
+blockiert. Aus Versorgungsverantwortung oder Vorauszahlungshöhe wird keine
+vertragliche Umlagevereinbarung abgeleitet.
+
+Die Funktion ist eine technische Plausibilitäts- und Nachweisbarriere, keine
+individuelle Rechtsberatung. Datenbankschema, `SCHEMA_VERSION` und App-Version 18.0.0
+bleiben unverändert.

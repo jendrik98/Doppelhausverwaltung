@@ -45,6 +45,79 @@ export function ensureLeaseTerms(lease:AnyRecord){
   return lease
 }
 
+export type OperatingCostMode = "unknown"|"advance"|"flat"|"included"|"none";
+
+const OPERATING_COST_MODES=new Set<OperatingCostMode>(["unknown","advance","flat","included","none"]);
+const standardOperatingCostCategories=new Set(["propertyTax","rainwater","street","waste","insurance","chimney","water","garden","cleaning"]);
+
+export function operatingCostAgreement(lease:AnyRecord|null|undefined){
+  const configured=!!lease&&["operatingCostsMode","operatingCostsAgreed","operatingCostsReference","operatingCostCategories","operatingCostOtherLabels"].some(key=>Object.prototype.hasOwnProperty.call(lease,key));
+  const raw=String(lease?.operatingCostsMode||"").trim() as OperatingCostMode;
+  const mode:OperatingCostMode=OPERATING_COST_MODES.has(raw)?raw:"unknown";
+  const categories=[...new Set(arr(lease?.operatingCostCategories).map(x=>String(x||"").trim()).filter(Boolean))];
+  const otherLabels=[...new Set(arr(lease?.operatingCostOtherLabels).map(x=>String(x||"").trim()).filter(Boolean))];
+  const reference=String(lease?.operatingCostsReference||"").trim();
+  const agreed=mode==="advance"||mode==="flat"?true:mode==="included"||mode==="none"?false:lease?.operatingCostsAgreed===true?true:lease?.operatingCostsAgreed===false?false:null;
+  return {mode,agreed,reference,categories,otherLabels,verifiedAt:String(lease?.operatingCostsVerifiedAt||""),legacy:!configured}
+}
+
+export function updateOperatingCostAgreement(state:LifecycleState,leaseId:string,payload:AnyRecord){
+  ensureLifecycleState(state);const lease=state.leases.find(l=>String(l.id||"")===String(leaseId||""));if(!lease)throw new Error("Mietverhältnis fehlt.");
+  const raw=String(payload.mode||payload.operatingCostsMode||"unknown").trim() as OperatingCostMode;if(!OPERATING_COST_MODES.has(raw))throw new Error("Betriebskosten-Modus ist ungültig.");
+  const reference=String(payload.reference??payload.operatingCostsReference??"").trim();
+  const categories=[...new Set(arr(payload.categories??payload.operatingCostCategories).map(x=>String(x||"").trim()).filter(Boolean))];
+  const rawOther=payload.otherLabels??payload.operatingCostOtherLabels??[];
+  const otherLabels=[...new Set((Array.isArray(rawOther)?rawOther:String(rawOther||"").split(/[,;\n]+/)).map(x=>String(x||"").trim()).filter(Boolean))];
+  if(raw==="advance"&&!reference&&!categories.length)throw new Error("Für eine Betriebskostenabrechnung bitte Vertragsverweis oder vereinbarte Kostenarten dokumentieren.");
+  if(raw==="advance"&&categories.includes("other")&&!otherLabels.length)throw new Error("Sonstige Betriebskosten müssen mit ihrer konkreten Vertragsbezeichnung dokumentiert werden.");
+  lease.operatingCostsMode=raw;
+  lease.operatingCostsAgreed=raw==="advance"||raw==="flat"?true:raw==="included"||raw==="none"?false:null;
+  lease.operatingCostsReference=reference;
+  lease.operatingCostCategories=categories;
+  lease.operatingCostOtherLabels=otherLabels;
+  lease.operatingCostsVerifiedAt=new Date().toISOString();
+  return operatingCostAgreement(lease)
+}
+
+export function operatingCostContractDecision(lease:AnyRecord|null|undefined,event:AnyRecord){
+  const agreement=operatingCostAgreement(lease),category=String(event?.category||"").trim(),label=String(event?.label||"").trim();
+  if(event?.decision?.rule==="owner"||event?.decision?.billable===false)return {status:"not-applicable",allowed:true,blocking:false,reason:"Diese Position ist bereits der Vermieterseite zugeordnet.",agreement};
+  if(agreement.mode==="unknown"){
+    const reason=agreement.legacy?"Bestandsvertrag: Betriebskosten-Umlagegrundlage ist noch nicht bestätigt; vor einer Jahresabrechnung muss die Vertragsbasis geprüft werden.":"Betriebskosten-Umlagegrundlage dieses Mietverhältnisses ist noch nicht geprüft.";
+    return {status:agreement.legacy?"legacy-unverified":"check",allowed:false,blocking:true,reason,agreement}
+  }
+  if(agreement.mode==="flat")return {status:"blocked",allowed:false,blocking:true,reason:"Für dieses Mietverhältnis ist eine Betriebskostenpauschale hinterlegt; eine verbrauchs-/kostenbezogene Jahresabrechnung darf daraus nicht erzeugt werden.",agreement};
+  if(agreement.mode==="included")return {status:"blocked",allowed:false,blocking:true,reason:"Betriebskosten sind als in der Miete enthalten hinterlegt; eine gesonderte Jahresabrechnung ist nicht freigegeben.",agreement};
+  if(agreement.mode==="none")return {status:"blocked",allowed:false,blocking:true,reason:"Für dieses Mietverhältnis ist keine Betriebskostenumlage hinterlegt.",agreement};
+
+  const broadReference=/\bbetrkv\b|betriebskostenverordnung/i.test(agreement.reference);
+  const explicit=agreement.categories;
+  if(category==="other"){
+    if(explicit.length&&!explicit.includes("other"))return {status:"excluded",allowed:false,blocking:false,reason:"Diese Kostenart ist im hinterlegten Vertrag nicht ausgewählt.",agreement};
+    const normalizedLabel=normalize(label);
+    const named=agreement.otherLabels.some(x=>{const n=normalize(x);return !!n&&(normalizedLabel===n||normalizedLabel.includes(n)||n.includes(normalizedLabel))});
+    if(!named)return {status:"check",allowed:false,blocking:true,reason:"Sonstige Betriebskosten müssen im Vertrag konkret bezeichnet sein; für diese Position fehlt eine passende Bezeichnung.",agreement};
+    return {status:"ok",allowed:true,blocking:false,reason:"Die sonstige Betriebskostenart ist im Vertrag konkret hinterlegt.",agreement}
+  }
+  if(explicit.length){
+    if(explicit.includes(category))return {status:"ok",allowed:true,blocking:false,reason:"Kostenart ist für dieses Mietverhältnis ausdrücklich hinterlegt.",agreement};
+    return {status:"excluded",allowed:false,blocking:false,reason:"Kostenart ist in der hinterlegten Vertragsauswahl nicht enthalten.",agreement}
+  }
+  if(broadReference&&standardOperatingCostCategories.has(category))return {status:"ok",allowed:true,blocking:false,reason:"Vertragsverweis auf die BetrKV deckt diese Standard-Betriebskostenart ab.",agreement};
+  return {status:"check",allowed:false,blocking:true,reason:"Für diese Kostenart ist keine belastbare Umlagegrundlage im Mietverhältnis dokumentiert.",agreement}
+}
+
+export function applyOperatingCostAgreementToAnalysis(base:AnyRecord,lease:AnyRecord|null|undefined){
+  if(!lease)return base;
+  const agreement=operatingCostAgreement(lease),events=arr(base?.events).map((e:AnyRecord)=>{const contractDecision=operatingCostContractDecision(lease,e);return contractDecision.allowed?{...e,contractDecision}:{...e,tenantAmount:0,contractDecision}}) as AnyRecord[];
+  const unresolved=arr(base?.unresolved).slice(),known=new Set(unresolved.map(x=>String(x?.id||"")));
+  for(const e of events){if(!e.contractDecision?.blocking)continue;const key=`contract-${e.positionId||e.id||e.category||"cost"}`;if(known.has(key))continue;known.add(key);unresolved.push({id:key,reason:e.contractDecision.reason,category:e.category,label:e.label,contract:true})}
+  const tenantCosts=events.reduce((sum,e)=>sum+num(e.tenantAmount),0),advances=num(base?.advances);
+  const warnings=agreement.mode==="unknown"&&agreement.legacy?[{id:`contract-legacy-${lease.id||"lease"}`,reason:"Bestandsvertrag: Betriebskosten-Umlagegrundlage noch nicht bestätigt."}]:[];
+  return {...base,events,unresolved,tenantCosts,result:tenantCosts-advances,contractAgreement:agreement,contractWarnings:warnings}
+}
+
+
 export function ensureLifecycleState<T extends LifecycleState>(state:T):T{
   state.meta=state.meta&&typeof state.meta==="object"?state.meta:{};
   const previousVersion=Number(state.meta.lifecycleLedgerVersion||0);
@@ -139,7 +212,7 @@ export function actualAdvanceFromLedger(state:LifecycleState,lease:AnyRecord,per
 export function createTenancy(state:LifecycleState,payload:AnyRecord){
   ensureLifecycleState(state);if(!dateOk(payload.start))throw new Error("Vertragsbeginn fehlt.");const unit=state.units.find(u=>String(u.id||"")===String(payload.unitId||""));if(!unit)throw new Error("Mietwohnung fehlt.");const end=payload.end||"9999-12-31";
   for(const other of state.leases){if(String(other.unitId||"")!==String(unit.id)||String(other.id||"")===String(payload.id||""))continue;const overlap=periodOverlap(payload.start,end,other.start||"0001-01-01",other.end||"9999-12-31");if(overlap)throw new Error(`Mietverhältnisse überschneiden sich ab ${overlap.start}.`)}
-  const lease={id:payload.id||id("lease"),buildingId:unit.buildingId,unitId:unit.id,tenantName:String(payload.tenantName||"").trim(),tenantAddress:String(payload.tenantAddress||"").trim(),start:payload.start,end:payload.end||"",rent:Math.max(0,num(payload.rent)),advance:Math.max(0,num(payload.advance)),note:String(payload.note||"").trim(),terms:[],handover:{}};ensureLeaseTerms(lease);state.leases.push(lease);return lease
+  const lease={id:payload.id||id("lease"),buildingId:unit.buildingId,unitId:unit.id,tenantName:String(payload.tenantName||"").trim(),tenantAddress:String(payload.tenantAddress||"").trim(),start:payload.start,end:payload.end||"",rent:Math.max(0,num(payload.rent)),advance:Math.max(0,num(payload.advance)),note:String(payload.note||"").trim(),operatingCostsMode:String(payload.operatingCostsMode||"unknown"),operatingCostsAgreed:payload.operatingCostsAgreed??null,operatingCostsReference:String(payload.operatingCostsReference||"").trim(),operatingCostCategories:arr(payload.operatingCostCategories),operatingCostOtherLabels:arr(payload.operatingCostOtherLabels),terms:[],handover:{}};ensureLeaseTerms(lease);state.leases.push(lease);return lease
 }
 export function updateTenancyEnd(state:LifecycleState,leaseId:string,end:string,note=""){
   ensureLifecycleState(state);const lease=state.leases.find(l=>String(l.id||"")===String(leaseId));if(!lease)throw new Error("Mietverhältnis fehlt.");if(end&&(!dateOk(end)||end<lease.start))throw new Error("Vertragsende ist ungültig.");lease.end=end||"";if(note)lease.note=[lease.note,note].filter(Boolean).join(" · ");return lease
@@ -178,7 +251,7 @@ export function leaseBillingAnalysis(state:LifecycleState,base:AnyRecord,year:nu
   const yearLeases=leasesForBillingYear(state,year,String(lease.buildingId||""));
   const leasePersons=(l:AnyRecord)=>Math.max(0,num(l.handover?.moveIn?.persons||1));
   const events=arr(base?.events).map(e=>{const eventPeriod=periodOverlap(maxDate(ps,e.serviceStart||ps),minDate(pe,e.serviceEnd||pe),ps,pe),leaseEvent=eventPeriod?periodOverlap(eventPeriod.start,eventPeriod.end,leasePeriod.start,leasePeriod.end):null;let factor=eventPeriod?.days?num(leaseEvent?.days)/eventPeriod.days:(fullDays?leaseDays/fullDays:0);if(e.decision?.rule==="persons"&&eventPeriod){const weighted=yearLeases.map((l:AnyRecord)=>{const ov=periodOverlap(l.start||eventPeriod.start,l.end||eventPeriod.end,eventPeriod.start,eventPeriod.end);return {id:l.id,value:num(ov?.days)*leasePersons(l)}}),den=weighted.reduce((sum:any,x:any)=>sum+x.value,0),mine=weighted.find((x:any)=>String(x.id)===String(lease.id))?.value||0;factor=den>0?mine/den:factor}if(e.decision?.rule==="consumption"){factor=wholeWater.valid&&wholeWater.tenant>0&&water.valid?water.tenant/wholeWater.tenant:0}const tenantAmount=num(e.tenantAmount)*factor;return {...e,tenantAmount,lifecycleFactor:factor,leaseId:lease.id,leasePeriod:{...leasePeriod},lifecycleWater:e.decision?.rule==="consumption"?water:null}});
-  const unresolved=arr(base?.unresolved).slice();if(arr(base?.events).some(e=>e.decision?.rule==="consumption")&&!water.valid)unresolved.push({id:"lease-water",reason:"Übergabe-/Zählerstände für den Mietzeitraum sind nicht vollständig.",missing:water.missing});const ledger=actualAdvanceFromLedger(state,lease,leasePeriod.start,leasePeriod.end),legacyFallback=!ledger.allocationCount&&yearLeases.length===1?num(base?.advances):0,advances=ledger.allocationCount?ledger.amount:legacyFallback;if(!ledger.allocationCount&&yearLeases.length>1)unresolved.push({id:"lease-ledger",reason:"Bei mehreren Mietverhältnissen müssen die Vorauszahlungen im Mietkonto zugeordnet sein."});const tenantCosts=events.reduce((s,e)=>s+num(e.tenantAmount),0);return {...base,lease,leaseId:lease.id,leasePeriod,events,unresolved,tenantCosts,advances,advanceEvidence:ledger,result:tenantCosts-advances,waterConsumption:water}
+  const unresolved=arr(base?.unresolved).slice();if(arr(base?.events).some(e=>e.decision?.rule==="consumption")&&!water.valid)unresolved.push({id:"lease-water",reason:"Übergabe-/Zählerstände für den Mietzeitraum sind nicht vollständig.",missing:water.missing});const ledger=actualAdvanceFromLedger(state,lease,leasePeriod.start,leasePeriod.end),legacyFallback=!ledger.allocationCount&&yearLeases.length===1?num(base?.advances):0,advances=ledger.allocationCount?ledger.amount:legacyFallback;if(!ledger.allocationCount&&yearLeases.length>1)unresolved.push({id:"lease-ledger",reason:"Bei mehreren Mietverhältnissen müssen die Vorauszahlungen im Mietkonto zugeordnet sein."});const tenantCosts=events.reduce((s,e)=>s+num(e.tenantAmount),0),analysis={...base,lease,leaseId:lease.id,leasePeriod,events,unresolved,tenantCosts,advances,advanceEvidence:ledger,result:tenantCosts-advances,waterConsumption:water};return applyOperatingCostAgreementToAnalysis(analysis,lease)
 }
 
 export function latestSnapshotFor(state:LifecycleState,periodYear:number,leaseId=""){
@@ -193,6 +266,7 @@ export function billingRevisionHistory(state:LifecycleState,periodYear:number,le
 export function lifecycleAlerts(state:LifecycleState,buildingId="",today=new Date().toISOString().slice(0,10)){
   ensureLifecycleState(state);const out=[] as AnyRecord[],leases=state.leases.filter(l=>!buildingId||String(l.buildingId||"")===buildingId);
   for(const lease of leases){if(lease.start<=today&&(!lease.end||lease.end>=today)&&!lease.handover?.moveIn)out.push({id:`handover-in-${lease.id}`,severity:"warn",title:"Einzugsübergabe fehlt",detail:`${lease.tenantName||"Mietverhältnis"}: Übergabestand zum ${lease.start} erfassen.`,route:"rental",sub:"lifecycle",leaseId:lease.id});if(lease.end&&lease.end<=today&&!lease.handover?.moveOut)out.push({id:`handover-out-${lease.id}`,severity:"warn",title:"Auszugsübergabe fehlt",detail:`${lease.tenantName||"Mietverhältnis"}: Schlussablesung zum ${lease.end} erfassen.`,route:"rental",sub:"lifecycle",leaseId:lease.id})}
+  for(const lease of leases){const agreement=operatingCostAgreement(lease);if(agreement.mode==="unknown")out.push({id:`contract-${lease.id}`,severity:"warn",title:"BK-Umlagegrundlage prüfen",detail:`${lease.tenantName||"Mietverhältnis"}: Vertragsbasis für Betriebskosten dokumentieren.`,route:"rental",sub:"lifecycle",leaseId:lease.id})}
   const ledger=rentLedger(state,{buildingId});for(const row of ledger.rows.filter(r=>["missing","partial"].includes(r.status)&&monthEnd(r.month)<today).slice(-6))out.push({id:`rent-${row.leaseId}-${row.month}`,severity:"warn",title:`Mietkonto ${row.month} offen`,detail:`${row.tenantName||"Mietverhältnis"}: ${Math.abs(row.difference).toFixed(2)} € offen.`,route:"rental",sub:"lifecycle",leaseId:row.leaseId});return out
 }
 

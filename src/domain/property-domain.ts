@@ -255,8 +255,9 @@ export function centralBillingAnalysis(s: DomainState,periodYear: number){
   const events=bp.active?(s.costPositions||[]).flatMap(p=>positionToEvents(s,p,periodYear)).map(e=>allocateCostPosition(s,e,periodYear)):[];
   const unresolved=events.filter(e=>e.decision.status==="check"||e.decision.rule==="manual");
   const tenantCosts=events.reduce((sum,e)=>sum+Number(e.tenantAmount||0),0);
-  const lease=(s.leases||[]).find(l=>(!l.start||l.start<=bp.end)&&(!l.end||l.end>=bp.start))||s.leases[0],advanceEvidence=actualAdvanceEvidenceInPeriod(s,lease,periodYear),advances=advanceEvidence.amount;
-  return {events,unresolved,tenantCosts,advances,advanceEvidence,result:tenantCosts-advances,lease,period:bp}
+  const leases=(s.leases||[]).filter(l=>(!l.start||l.start<=bp.end)&&(!l.end||l.end>=bp.start)),lease=leases[0]||s.leases[0],advanceEvidence=actualAdvanceEvidenceInPeriod(s,lease,periodYear),advances=advanceEvidence.amount;
+  const analysis={events,unresolved,tenantCosts,advances,advanceEvidence,result:tenantCosts-advances,lease,period:bp};
+  return leases.length===1&&lease?AppLifecycleLedger.applyOperatingCostAgreementToAnalysis(analysis,lease):analysis
 }
 export function syncSimpleSourcePosition(state: DomainState,source: AnyRecord){
   if(!source||source.kind==="assessment")return;

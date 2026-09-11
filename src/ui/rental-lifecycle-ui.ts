@@ -23,6 +23,12 @@ const q=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(
 const money=(v:any)=>Math.max(0,Number(v)||0);
 const statusLabel=(s:string)=>s==="paid"?"Bezahlt":s==="partial"?"Teilzahlung":s==="missing"?"Offen":s==="overpaid"?"Überzahlt":"–";
 const statusClass=(s:string)=>s==="paid"?"good":s==="overpaid"?"good":s==="partial"?"warn":"bad";
+const OPERATING_COST_CATEGORIES=[
+  ["propertyTax","Grundsteuer B"],["rainwater","Niederschlagswasser"],["street","Straßenreinigung / Winterdienst"],["waste","Abfall"],
+  ["insurance","Gebäudeversicherung"],["chimney","Schornsteinfeger"],["water","Kaltwasser / Kanal"],["garden","Gartenpflege"],
+  ["cleaning","Gebäudereinigung"],["other","Sonstige Betriebskosten"]
+] as const;
+const operatingCostModeLabel=(mode:string)=>mode==="advance"?"Vorauszahlung":mode==="flat"?"Pauschale":mode==="included"?"In Miete enthalten":mode==="none"?"Keine Umlage":"Prüfen";
 
 function fmtMonth(month:string){const [y,m]=month.split("-").map(Number);return new Date(y,m-1,1).toLocaleDateString("de-DE",{month:"short",year:"numeric"})}
 function currentMonth(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`}
@@ -34,13 +40,14 @@ export function billingLifecycleContext(state:AnyRecord,year:number,baseClosure:
   const buildingId=String(state?.meta?.presentationBuildingId||state?.meta?.primaryBuildingId||"");
   const leases=AppLifecycleLedger.leasesForBillingYear(state,year,buildingId);
   const selectedLease=leases.find((l:AnyRecord)=>String(l.id)===String(requestedLeaseId))||leases[0]||baseClosure?.analysis?.lease||null;
-  let analysis=baseClosure?.analysis||{},points=[...(baseClosure?.points||[])],ok=!!baseClosure?.ok,lifecycleIssues=[] as AnyRecord[];
+  let analysis=baseClosure?.analysis||{},points=[...(baseClosure?.points||[])],lifecycleIssues=[] as AnyRecord[];
   if(selectedLease&&leases.length>1){
     analysis=AppLifecycleLedger.leaseBillingAnalysis(state,analysis,year,String(selectedLease.id));
     points=points.map((x:AnyRecord)=>x.id==="advance"?{...x,ok:Number(analysis.advanceEvidence?.recognizedPayments||0)>0,label:"Vorauszahlungen dieses Mietverhältnisses sind im Mietkonto zugeordnet"}:x);
-    lifecycleIssues=(analysis.unresolved||[]).filter((x:AnyRecord)=>![...(baseClosure?.analysis?.unresolved||[])].some((b:AnyRecord)=>b===x||b.id&&b.id===x.id));
-    ok=points.every((x:AnyRecord)=>x.ok)&&!(analysis.unresolved||[]).length;
   }
+  if(selectedLease)analysis=AppLifecycleLedger.applyOperatingCostAgreementToAnalysis(analysis,selectedLease);
+  lifecycleIssues=(analysis.unresolved||[]).filter((x:AnyRecord)=>![...(baseClosure?.analysis?.unresolved||[])].some((b:AnyRecord)=>b===x||b.id&&b.id===x.id));
+  const ok=points.every((x:AnyRecord)=>x.ok)&&!(analysis.unresolved||[]).length;
   const selectedLeaseId=String(selectedLease?.id||""),snapshot=AppLifecycleLedger.latestSnapshotFor(state,year,selectedLeaseId);
   return {year,buildingId,leases,selectedLease,selectedLeaseId,analysis,closure:{...baseClosure,analysis,points,ok},snapshot,lifecycleIssues,history:AppLifecycleLedger.billingRevisionHistory(state,year,selectedLeaseId)}
 }
@@ -53,11 +60,12 @@ export function renderCompactLedger(state:AnyRecord,h:{euro:(v:any)=>string;esc:
 }
 
 function tenancyCard(p:Ports,lease:AnyRecord){
-  const {esc,euro,dateDE}=p,terms=(lease.terms||[]).slice().sort((a:AnyRecord,b:AnyRecord)=>String(b.effectiveFrom).localeCompare(String(a.effectiveFrom))),latest=terms[0]||lease,moveIn=lease.handover?.moveIn,moveOut=lease.handover?.moveOut;
+  const {esc,euro,dateDE}=p,terms=(lease.terms||[]).slice().sort((a:AnyRecord,b:AnyRecord)=>String(b.effectiveFrom).localeCompare(String(a.effectiveFrom))),latest=terms[0]||lease,moveIn=lease.handover?.moveIn,moveOut=lease.handover?.moveOut,contract=AppLifecycleLedger.operatingCostAgreement(lease);
   return `<article class="card" data-tenancy-card="${esc(lease.id)}"><div class="card-head"><div><p class="eyebrow">${lease.end?"MIETVERHÄLTNIS":"AKTIVES MIETVERHÄLTNIS"}</p><h3>${esc(lease.tenantName||"Mieter/in")}</h3></div><span class="pill ${lease.end?"":"good"}">${dateDE(lease.start)}${lease.end?` – ${dateDE(lease.end)}`:" – laufend"}</span></div>
-    <div class="fact-row"><span>Kaltmiete aktuell</span><strong>${euro(latest.rent)} / Monat</strong></div><div class="fact-row"><span>BK-Vorauszahlung aktuell</span><strong>${euro(latest.advance)} / Monat</strong></div><div class="fact-row"><span>Vertragsstände</span><strong>${terms.length}</strong></div>
+    <div class="fact-row"><span>Kaltmiete aktuell</span><strong>${euro(latest.rent)} / Monat</strong></div><div class="fact-row"><span>BK-Vorauszahlung aktuell</span><strong>${euro(latest.advance)} / Monat</strong></div><div class="fact-row"><span>BK-Vertragsbasis</span><strong><span class="pill ${contract.mode==="unknown"?"warn":"good"}">${esc(operatingCostModeLabel(contract.mode))}</span></strong></div><div class="fact-row"><span>Vertragsstände</span><strong>${terms.length}</strong></div>
     <div class="fact-row"><span>Einzugsübergabe</span><strong>${moveIn?`✓ ${dateDE(moveIn.date)}`:"fehlt"}</strong></div><div class="fact-row"><span>Auszugsübergabe</span><strong>${lease.end?(moveOut?`✓ ${dateDE(moveOut.date)}`:"fehlt"):"–"}</strong></div>
-    <div class="row"><button class="secondary compact" data-term="${esc(lease.id)}">Miete/BK ändern</button><button class="secondary compact" data-handover="${esc(lease.id)}">Übergabe</button>${!lease.end?`<button class="secondary compact" data-close-tenancy="${esc(lease.id)}">Auszug</button>`:""}</div>
+    <div class="row"><button class="secondary compact" data-operating-costs="${esc(lease.id)}">BK-Grundlage</button><button class="secondary compact" data-term="${esc(lease.id)}">Miete/BK ändern</button><button class="secondary compact" data-handover="${esc(lease.id)}">Übergabe</button>${!lease.end?`<button class="secondary compact" data-close-tenancy="${esc(lease.id)}">Auszug</button>`:""}</div>
+    ${contract.reference?`<p class="muted">Vertragsverweis: ${esc(contract.reference)}</p>`:""}
     ${terms.length>1?`<details class="secondary-detail"><summary>Vertragshistorie</summary><div class="detail-content">${terms.map((t:AnyRecord)=>`<div class="fact-row"><span>${dateDE(t.effectiveFrom)}</span><strong>${euro(t.rent)} + ${euro(t.advance)} BK</strong></div>`).join("")}</div></details>`:""}</article>`
 }
 
@@ -68,6 +76,21 @@ function openTenancy(p:Ports){
     const form=q<HTMLFormElement>("gTenancyForm")!;form.onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(form));const result=await p.executeCommand("tenancy.create",v,()=>AppApplication.createTenancyCommand(p.state,v,{buildingId:p.activeBuildingId,unitId:String(v.unitId||"")} ),{auditText:"Mietverhältnis angelegt",restorePoint:true});if(!result.ok)return alert(result.message);p.closeModal(true);p.rerender()}
   })
 }
+function openOperatingCosts(p:Ports,lease:AnyRecord){
+  const agreement=AppLifecycleLedger.operatingCostAgreement(lease),selected=new Set(agreement.categories||[]);
+  const choices=OPERATING_COST_CATEGORIES.map(([value,label])=>`<label class="check"><input type="checkbox" name="operatingCostCategories" value="${p.esc(value)}" ${selected.has(value)?"checked":""}> <span>${p.esc(label)}</span></label>`).join("");
+  p.modal("BK-Umlagegrundlage",`<form id="gOperatingCostsForm" class="form-grid">
+    ${p.formField({name:"operatingCostsMode",label:"Vertragliche Regelung",type:"select",value:agreement.mode,options:[{value:"unknown",label:"Noch nicht geprüft"},{value:"advance",label:"Vorauszahlung + Jahresabrechnung"},{value:"flat",label:"Betriebskostenpauschale"},{value:"included",label:"In der Miete enthalten"},{value:"none",label:"Keine Betriebskostenumlage"}]})}
+    ${p.formField({name:"operatingCostsReference",label:"Vertragsverweis",value:agreement.reference||"",full:true,placeholder:"z. B. Betriebskosten gemäß BetrKV"})}
+    <fieldset class="full card"><legend>Vereinbarte Kostenarten</legend><p class="muted">Bei einer ausdrücklichen Einzelaufzählung nur die tatsächlich vereinbarten Arten markieren. Ein allgemeiner BetrKV-Verweis kann stattdessen im Vertragsverweis dokumentiert werden.</p><div class="form-grid">${choices}</div></fieldset>
+    ${p.formField({name:"operatingCostOtherLabels",label:"Sonstige Betriebskosten – genaue Vertragsbezeichnung",value:(agreement.otherLabels||[]).join(", "),full:true,placeholder:"nur konkret benannte sonstige Betriebskosten"})}
+    <div class="full legal-warn"><strong>Prüfbare Vertragsbasis statt Rechtszusage.</strong><br>Die App lässt bei einer Jahresabrechnung nur die hier dokumentierte Umlagegrundlage zu. Sie ersetzt keine individuelle Rechtsberatung.</div>
+    <div class="full form-actions"><button class="primary">Vertragsbasis speichern</button></div>
+  </form>`,()=>{
+    const form=q<HTMLFormElement>("gOperatingCostsForm")!;form.onsubmit=async e=>{e.preventDefault();const fd=new FormData(form),payload={leaseId:lease.id,mode:String(fd.get("operatingCostsMode")||"unknown"),reference:String(fd.get("operatingCostsReference")||""),categories:fd.getAll("operatingCostCategories").map(String),otherLabels:String(fd.get("operatingCostOtherLabels")||"").split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean)};const result=await p.executeCommand("tenancy.operating-costs.update",payload,()=>AppApplication.updateOperatingCostAgreementCommand(p.state,payload),{auditText:"BK-Umlagegrundlage aktualisiert",restorePoint:true});if(!result.ok)return alert(result.message);p.closeModal(true);p.rerender()}
+  })
+}
+
 function openTerm(p:Ports,lease:AnyRecord){const latest=AppLifecycleLedger.leaseTermAt(lease,new Date().toISOString().slice(0,10));p.modal("Miete / Vorauszahlung ändern",`<form id="gTermForm" class="form-grid">${p.formField({name:"effectiveFrom",label:"Gültig ab",type:"date",value:""})}${p.formField({name:"rent",label:"Kaltmiete €",type:"number",step:"0.01",min:0,value:latest.rent})}${p.formField({name:"advance",label:"BK-Vorauszahlung €",type:"number",step:"0.01",min:0,value:latest.advance})}${p.formField({name:"reason",label:"Grund / Notiz",value:"Anpassung",full:true})}<div class="full info">Der bisherige Vertragsstand wird nicht überschrieben. Ab dem Stichtag entsteht ein neuer historischer Vertragsstand.</div><div class="full form-actions"><button class="primary">Änderung speichern</button></div></form>`,()=>{const form=q<HTMLFormElement>("gTermForm")!;form.onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(form));const payload={...v,leaseId:lease.id,rent:money(v.rent),advance:money(v.advance)};const result=await p.executeCommand("tenancy.term.add",payload,()=>AppApplication.addLeaseTermCommand(p.state,payload),{auditText:"Vertragsstand ergänzt",restorePoint:true});if(!result.ok)return alert(result.message);p.closeModal(true);p.rerender()}})}
 function openClose(p:Ports,lease:AnyRecord){p.modal("Auszug erfassen",`<form id="gCloseForm" class="form-grid">${p.formField({name:"end",label:"Vertragsende / Auszug",type:"date",value:lease.end||""})}${p.formField({name:"note",label:"Notiz",value:"",full:true})}<div class="full legal-warn"><strong>Danach Übergabestände erfassen.</strong><br>Die App trennt Soll, Vorauszahlungen und Verbrauch am Auszugsdatum.</div><div class="full form-actions"><button class="primary">Auszug speichern</button></div></form>`,()=>{const form=q<HTMLFormElement>("gCloseForm")!;form.onsubmit=async e=>{e.preventDefault();const v=Object.fromEntries(new FormData(form)),payload={...v,leaseId:lease.id};const result=await p.executeCommand("tenancy.close",payload,()=>AppApplication.closeTenancyCommand(p.state,payload),{auditText:"Mietverhältnis beendet",restorePoint:true});if(!result.ok)return alert(result.message);p.closeModal(true);p.rerender()}})}
 function openHandover(p:Ports,lease:AnyRecord){
@@ -90,5 +113,5 @@ export function renderRentalLifecycle(p:Ports){
   <section class="card"><div class="card-head"><div><p class="eyebrow">ZÄHLER-LIFECYCLE</p><h3>Gerätewechsel ohne Verbrauchssprung</h3></div><button id="gReplaceMeter" class="primary compact">Zähler wechseln</button></div>${m.replacements.length?m.replacements.map((r:AnyRecord)=>{const old=p.state.meters.find((x:AnyRecord)=>x.id===r.oldMeterId),fresh=p.state.meters.find((x:AnyRecord)=>x.id===r.newMeterId);return`<div class="fact-row"><span>${p.dateDE(r.date)} · ${p.esc(old?.name||r.role)}</span><strong>${p.esc(old?.number||"alt")} → ${p.esc(fresh?.number||"neu")}</strong></div>`}).join(""):"<p class='muted'>Noch kein Zählerwechsel dokumentiert.</p>"}</section>
   <section class="card"><div class="card-head"><div><p class="eyebrow">ABRECHNUNGSVERSIONEN</p><h3>Revisionshistorie</h3></div><button id="gOpenBilling" class="secondary compact">Abrechnung öffnen</button></div>${m.snapshots.length?m.snapshots.slice(0,12).map((s:AnyRecord)=>`<div class="fact-row"><span>${s.periodYear} · ${p.esc(s.lease?.tenantName||"Mietverhältnis")} · Version ${Number(s.version||1)}</span><strong>${p.euro(s.result)}</strong></div>`).join(""):"<p class='muted'>Noch keine eingefrorene Abrechnung vorhanden.</p>"}</section>`;
   q("gAddTenancy")!.onclick=()=>openTenancy(p);q("gAllocate")!.onclick=()=>openAllocation(p);q("gReverse")!.onclick=()=>openReversal(p);q("gReplaceMeter")!.onclick=()=>openReplacement(p);q("gOpenBilling")!.onclick=()=>p.go("rental","billing");
-  document.querySelectorAll<HTMLElement>("[data-term]").forEach(b=>b.onclick=()=>{const l=p.state.leases.find((x:AnyRecord)=>x.id===b.dataset.term);if(l)openTerm(p,l)});document.querySelectorAll<HTMLElement>("[data-close-tenancy]").forEach(b=>b.onclick=()=>{const l=p.state.leases.find((x:AnyRecord)=>x.id===b.dataset.closeTenancy);if(l)openClose(p,l)});document.querySelectorAll<HTMLElement>("[data-handover]").forEach(b=>b.onclick=()=>{const l=p.state.leases.find((x:AnyRecord)=>x.id===b.dataset.handover);if(l)openHandover(p,l)})
+  document.querySelectorAll<HTMLElement>("[data-operating-costs]").forEach(b=>b.onclick=()=>{const l=p.state.leases.find((x:AnyRecord)=>x.id===b.dataset.operatingCosts);if(l)openOperatingCosts(p,l)});document.querySelectorAll<HTMLElement>("[data-term]").forEach(b=>b.onclick=()=>{const l=p.state.leases.find((x:AnyRecord)=>x.id===b.dataset.term);if(l)openTerm(p,l)});document.querySelectorAll<HTMLElement>("[data-close-tenancy]").forEach(b=>b.onclick=()=>{const l=p.state.leases.find((x:AnyRecord)=>x.id===b.dataset.closeTenancy);if(l)openClose(p,l)});document.querySelectorAll<HTMLElement>("[data-handover]").forEach(b=>b.onclick=()=>{const l=p.state.leases.find((x:AnyRecord)=>x.id===b.dataset.handover);if(l)openHandover(p,l)})
 }

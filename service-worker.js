@@ -1,9 +1,9 @@
-const CACHE="mietverwaltung-v18-runtime-headroom-1";
+const CACHE="mietverwaltung-v18-operating-cost-contract-1";
 const CORE=[
   "./",
   "./index.html",
   "./style.css?v=1810p13",
-  "./app.js?v=1812",
+  "./app.js?v=1813",
   "./manifest.webmanifest?v=1810p2",
   "./legal-rules.json",
   "./icon-192.png",
