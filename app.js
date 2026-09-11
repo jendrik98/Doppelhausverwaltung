@@ -7418,12 +7418,6 @@ function modal(title,html,onReady){
 /* ===== app.js ===== */
 
 
-
-
-
-
-
-
 const ACTIVE_BUILDING_STORAGE_KEY=AppPresentation.ACTIVE_BUILDING_STORAGE_KEY;
 let storageError=null;
 let portfolioState;
@@ -7537,7 +7531,6 @@ function render(){
 }
 
 
-
 const CHECK_INPUT_MAP={
   "Objektname fehlt":{route:"data",sub:"property",label:"Objektname"},
   "Gesamtwohnfläche fehlt":{route:"data",sub:"property",label:"Gesamtwohnfläche"},
@@ -7578,8 +7571,6 @@ function home(){
   document.querySelectorAll("[data-home-action]").forEach(b=>b.onclick=()=>{const a=b.dataset.homeAction;if(a==="document"){go("data","documents");setTimeout(openDocumentCapture,0)}else if(a==="meter"){go("data","infrastructure");setTimeout(()=>openMeterPhotoCapture(),0)}else if(a==="payment"){go("owner","cashflow");setTimeout(openPaymentEditor,0)}else go("rental","billing")});
   bindV18AssistantActions()
 }
-
-
 
 
 function hubAction(id,title,detail,badge=""){
@@ -7624,43 +7615,6 @@ function houseObjectHubView(){
   </div>
   <div class="info-strip"><strong>Warum hier zusammen?</strong><span>Objekt- und Einheitendaten bilden gemeinsam die Grundlage für Flächenanteile und Abrechnungen.</span></div>`;
   document.querySelectorAll("[data-house-detail]").forEach(b=>b.onclick=()=>goSub("data",b.dataset.houseDetail))
-}
-function houseCostsHubView(){
-  const y=currentPeriodYear(),sources=state.sources.length,positions=state.costPositions.length,open=state.costPositions.filter(p=>p.assignment==="review"||!p.confirmed).length;
-  $("workspaceBody").innerHTML=`<div class="grid cards">
-    <article class="card"><span>Kostenquellen</span><strong>${sources}</strong><small>Bescheide, Rechnungen, Verträge</small></article>
-    <article class="card"><span>Kostenpositionen</span><strong>${positions}</strong><small>${open} zu prüfen</small></article>
-    <article class="card"><span>Abrechnungsperiode</span><strong>${esc(billingPeriodLabel(state,y))}</strong><small>aktiver Zeitraum</small></article>
-  </div>
-  <div class="card">
-    ${hubAction("sources","Kostenquellen","Anbieter, Bescheide und Fälligkeiten",String(sources))}
-    ${hubAction("positions","Kostenpositionen","Umlage, Zeitraum, Betrag und Herkunft",open?`${open} offen`:"")}
-    ${hubAction("assessment","Grundbesitzabgaben","Kommunale Abgaben strukturiert verwalten")}
-  </div>`;
-  document.querySelectorAll("[data-hub-action]").forEach(b=>b.onclick=()=>goSub("data",b.dataset.hubAction))
-}
-function financePaymentsHubView(){
-  const rows=actualCashflowByMonth(state,12),income=rows.reduce((s,r)=>s+r.income,0),outflow=rows.reduce((s,r)=>s+r.outflow,0),matches=smartPaymentPlan(state);
-  $("workspaceBody").innerHTML=`<div class="grid cards">
-    <article class="card"><span>Einnahmen 12M</span><strong>${euro(income)}</strong></article>
-    <article class="card"><span>Ausgaben 12M</span><strong>${euro(outflow)}</strong></article>
-    <article class="card"><span>Zuordnungsvorschläge</span><strong>${matches.length}</strong><small>plausible offene Treffer</small></article>
-  </div><div class="card">
-    ${hubAction("cashflow","Zahlungen & Kontoimport","Buchungen erfassen, CSV importieren und Verlauf ansehen")}
-    ${hubAction("reconciliation","Zahlungen zuordnen","Ausgaben mit Kostenquellen und Positionen verknüpfen",matches.length?String(matches.length):"")}
-  </div>`;
-  document.querySelectorAll("[data-hub-action]").forEach(b=>b.onclick=()=>goSub("owner",b.dataset.hubAction))
-}
-function financePlanningHubView(){
-  const f=intelligentForecast(state,12),sum=f.reduce((s,x)=>s+x.net,0),alerts=costTrendAlerts(state,currentPeriodYear());
-  $("workspaceBody").innerHTML=`<div class="grid cards">
-    <article class="card"><span>12M-Cashflow</span><strong class="${sum<0?"negative":"positive"}">${euro(sum)}</strong><small>geplanter Gesamtsaldo</small></article>
-    <article class="card"><span>Kostenhinweise</span><strong>${alerts.length}</strong><small>auffällige Veränderungen</small></article>
-  </div><div class="card">
-    ${hubAction("finance","Planung & Hauskosten","Hausrate, feste Kosten und 12-Monats-Prognose")}
-    ${hubAction("analytics","Jahresvergleich & Verbrauch","Kostenentwicklung und Zählertrends",alerts.length?String(alerts.length):"")}
-  </div>`;
-  document.querySelectorAll("[data-hub-action]").forEach(b=>b.onclick=()=>goSub("owner",b.dataset.hubAction))
 }
 function protectionHubView(){
   const points=state.meta?.restorePoints?.length||0,last=state.meta?.lastBackupAt?new Date(state.meta.lastBackupAt).toLocaleDateString("de-DE"):"keine";
@@ -8488,10 +8442,6 @@ function waterRentalView(){
 }
 
 
-
-
-
-
 function openLeaseEditor(x=null){
   modal(x?"Mietvertrag bearbeiten":"Mietvertrag anlegen",`<form id="f" class="form-grid">
     <div class="full form-intro"><strong>${x?"Vertragsdaten aktualisieren":"Neuen Mietvertrag erfassen"}</strong><small>Personenbezogene Daten werden nur lokal in deiner App gespeichert.</small></div>
@@ -8590,7 +8540,6 @@ function printBilling(a,y,snapshot=null){
   <div class="foot">Erstellt am ${new Date().toLocaleDateString("de-DE")}${snapshot?.integrityHash?` · Prüfsumme ${esc(String(snapshot.integrityHash).slice(0,20))}…`:""}</div>
   </body></html>`);w.document.close();setTimeout(()=>w.print(),250)
 }
-
 
 
 function financePaymentsView(){cashflowView();const h=$("workspaceBody"),m=smartPaymentPlan(state);if(!h)return;h.insertAdjacentHTML("afterbegin",`<div class="card"><button id="openReconciliationFromPayments" class="secondary">Zahlungen zuordnen${m.length?` · ${m.length}`:""}</button></div>`);$("openReconciliationFromPayments").onclick=()=>go("owner","reconciliation")}

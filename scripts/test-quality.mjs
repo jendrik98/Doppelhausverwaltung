@@ -12,6 +12,9 @@ const walk=dir=>fs.readdirSync(path.join(root,dir),{withFileTypes:true}).flatMap
 if(fs.existsSync(path.join(root,"src/legacy")))failures.push("src/legacy darf nicht wieder eingeführt werden");
 const appRuntime=read("src/ui/app-runtime.ts");
 if(appRuntime.includes("function runSelfTests"))failures.push("Historische Browser-Selbsttests dürfen nicht zurückkehren");
+for(const dead of ["houseCostsHubView","financePaymentsHubView","financePlanningHubView"]){
+  if(appRuntime.includes(`function ${dead}`))failures.push(`Toter Navigation-Hub darf nicht zurückkehren: ${dead}`);
+}
 if(Buffer.byteLength(appRuntime,"utf8")>171000)failures.push(`app-runtime.ts wächst wieder zum Monolithen (${Buffer.byteLength(appRuntime,"utf8")} Bytes > 171000)`);
 
 const allowedNoCheck=new Set([

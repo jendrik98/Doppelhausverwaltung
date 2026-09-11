@@ -1,9 +1,9 @@
-const CACHE="mietverwaltung-v18-summary-cards-1";
+const CACHE="mietverwaltung-v18-runtime-headroom-1";
 const CORE=[
   "./",
   "./index.html",
   "./style.css?v=1810p13",
-  "./app.js?v=1811",
+  "./app.js?v=1812",
   "./manifest.webmanifest?v=1810p2",
   "./legal-rules.json",
   "./icon-192.png",
