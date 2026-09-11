@@ -28,9 +28,9 @@ async function top(page, name) {
 }
 
 async function section(page, value) {
-  const picker = page.locator('#workspaceSelect');
-  await expect(picker).toBeVisible();
-  await picker.selectOption(value);
+  const tab = page.locator(`.workspace-mobile-tabs [data-workspace-sub="${value}"]:visible, .workspace-sidebar [data-workspace-sub="${value}"]:visible`).first();
+  await expect(tab).toBeVisible();
+  await tab.click();
 }
 
 async function currentPeriodYear(page) {

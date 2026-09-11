@@ -61,6 +61,7 @@ const typedRuntime = (
     compileModule("src/domain/v18-assistant.ts", "AppV18Assistant"),
     compileModule("src/io/backup-codec.ts", "AppBackupCodec"),
     compileModule("src/ui/ui-core.ts", "AppUiCore"),
+    compileModule("src/ui/navigation-ui.ts", "AppNavigationUi"),
     compileModule("src/ui/building-workspace-ui.ts", "AppBuildingWorkspaceUi"),
     compileModule("src/ui/year-archive-ui.ts", "AppYearArchiveUi"),
     compileModule("src/ui/rental-lifecycle-ui.ts", "AppRentalLifecycleUi")

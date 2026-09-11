@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
+
+const entry=path.resolve('src/ui/navigation-ui.ts');
+assert.ok(fs.existsSync(entry),'src/ui/navigation-ui.ts fehlt');
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'navigation-ui-'));
+const outfile=path.join(dir,'navigation-ui.mjs');
+await build({entryPoints:[entry],bundle:true,format:'esm',platform:'node',target:'node22',outfile,logLevel:'silent'});
+const N=await import(pathToFileURL(outfile).href+'?'+Date.now());
+const defaults={data:'overview',rental:'overview',owner:'overview',more:'smart'};
+const routes={home:'Start',data:'Haus',rental:'Vermietung',owner:'Finanzen',more:'Mehr'};
+const restored=N.parseNavigationMemory(JSON.stringify({data:'documents',owner:'planning',unknown:'x'}),defaults,routes);
+assert.equal(restored.data,'documents');
+assert.equal(restored.owner,'planning');
+assert.equal(restored.unknown,undefined);
+assert.equal(N.rememberedTopSub('data',restored,defaults),'documents');
+const tabs=[{id:'overview',label:'Überblick'},{id:'payments',label:'Zahlungen'}];
+assert.deepEqual(N.workspaceTrailLabels('Finanzen',tabs,'payments','reconciliation'),['Finanzen','Zahlungen','Zahlungen zuordnen']);
+const html=N.workspaceHeader('owner','FINANZEN','Finanzen','Beschreibung',tabs,'payments','reconciliation');
+assert.match(html,/workspace-mobile-tabs/);
+assert.match(html,/workspace-select-compat/);
+assert.match(html,/Zahlungen zuordnen/);
+assert.match(html,/aria-current="page"/);
+console.log('Navigation-UI-Vertrag bestanden: sichtbare mobile Tabs, verständlicher Pfad und gemerkte Bereiche.');

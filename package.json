@@ -6,7 +6,7 @@
     "build": "node scripts/build-app.mjs && node scripts/build-styles.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test:validation": "node scripts/test-validation.mjs",
-    "test:architecture": "node scripts/test-architecture.mjs && npm run test:portfolio && npm run test:repository && npm run test:application && npm run test:presentation && npm run test:portfolio-admin && npm run test:design-system && npm run test:lifecycle && npm run test:archive && npm run test:archive-ui && npm run test:archive-package",
+    "test:architecture": "node scripts/test-architecture.mjs && npm run test:portfolio && npm run test:repository && npm run test:application && npm run test:presentation && npm run test:portfolio-admin && npm run test:design-system && npm run test:lifecycle && npm run test:archive && npm run test:archive-ui && npm run test:archive-package && npm run test:navigation-ui",
     "test:portfolio": "node scripts/test-portfolio-model.mjs",
     "test:e2e": "playwright test",
     "test:report": "playwright show-report",
@@ -21,7 +21,8 @@
     "test:archive": "node scripts/test-year-archive.mjs",
     "test:hygiene": "node scripts/test-hygiene.mjs",
     "test:archive-ui": "node scripts/test-year-archive-ui.mjs",
-    "test:archive-package": "node scripts/test-year-close-package.mjs"
+    "test:archive-package": "node scripts/test-year-close-package.mjs",
+    "test:navigation-ui": "node scripts/test-navigation-ui.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

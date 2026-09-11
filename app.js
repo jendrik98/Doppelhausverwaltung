@@ -5854,6 +5854,144 @@ Trotzdem speichern?`)) {
 })();
 
 
+/* ===== compiled src/ui/navigation-ui.ts ===== */
+"use strict";
+var AppNavigationUi = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/ui/navigation-ui.ts
+  var navigation_ui_exports = {};
+  __export(navigation_ui_exports, {
+    NAV_MEMORY_KEY: () => NAV_MEMORY_KEY,
+    bindWorkspaceTabs: () => bindWorkspaceTabs,
+    loadRememberedSubs: () => loadRememberedSubs,
+    parseNavigationMemory: () => parseNavigationMemory,
+    rememberSubs: () => rememberSubs,
+    rememberedTopSub: () => rememberedTopSub,
+    serializeNavigationMemory: () => serializeNavigationMemory,
+    workspaceHeader: () => workspaceHeader,
+    workspaceTrailLabels: () => workspaceTrailLabels
+  });
+  var NAV_MEMORY_KEY = "mietverwaltung_navigation_v1";
+  var DEEP_LABELS = {
+    object: "Objekt & Einheiten",
+    property: "Objektdaten",
+    units: "Einheiten",
+    sources: "Kostenquellen",
+    positions: "Kostenpositionen",
+    assessment: "Grundbesitzabgaben",
+    lease: "Mietvertrag",
+    calculation: "Berechnung",
+    workflow: "Abschluss",
+    cashflow: "Konto & Buchungen",
+    reconciliation: "Zahlungen zuordnen",
+    finance: "Hauskosten",
+    analytics: "Jahresvergleich",
+    tasks: "Erinnerungen",
+    legal: "Recht & Regeln",
+    security: "Geräteschutz",
+    backup: "Datensicherung",
+    recovery: "Sicherungspunkte",
+    audit: "Änderungsverlauf",
+    diagnostics: "App-Prüfung"
+  };
+  var esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[char] || char);
+  function parseNavigationMemory(raw, defaults, routeLabels) {
+    const result = { ...defaults };
+    if (!raw) return result;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return result;
+      for (const [route, sub] of Object.entries(parsed)) {
+        if (route !== "home" && routeLabels[route] && typeof sub === "string" && sub.trim()) result[route] = sub;
+      }
+    } catch {
+    }
+    return result;
+  }
+  function serializeNavigationMemory(subs, routeLabels) {
+    const persisted = {};
+    for (const [route, sub] of Object.entries(subs || {})) {
+      if (route !== "home" && routeLabels[route] && typeof sub === "string" && sub.trim()) persisted[route] = sub;
+    }
+    return JSON.stringify(persisted);
+  }
+  function loadRememberedSubs(defaults, routeLabels) {
+    try {
+      return parseNavigationMemory(localStorage.getItem(NAV_MEMORY_KEY), defaults, routeLabels);
+    } catch {
+      return { ...defaults };
+    }
+  }
+  function rememberSubs(subs, routeLabels) {
+    try {
+      localStorage.setItem(NAV_MEMORY_KEY, serializeNavigationMemory(subs, routeLabels));
+    } catch {
+    }
+  }
+  function rememberedTopSub(route, subs, defaults) {
+    return String(subs?.[route] || defaults?.[route] || "");
+  }
+  function workspaceTrailLabels(title, tabs, visible, actual = visible) {
+    const visibleLabel = tabs.find((tab) => tab.id === visible)?.label || visible || "Überblick";
+    const labels = [title, visibleLabel];
+    const deepLabel = DEEP_LABELS[actual] || actual;
+    if (actual && actual !== visible && deepLabel && deepLabel !== visibleLabel) labels.push(deepLabel);
+    return labels;
+  }
+  function workspaceHeader(group, eyebrow, title, description, tabs, visible, actual = visible) {
+    const trail = workspaceTrailLabels(title, tabs, visible, actual);
+    const buttons = tabs.map((tab) => `<button type="button" data-workspace-sub="${esc(tab.id)}" class="${tab.id === visible ? "active" : ""}" ${tab.id === visible ? 'aria-current="page"' : ""}>${tab.icon ? `<span class="nav-symbol" aria-hidden="true">${tab.icon}</span>` : ""}<span>${esc(tab.label)}</span></button>`).join("");
+    const options = tabs.map((tab) => `<option value="${esc(tab.id)}" ${tab.id === visible ? "selected" : ""}>${esc(tab.label)}</option>`).join("");
+    return `<section class="workspace" data-workspace-group="${esc(group)}">
+    <div class="section-head workspace-head"><div><p class="eyebrow">${esc(eyebrow)}</p><h2>${esc(title)}</h2><p class="muted">${esc(description)}</p></div></div>
+    <nav class="workspace-trail" aria-label="Aktueller Bereich">${trail.map((label, index) => `<span ${index === trail.length - 1 ? 'aria-current="page"' : ""}>${esc(label)}</span>`).join('<b aria-hidden="true">›</b>')}</nav>
+    <div class="workspace-layout">
+      <aside class="workspace-sidebar" aria-label="${esc(title)} Navigation">
+        <p class="workspace-nav-title">Bereiche</p>
+        ${buttons}
+      </aside>
+      <div class="workspace-content">
+        <nav class="workspace-mobile-tabs" aria-label="${esc(title)} Bereiche">${buttons}</nav>
+        <select id="workspaceSelect" class="workspace-select-compat" aria-hidden="true" tabindex="-1">${options}</select>
+        <div id="workspaceBody"></div>
+      </div>
+    </div>
+  </section>`;
+  }
+  function bindWorkspaceTabs(group, onNavigate) {
+    document.querySelectorAll("[data-workspace-sub]").forEach((button) => {
+      button.onclick = () => onNavigate(group, String(button.dataset.workspaceSub || ""));
+    });
+    const picker = document.getElementById("workspaceSelect");
+    if (picker) picker.onchange = () => onNavigate(group, picker.value);
+  }
+  return __toCommonJS(navigation_ui_exports);
+})();
+
+
 /* ===== compiled src/ui/building-workspace-ui.ts ===== */
 "use strict";
 var AppBuildingWorkspaceUi = (() => {
@@ -7218,6 +7356,7 @@ const {
   markCentralError,
   validateCentralForm
 }=AppUiCore;
+const {workspaceHeader,bindWorkspaceTabs,loadRememberedSubs,rememberSubs,rememberedTopSub}=AppNavigationUi;
 
 let MODAL_RETURN_FOCUS=null,MODAL_INITIAL_FORM="",MODAL_RETURN_FOCUS_OVERRIDE=null;
 function formSnapshot(root){
@@ -7291,21 +7430,21 @@ try{
 }
 const {ROUTE_LABELS,DEFAULT_SUB,SUB_PARENT,normalizeSub,visibleSub,parseRouteHash,routeHash}=AppPresentation;
 let route="home";
-let sub={...DEFAULT_SUB};
+let sub=loadRememberedSubs(DEFAULT_SUB,ROUTE_LABELS);
 
 function syncRouteFromHash(){
   const parsed=parseRouteHash(location.hash);
   route=parsed.route;
-  if(route!=="home")sub[route]=parsed.sub
+  if(route!=="home"){sub[route]=parsed.sub;rememberSubs(sub,ROUTE_LABELS)}
 }
 function go(r,s=null){
   if(!ROUTE_LABELS[r])r="home";
   route=r;
-  if(r!=="home"&&s)sub[r]=normalizeSub(r,s);
+  if(r!=="home"&&s){sub[r]=normalizeSub(r,s);rememberSubs(sub,ROUTE_LABELS)};
   const target=routeHash(r,r==="home"?null:sub[r]);
   if(location.hash!==target)location.hash=target;else render()
 }
-function goTop(r){go(r,r==="home"?null:DEFAULT_SUB[r])}
+function goTop(r){go(r,r==="home"?null:rememberedTopSub(r,sub,DEFAULT_SUB))}
 function goSub(group,id){sub[group]=normalizeSub(group,id);go(group,sub[group])}
 syncRouteFromHash();
 window.addEventListener("hashchange",()=>{syncRouteFromHash();render();window.scrollTo({top:0,left:0,behavior:"auto"})});
@@ -7363,25 +7502,6 @@ function render(){
   else more();
 }
 
-function workspaceHeader(eyebrow,title,description,tabs,active){
-  return `<section class="workspace">
-    <div class="section-head workspace-head"><div><p class="eyebrow">${esc(eyebrow)}</p><h2>${esc(title)}</h2><p class="muted">${esc(description)}</p></div></div>
-    <div class="workspace-layout">
-      <aside class="workspace-sidebar" aria-label="${esc(title)} Navigation">
-        <p class="workspace-nav-title">Bereiche</p>
-        ${tabs.map(i=>`<button data-workspace-sub="${i.id}" class="${i.id===active?"active":""}">${i.icon?`<span class="nav-symbol">${i.icon}</span>`:""}<span>${esc(i.label)}</span></button>`).join("")}
-      </aside>
-      <div class="workspace-content">
-        <label class="workspace-mobile-picker"><span>Bereich</span><select id="workspaceSelect">${tabs.map(i=>`<option value="${esc(i.id)}" ${i.id===active?"selected":""}>${esc(i.label)}</option>`).join("")}</select></label>
-        <div id="workspaceBody"></div>
-      </div>
-    </div>
-  </section>`
-}
-function bindWorkspaceTabs(group,renderer){
-  document.querySelectorAll("[data-workspace-sub]").forEach(b=>b.onclick=()=>goSub(group,b.dataset.workspaceSub));
-  const picker=$("workspaceSelect");if(picker)picker.onchange=e=>goSub(group,e.target.value)
-}
 
 
 const CHECK_INPUT_MAP={
@@ -7540,8 +7660,8 @@ function dataWorkspace(){
     {id:"documents",label:"Dokumente",icon:"▤"}
   ];
   const active=sub.data||"overview",visible=visibleSub("data",active);
-  $("app").innerHTML=workspaceHeader("HAUS","Haus","Objekt, Kosten, Zähler und Belege an einem Ort.",tabs,visible);
-  bindWorkspaceTabs("data",dataWorkspace);
+  $("app").innerHTML=workspaceHeader("data","HAUS","Haus","Objekt, Kosten, Zähler und Belege an einem Ort.",tabs,visible,active);
+  bindWorkspaceTabs("data",goSub);
   if(active==="overview")houseOverviewView();
   else if(active==="object")houseObjectHubView();
   else if(active==="costs")houseCostsHubView();
@@ -8265,8 +8385,8 @@ function rentalWorkspace(){
   let active=sub.rental||"overview";
   if(active==="calculation"||active==="workflow")active="billing";
   sub.rental=active;
-  $("app").innerHTML=workspaceHeader("VERMIETUNG","Vermietung","Mietverhältnis, Kaltwasser und Betriebskostenabrechnung.",tabs,visibleSub("rental",active));
-  bindWorkspaceTabs("rental",rentalWorkspace);
+  $("app").innerHTML=workspaceHeader("rental","VERMIETUNG","Vermietung","Mietverhältnis, Kaltwasser und Betriebskostenabrechnung.",tabs,visibleSub("rental",active),active);
+  bindWorkspaceTabs("rental",goSub);
   if(active==="overview")rentalOverview();
   else if(active==="lifecycle")rentalLifecycleView();
   else if(active==="lease")leaseDataView();
@@ -8473,8 +8593,8 @@ function ownerWorkspace(){
     {id:"planning",label:"Planung",icon:"↗"}
   ];
   const active=sub.owner||"overview",visible=visibleSub("owner",active);
-  $("app").innerHTML=workspaceHeader("FINANZEN","Finanzen","Zahlungen, Planung und Termine – getrennt von der Mieterabrechnung.",tabs,visible);
-  bindWorkspaceTabs("owner",ownerWorkspace);
+  $("app").innerHTML=workspaceHeader("owner","FINANZEN","Finanzen","Zahlungen, Planung und Termine – getrennt von der Mieterabrechnung.",tabs,visible,active);
+  bindWorkspaceTabs("owner",goSub);
   if(active==="overview")ownerOverview();
   else if(active==="payments")financePaymentsHubView();
   else if(active==="planning")financePlanningHubView();
@@ -8543,8 +8663,8 @@ function more(){
     {id:"app",label:"Erweitert",icon:"•••"}
   ];
   const active=sub.more||"smart",visible=visibleSub("more",active);
-  $("app").innerHTML=workspaceHeader("MEHR","Mehr","Assistent, Datensicherung und selten benötigte Einstellungen.",tabs,visible);
-  bindWorkspaceTabs("more",more);
+  $("app").innerHTML=workspaceHeader("more","MEHR","Mehr","Assistent, Jahresarchiv, Sicherung und selten benötigte Einstellungen.",tabs,visible,active);
+  bindWorkspaceTabs("more",goSub);
   if(active==="smart"||active==="overview")smartCenterView();
   else if(active==="archive")yearArchiveMoreView();
   else if(active==="legal")legalMoreView();

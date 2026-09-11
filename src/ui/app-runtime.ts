@@ -15,6 +15,7 @@ const {
   markCentralError,
   validateCentralForm
 }=AppUiCore;
+const {workspaceHeader,bindWorkspaceTabs,loadRememberedSubs,rememberSubs,rememberedTopSub}=AppNavigationUi;
 
 let MODAL_RETURN_FOCUS=null,MODAL_INITIAL_FORM="",MODAL_RETURN_FOCUS_OVERRIDE=null;
 function formSnapshot(root){
@@ -88,21 +89,21 @@ try{
 }
 const {ROUTE_LABELS,DEFAULT_SUB,SUB_PARENT,normalizeSub,visibleSub,parseRouteHash,routeHash}=AppPresentation;
 let route="home";
-let sub={...DEFAULT_SUB};
+let sub=loadRememberedSubs(DEFAULT_SUB,ROUTE_LABELS);
 
 function syncRouteFromHash(){
   const parsed=parseRouteHash(location.hash);
   route=parsed.route;
-  if(route!=="home")sub[route]=parsed.sub
+  if(route!=="home"){sub[route]=parsed.sub;rememberSubs(sub,ROUTE_LABELS)}
 }
 function go(r,s=null){
   if(!ROUTE_LABELS[r])r="home";
   route=r;
-  if(r!=="home"&&s)sub[r]=normalizeSub(r,s);
+  if(r!=="home"&&s){sub[r]=normalizeSub(r,s);rememberSubs(sub,ROUTE_LABELS)};
   const target=routeHash(r,r==="home"?null:sub[r]);
   if(location.hash!==target)location.hash=target;else render()
 }
-function goTop(r){go(r,r==="home"?null:DEFAULT_SUB[r])}
+function goTop(r){go(r,r==="home"?null:rememberedTopSub(r,sub,DEFAULT_SUB))}
 function goSub(group,id){sub[group]=normalizeSub(group,id);go(group,sub[group])}
 syncRouteFromHash();
 window.addEventListener("hashchange",()=>{syncRouteFromHash();render();window.scrollTo({top:0,left:0,behavior:"auto"})});
@@ -160,25 +161,6 @@ function render(){
   else more();
 }
 
-function workspaceHeader(eyebrow,title,description,tabs,active){
-  return `<section class="workspace">
-    <div class="section-head workspace-head"><div><p class="eyebrow">${esc(eyebrow)}</p><h2>${esc(title)}</h2><p class="muted">${esc(description)}</p></div></div>
-    <div class="workspace-layout">
-      <aside class="workspace-sidebar" aria-label="${esc(title)} Navigation">
-        <p class="workspace-nav-title">Bereiche</p>
-        ${tabs.map(i=>`<button data-workspace-sub="${i.id}" class="${i.id===active?"active":""}">${i.icon?`<span class="nav-symbol">${i.icon}</span>`:""}<span>${esc(i.label)}</span></button>`).join("")}
-      </aside>
-      <div class="workspace-content">
-        <label class="workspace-mobile-picker"><span>Bereich</span><select id="workspaceSelect">${tabs.map(i=>`<option value="${esc(i.id)}" ${i.id===active?"selected":""}>${esc(i.label)}</option>`).join("")}</select></label>
-        <div id="workspaceBody"></div>
-      </div>
-    </div>
-  </section>`
-}
-function bindWorkspaceTabs(group,renderer){
-  document.querySelectorAll("[data-workspace-sub]").forEach(b=>b.onclick=()=>goSub(group,b.dataset.workspaceSub));
-  const picker=$("workspaceSelect");if(picker)picker.onchange=e=>goSub(group,e.target.value)
-}
 
 
 const CHECK_INPUT_MAP={
@@ -337,8 +319,8 @@ function dataWorkspace(){
     {id:"documents",label:"Dokumente",icon:"▤"}
   ];
   const active=sub.data||"overview",visible=visibleSub("data",active);
-  $("app").innerHTML=workspaceHeader("HAUS","Haus","Objekt, Kosten, Zähler und Belege an einem Ort.",tabs,visible);
-  bindWorkspaceTabs("data",dataWorkspace);
+  $("app").innerHTML=workspaceHeader("data","HAUS","Haus","Objekt, Kosten, Zähler und Belege an einem Ort.",tabs,visible,active);
+  bindWorkspaceTabs("data",goSub);
   if(active==="overview")houseOverviewView();
   else if(active==="object")houseObjectHubView();
   else if(active==="costs")houseCostsHubView();
@@ -1062,8 +1044,8 @@ function rentalWorkspace(){
   let active=sub.rental||"overview";
   if(active==="calculation"||active==="workflow")active="billing";
   sub.rental=active;
-  $("app").innerHTML=workspaceHeader("VERMIETUNG","Vermietung","Mietverhältnis, Kaltwasser und Betriebskostenabrechnung.",tabs,visibleSub("rental",active));
-  bindWorkspaceTabs("rental",rentalWorkspace);
+  $("app").innerHTML=workspaceHeader("rental","VERMIETUNG","Vermietung","Mietverhältnis, Kaltwasser und Betriebskostenabrechnung.",tabs,visibleSub("rental",active),active);
+  bindWorkspaceTabs("rental",goSub);
   if(active==="overview")rentalOverview();
   else if(active==="lifecycle")rentalLifecycleView();
   else if(active==="lease")leaseDataView();
@@ -1270,8 +1252,8 @@ function ownerWorkspace(){
     {id:"planning",label:"Planung",icon:"↗"}
   ];
   const active=sub.owner||"overview",visible=visibleSub("owner",active);
-  $("app").innerHTML=workspaceHeader("FINANZEN","Finanzen","Zahlungen, Planung und Termine – getrennt von der Mieterabrechnung.",tabs,visible);
-  bindWorkspaceTabs("owner",ownerWorkspace);
+  $("app").innerHTML=workspaceHeader("owner","FINANZEN","Finanzen","Zahlungen, Planung und Termine – getrennt von der Mieterabrechnung.",tabs,visible,active);
+  bindWorkspaceTabs("owner",goSub);
   if(active==="overview")ownerOverview();
   else if(active==="payments")financePaymentsHubView();
   else if(active==="planning")financePlanningHubView();
@@ -1340,8 +1322,8 @@ function more(){
     {id:"app",label:"Erweitert",icon:"•••"}
   ];
   const active=sub.more||"smart",visible=visibleSub("more",active);
-  $("app").innerHTML=workspaceHeader("MEHR","Mehr","Assistent, Datensicherung und selten benötigte Einstellungen.",tabs,visible);
-  bindWorkspaceTabs("more",more);
+  $("app").innerHTML=workspaceHeader("more","MEHR","Mehr","Assistent, Jahresarchiv, Sicherung und selten benötigte Einstellungen.",tabs,visible,active);
+  bindWorkspaceTabs("more",goSub);
   if(active==="smart"||active==="overview")smartCenterView();
   else if(active==="archive")yearArchiveMoreView();
   else if(active==="legal")legalMoreView();

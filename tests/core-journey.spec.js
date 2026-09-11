@@ -20,6 +20,7 @@ async function buildCoreData(page) {
   await expect(page.locator('#billingPeriodPreview')).toContainText(new RegExp(`31\\.12\\.${y}`));
 
   await top(page, 'Haus');
+  await section(page, 'overview');
   await page.getByRole('button', { name: 'Einheiten bearbeiten' }).click();
   await addUnit(page, { name: 'Eigennutzung Test', type: 'owner', area: 100, year: 1980, part: 'Anbau', persons: 3, from: takeover });
   await addUnit(page, { name: 'Mietwohnung Test', type: 'rental', area: 100, year: 1965, part: 'Stammgebäude', persons: 2, from: takeover });
@@ -148,6 +149,7 @@ test('vollständige Kernreise: Stammdaten → Kosten → Zahlung → Abrechnung 
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await top(page, 'Haus');
+  await section(page, 'overview');
   await page.getByRole('button', { name: 'Objektdaten bearbeiten' }).click();
   await expect(page.getByLabel('Objektname')).toHaveValue('E2E Premium Testobjekt');
   await expect(page.getByLabel('Gesamtwohnfläche m²')).toHaveValue('200');

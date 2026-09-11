@@ -3,7 +3,7 @@ const { runtimeGuard, openApp } = require('./helpers');
 
 test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, request }) => {
   const guard = runtimeGuard(page);
-  const core = await request.get('./app.js?v=1809');
+  const core = await request.get('./app.js?v=1810');
   expect(core.ok()).toBeTruthy();
   const coreText = await core.text();
   expect(coreText).toContain('APP_VERSION="18.0.0"');
@@ -12,13 +12,14 @@ test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, r
   expect(coreText).toContain('compiled src/domain/lifecycle-ledger.ts');
   expect(coreText).toContain('compiled src/ui/rental-lifecycle-ui.ts');
   expect(coreText).toContain('compiled src/ui/year-archive-ui.ts');
+  expect(coreText).toContain('compiled src/ui/navigation-ui.ts');
   expect(coreText).toContain('function rentLedgerCard');
   expect(coreText).toContain('function actualAdvanceInPeriod');
   const index = await request.get('./index.html');
   expect(index.ok()).toBeTruthy();
   const indexText = await index.text();
-  expect(indexText).toContain('app.js?v=1809');
-  expect(indexText).toContain('style.css?v=1810p10');
+  expect(indexText).toContain('app.js?v=1810');
+  expect(indexText).toContain('style.css?v=1810p11');
   expect(indexText).toContain('manifest.webmanifest?v=1810p2');
   expect(indexText).not.toContain('<meta name="theme-color" content="#0f172a">');
   const manifestResponse=await request.get('./manifest.webmanifest?v=1810p2');
@@ -29,9 +30,9 @@ test('Live-Deployment, Version, Kernassets und Service Worker', async ({ page, r
   expect(manifest.shortcuts.map(x=>x.url)).toEqual(['./#rental/billing','./#more/smart']);
   const swResponse=await request.get('./service-worker.js');
   const swText=await swResponse.text();
-  expect(swText).toContain('mietverwaltung-v18-year-close-package-h3-1');
-  expect(swText).toContain('./style.css?v=1810p10');
-  for (const path of ['./style.css?v=1810p10','./manifest.webmanifest?v=1810p2','./legal-rules.json','./service-worker.js','./icon-192.png','./icon-512.png']) {
+  expect(swText).toContain('mietverwaltung-v18-navigation-ux-1');
+  expect(swText).toContain('./style.css?v=1810p11');
+  for (const path of ['./style.css?v=1810p11','./manifest.webmanifest?v=1810p2','./legal-rules.json','./service-worker.js','./icon-192.png','./icon-512.png']) {
     const r=await request.get(path); expect(r.ok(),`${path} muss erreichbar sein`).toBeTruthy();
   }
   await openApp(page);
