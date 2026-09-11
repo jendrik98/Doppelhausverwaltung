@@ -677,17 +677,17 @@ jobs:
           YXRoKQogICAgZm9yIG5lZWRsZSBpbiBuZWVkbGVzOgogICAgICAgIGlmIG5lZWRsZSBub3QgaW4g
           dGV4dDoKICAgICAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIntwYXRofTogbWlzc2luZyBjb250
           cmFjdCB7bmVlZGxlIXJ9IikKCnN0YXRlPXJlYWQoJ3NyYy9jb3JlL3N0YXRlLnRzJykKaWYgJ1ND
-          SEVNQV9WRVJTSU9OID0gMTUnIG5vdCBpbiBzdGF0ZSBvciAnYXBwVmVyc2lvbiA9ICIxOC4wLjAi
-          JyBub3QgaW4gc3RhdGU6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdzdGF0ZS9hcHAgdmVyc2lvbiBj
-          b250cmFjdCBjaGFuZ2VkIHVuZXhwZWN0ZWRseScpCmlmICdhcHAuanM/dj0xODEzJyBub3QgaW4g
-          cmVhZCgnaW5kZXguaHRtbCcpOgogICAgcmFpc2UgU3lzdGVtRXhpdCgnaW5kZXggbWFya2VyIG5v
-          dCB1cGRhdGVkJykKaWYgJ21pZXR2ZXJ3YWx0dW5nLXYxOC1vcGVyYXRpbmctY29zdC1jb250cmFj
-          dC0xJyBub3QgaW4gcmVhZCgnc2VydmljZS13b3JrZXIuanMnKToKICAgIHJhaXNlIFN5c3RlbUV4
-          aXQoJ3NlcnZpY2Ugd29ya2VyIGNhY2hlIG1hcmtlciBub3QgdXBkYXRlZCcpCgpwcmludCgnT3Bl
-          cmF0aW5nLWNvc3QgY29udHJhY3QgZ3VhcmRyYWlsIHBhdGNoIHByZXBhcmVkLicpCg==
+          SEVNQV9WRVJTSU9OID0gMTUnIG5vdCBpbiBzdGF0ZSBvciAnYXBwVmVyc2lvbjogIjE4LjAuMCIn
+          IG5vdCBpbiBzdGF0ZToKICAgIHJhaXNlIFN5c3RlbUV4aXQoJ3N0YXRlL2FwcCB2ZXJzaW9uIGNv
+          bnRyYWN0IGNoYW5nZWQgdW5leHBlY3RlZGx5JykKaWYgJ2FwcC5qcz92PTE4MTMnIG5vdCBpbiBy
+          ZWFkKCdpbmRleC5odG1sJyk6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdpbmRleCBtYXJrZXIgbm90
+          IHVwZGF0ZWQnKQppZiAnbWlldHZlcndhbHR1bmctdjE4LW9wZXJhdGluZy1jb3N0LWNvbnRyYWN0
+          LTEnIG5vdCBpbiByZWFkKCdzZXJ2aWNlLXdvcmtlci5qcycpOgogICAgcmFpc2UgU3lzdGVtRXhp
+          dCgnc2VydmljZSB3b3JrZXIgY2FjaGUgbWFya2VyIG5vdCB1cGRhdGVkJykKCnByaW50KCdPcGVy
+          YXRpbmctY29zdCBjb250cmFjdCBndWFyZHJhaWwgcGF0Y2ggcHJlcGFyZWQuJykK
           PATCH_B64
           base64 -d /tmp/operating-cost-contract-patch.b64 > /tmp/operating-cost-contract-patch.py
-          test "$(sha256sum /tmp/operating-cost-contract-patch.py | awk '{print $1}')" = "ef9889f7a1010c9c7e156d870c2fe5f43fd4fb8ea44a492a02f52b79ca5ae9db"
+          test "$(sha256sum /tmp/operating-cost-contract-patch.py | awk '{print $1}')" = "be6f5e5d00c146e82073cc8321f748f7db8e4403db043b493bdcf522da1ab870"
           python3 -m py_compile /tmp/operating-cost-contract-patch.py
           python3 /tmp/operating-cost-contract-patch.py
           rm -f /tmp/operating-cost-contract-patch.py /tmp/operating-cost-contract-patch.b64
