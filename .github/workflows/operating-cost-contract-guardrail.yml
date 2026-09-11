@@ -660,34 +660,34 @@ jobs:
           IFJlY2h0c2JlcmF0dW5nLiBEYXRlbmJhbmtzY2hlbWEsIGBTQ0hFTUFfVkVSU0lPTmAgdW5kIEFw
           cC1WZXJzaW9uIDE4LjAuMApibGVpYmVuIHVudmVyw6RuZGVydC4KJycnCmlmICcjIyBCZXRyaWVi
           c2tvc3Rlbi1WZXJ0cmFnc2Jhc2lzICgxMC8xMCBHdWFyZHJhaWwpJyBub3QgaW4gYXJjaDoKICAg
-          IHdyaXRlKCdBUkNISVRFQ1RVUkUubWQnLGFyY2gucnN0cmlwKCkrc2VjdGlvbisnXG4nKQoKcmVx
-          dWlyZWQ9ewogICdzcmMvZG9tYWluL2xpZmVjeWNsZS1sZWRnZXIudHMnOlsnb3BlcmF0aW5nQ29z
-          dEFncmVlbWVudCcsJ3VwZGF0ZU9wZXJhdGluZ0Nvc3RBZ3JlZW1lbnQnLCdvcGVyYXRpbmdDb3N0
-          Q29udHJhY3REZWNpc2lvbicsJ2FwcGx5T3BlcmF0aW5nQ29zdEFncmVlbWVudFRvQW5hbHlzaXMn
-          LCdCSy1VbWxhZ2VncnVuZGxhZ2UgcHLDvGZlbiddLAogICdzcmMvYXBwbGljYXRpb24vcmVudGFs
-          LWxpZmVjeWNsZS50cyc6Wyd1cGRhdGVPcGVyYXRpbmdDb3N0QWdyZWVtZW50Q29tbWFuZCddLAog
-          ICdzcmMvZG9tYWluL3Byb3BlcnR5LWRvbWFpbi50cyc6WydhcHBseU9wZXJhdGluZ0Nvc3RBZ3Jl
-          ZW1lbnRUb0FuYWx5c2lzJ10sCiAgJ3NyYy9kb21haW4vYmlsbGluZy1kb21haW4udHMnOlsnY29u
-          dHJhY3RBZ3JlZW1lbnQnLCdCSy1VbWxhZ2VncnVuZGxhZ2UgaW0gTWlldHZlcmjDpGx0bmlzJ10s
-          CiAgJ3NyYy91aS9yZW50YWwtbGlmZWN5Y2xlLXVpLnRzJzpbJ0JLLUdydW5kbGFnZScsJ1ZlcnRy
-          YWdzYmFzaXMgc3BlaWNoZXJuJywnb3BlcmF0aW5nQ29zdENhdGVnb3JpZXMnXSwKICAndGVzdHMv
-          b3BlcmF0aW5nLWNvc3QtY29udHJhY3Quc3BlYy5qcyc6Wydjb250cmFjdC10ZXN0LWxlYXNlJywn
-          aW5zdXJhbmNlLnN0YXR1cyddLAogICdsZWdhbC1ydWxlcy5qc29uJzpbJzIwMjYuMDkuMTEtMSdd
-          LAp9CmZvciBwYXRoLG5lZWRsZXMgaW4gcmVxdWlyZWQuaXRlbXMoKToKICAgIHRleHQ9cmVhZChw
-          YXRoKQogICAgZm9yIG5lZWRsZSBpbiBuZWVkbGVzOgogICAgICAgIGlmIG5lZWRsZSBub3QgaW4g
-          dGV4dDoKICAgICAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIntwYXRofTogbWlzc2luZyBjb250
-          cmFjdCB7bmVlZGxlIXJ9IikKCnN0YXRlPXJlYWQoJ3NyYy9jb3JlL3N0YXRlLnRzJykKaWYgJ1ND
-          SEVNQV9WRVJTSU9OID0gMTUnIG5vdCBpbiBzdGF0ZSBvciAnYXBwVmVyc2lvbjogIjE4LjAuMCIn
-          IG5vdCBpbiBzdGF0ZToKICAgIHJhaXNlIFN5c3RlbUV4aXQoJ3N0YXRlL2FwcCB2ZXJzaW9uIGNv
-          bnRyYWN0IGNoYW5nZWQgdW5leHBlY3RlZGx5JykKaWYgJ2FwcC5qcz92PTE4MTMnIG5vdCBpbiBy
-          ZWFkKCdpbmRleC5odG1sJyk6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdpbmRleCBtYXJrZXIgbm90
-          IHVwZGF0ZWQnKQppZiAnbWlldHZlcndhbHR1bmctdjE4LW9wZXJhdGluZy1jb3N0LWNvbnRyYWN0
-          LTEnIG5vdCBpbiByZWFkKCdzZXJ2aWNlLXdvcmtlci5qcycpOgogICAgcmFpc2UgU3lzdGVtRXhp
-          dCgnc2VydmljZSB3b3JrZXIgY2FjaGUgbWFya2VyIG5vdCB1cGRhdGVkJykKCnByaW50KCdPcGVy
-          YXRpbmctY29zdCBjb250cmFjdCBndWFyZHJhaWwgcGF0Y2ggcHJlcGFyZWQuJykK
+          IHdyaXRlKCdBUkNISVRFQ1RVUkUubWQnLGFyY2gucnN0cmlwKCkrc2VjdGlvbi5yc3RyaXAoKSsn
+          XG4nKQoKcmVxdWlyZWQ9ewogICdzcmMvZG9tYWluL2xpZmVjeWNsZS1sZWRnZXIudHMnOlsnb3Bl
+          cmF0aW5nQ29zdEFncmVlbWVudCcsJ3VwZGF0ZU9wZXJhdGluZ0Nvc3RBZ3JlZW1lbnQnLCdvcGVy
+          YXRpbmdDb3N0Q29udHJhY3REZWNpc2lvbicsJ2FwcGx5T3BlcmF0aW5nQ29zdEFncmVlbWVudFRv
+          QW5hbHlzaXMnLCdCSy1VbWxhZ2VncnVuZGxhZ2UgcHLDvGZlbiddLAogICdzcmMvYXBwbGljYXRp
+          b24vcmVudGFsLWxpZmVjeWNsZS50cyc6Wyd1cGRhdGVPcGVyYXRpbmdDb3N0QWdyZWVtZW50Q29t
+          bWFuZCddLAogICdzcmMvZG9tYWluL3Byb3BlcnR5LWRvbWFpbi50cyc6WydhcHBseU9wZXJhdGlu
+          Z0Nvc3RBZ3JlZW1lbnRUb0FuYWx5c2lzJ10sCiAgJ3NyYy9kb21haW4vYmlsbGluZy1kb21haW4u
+          dHMnOlsnY29udHJhY3RBZ3JlZW1lbnQnLCdCSy1VbWxhZ2VncnVuZGxhZ2UgaW0gTWlldHZlcmjD
+          pGx0bmlzJ10sCiAgJ3NyYy91aS9yZW50YWwtbGlmZWN5Y2xlLXVpLnRzJzpbJ0JLLUdydW5kbGFn
+          ZScsJ1ZlcnRyYWdzYmFzaXMgc3BlaWNoZXJuJywnb3BlcmF0aW5nQ29zdENhdGVnb3JpZXMnXSwK
+          ICAndGVzdHMvb3BlcmF0aW5nLWNvc3QtY29udHJhY3Quc3BlYy5qcyc6Wydjb250cmFjdC10ZXN0
+          LWxlYXNlJywnaW5zdXJhbmNlLnN0YXR1cyddLAogICdsZWdhbC1ydWxlcy5qc29uJzpbJzIwMjYu
+          MDkuMTEtMSddLAp9CmZvciBwYXRoLG5lZWRsZXMgaW4gcmVxdWlyZWQuaXRlbXMoKToKICAgIHRl
+          eHQ9cmVhZChwYXRoKQogICAgZm9yIG5lZWRsZSBpbiBuZWVkbGVzOgogICAgICAgIGlmIG5lZWRs
+          ZSBub3QgaW4gdGV4dDoKICAgICAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIntwYXRofTogbWlz
+          c2luZyBjb250cmFjdCB7bmVlZGxlIXJ9IikKCnN0YXRlPXJlYWQoJ3NyYy9jb3JlL3N0YXRlLnRz
+          JykKaWYgJ1NDSEVNQV9WRVJTSU9OID0gMTUnIG5vdCBpbiBzdGF0ZSBvciAnYXBwVmVyc2lvbjog
+          IjE4LjAuMCInIG5vdCBpbiBzdGF0ZToKICAgIHJhaXNlIFN5c3RlbUV4aXQoJ3N0YXRlL2FwcCB2
+          ZXJzaW9uIGNvbnRyYWN0IGNoYW5nZWQgdW5leHBlY3RlZGx5JykKaWYgJ2FwcC5qcz92PTE4MTMn
+          IG5vdCBpbiByZWFkKCdpbmRleC5odG1sJyk6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdpbmRleCBt
+          YXJrZXIgbm90IHVwZGF0ZWQnKQppZiAnbWlldHZlcndhbHR1bmctdjE4LW9wZXJhdGluZy1jb3N0
+          LWNvbnRyYWN0LTEnIG5vdCBpbiByZWFkKCdzZXJ2aWNlLXdvcmtlci5qcycpOgogICAgcmFpc2Ug
+          U3lzdGVtRXhpdCgnc2VydmljZSB3b3JrZXIgY2FjaGUgbWFya2VyIG5vdCB1cGRhdGVkJykKCnBy
+          aW50KCdPcGVyYXRpbmctY29zdCBjb250cmFjdCBndWFyZHJhaWwgcGF0Y2ggcHJlcGFyZWQuJykK
           PATCH_B64
           base64 -d /tmp/operating-cost-contract-patch.b64 > /tmp/operating-cost-contract-patch.py
-          test "$(sha256sum /tmp/operating-cost-contract-patch.py | awk '{print $1}')" = "be6f5e5d00c146e82073cc8321f748f7db8e4403db043b493bdcf522da1ab870"
+          test "$(sha256sum /tmp/operating-cost-contract-patch.py | awk '{print $1}')" = "e36e750a209bfaa99e14233d4c752e068769ceece3567079c3f4515a64e2db41"
           python3 -m py_compile /tmp/operating-cost-contract-patch.py
           python3 /tmp/operating-cost-contract-patch.py
           rm -f /tmp/operating-cost-contract-patch.py /tmp/operating-cost-contract-patch.b64
